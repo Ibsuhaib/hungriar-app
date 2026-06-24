@@ -9,26 +9,44 @@ import { supabase } from '../../lib/supabase'
 import OrderCard from '../../components/OrderCard'
 import { usePushNotifications } from '../../hooks/usePushNotifications'
 
-// Synthesised bell tone — plays when a new order arrives while the tab is open.
-// Uses Web Audio API so no audio file is needed.
-function playBell() {
+// Persistent AudioContext — must be created/resumed during a user gesture
+// because browsers block audio that starts without interaction.
+let _audioCtx = null
+
+function unlockAudio() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)()
-    const now = ctx.currentTime
-    ;[[880, 0.5], [1320, 0.25], [2200, 0.1]].forEach(([freq, vol]) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.type = 'sine'
-      osc.frequency.value = freq
-      gain.gain.setValueAtTime(vol, now)
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2)
-      osc.start(now)
-      osc.stop(now + 1.2)
-    })
-    setTimeout(() => ctx.close().catch(() => {}), 1500)
+    if (!_audioCtx) {
+      _audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    }
+    if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {})
   } catch (_) {}
+}
+
+function playBell() {
+  const ctx = _audioCtx
+  if (!ctx) return
+  const ring = () => {
+    try {
+      const now = ctx.currentTime
+      ;[[880, 0.5], [1320, 0.25], [2200, 0.1]].forEach(([freq, vol]) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.type = 'sine'
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(vol, now)
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2)
+        osc.start(now)
+        osc.stop(now + 1.2)
+      })
+    } catch (_) {}
+  }
+  if (ctx.state === 'suspended') {
+    ctx.resume().then(ring).catch(() => {})
+  } else {
+    ring()
+  }
 }
 
 function NotificationButton({ restaurantId }) {
@@ -67,6 +85,13 @@ export default function Orders() {
   const handleNewOrder = useCallback(() => { playBell() }, [])
   const { orders, loading, patchOrder } = useRealtimeOrders({ restaurantId: restaurant?.id, pollInterval: 3000, onInsert: handleNewOrder })
   const [settledTodayCount, setSettledTodayCount] = useState(0)
+
+  // Unlock Web Audio on first user interaction so the bell can play.
+  // Browsers block AudioContext created without a prior gesture.
+  useEffect(() => {
+    document.addEventListener('click', unlockAudio)
+    return () => document.removeEventListener('click', unlockAudio)
+  }, [])
 
   useEffect(() => {
     if (!restaurant?.id) return
