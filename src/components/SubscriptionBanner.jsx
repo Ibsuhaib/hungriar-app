@@ -1,45 +1,76 @@
+import { AlertTriangle, CheckCircle2, Clock, XCircle } from 'lucide-react'
 import { useSubscriptionStatus } from '../hooks/useSubscriptionStatus'
 
-const SUPPORT_EMAIL = 'support@goanaar.example'
-const SUPPORT_PHONE = '+91-90000-00000'
+const SUPPORT_EMAIL = 'bgo83418@gmail.com'
+const SUPPORT_PHONE = '+91-81970-02978'
+
+const TONE_CONFIG = {
+  active: {
+    icon: CheckCircle2,
+    className: 'border-secondary-200 bg-secondary-50',
+    iconClass: 'text-secondary-500',
+    titleClass: 'text-secondary-800',
+    textClass: 'text-secondary-700',
+  },
+  trial: {
+    icon: Clock,
+    className: 'border-amber-200 bg-amber-50',
+    iconClass: 'text-amber-500',
+    titleClass: 'text-amber-800',
+    textClass: 'text-amber-700',
+  },
+  expired: {
+    icon: AlertTriangle,
+    className: 'border-red-200 bg-red-50',
+    iconClass: 'text-red-500',
+    titleClass: 'text-red-800',
+    textClass: 'text-red-700',
+  },
+  inactive: {
+    icon: XCircle,
+    className: 'border-red-200 bg-red-50',
+    iconClass: 'text-red-500',
+    titleClass: 'text-red-800',
+    textClass: 'text-red-700',
+  },
+}
 
 /**
- * Shows the restaurant's subscription status (trial / active / expired /
- * deactivated) with contact details for renewal. Displayed but never
- * blocking - even an expired subscription only shows a warning banner.
+ * Shows the restaurant's subscription status with contextual icon and contact
+ * details for renewal. Non-blocking — only displays a styled banner.
  */
 export default function SubscriptionBanner({ restaurant }) {
   const { label, isExpired, isTrial, status } = useSubscriptionStatus(restaurant)
 
   if (!restaurant) return null
 
-  let tone = 'border-secondary-200 bg-secondary-50 text-secondary-800'
-  if (status === 'inactive' || isExpired) {
-    tone = 'border-red-200 bg-red-50 text-red-800'
-  } else if (isTrial) {
-    tone = 'border-amber-200 bg-amber-50 text-amber-800'
-  }
+  const toneKey = isExpired || status === 'inactive' ? (status === 'inactive' ? 'inactive' : 'expired') : isTrial ? 'trial' : 'active'
+  const config = TONE_CONFIG[toneKey] || TONE_CONFIG.active
+  const Icon = config.icon
 
   return (
-    <div className={`rounded-lg border px-4 py-3 text-sm ${tone}`} role="status">
-      <p className="font-medium">{label}</p>
-      {(isExpired || status === 'inactive') ? (
-        <p className="mt-1">
-          To renew or reactivate your subscription, please contact Goana AR at{' '}
-          <a href={`mailto:${SUPPORT_EMAIL}`} className="font-semibold underline">
-            {SUPPORT_EMAIL}
-          </a>{' '}
-          or call <span className="font-semibold">{SUPPORT_PHONE}</span>.
-        </p>
-      ) : (
-        <p className="mt-1 text-xs opacity-80">
-          For renewals or upgrades, contact{' '}
-          <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
-            {SUPPORT_EMAIL}
-          </a>{' '}
-          or call {SUPPORT_PHONE}.
-        </p>
-      )}
+    <div className={`flex gap-3 rounded-xl border px-4 py-3 ${config.className}`} role="status">
+      <Icon className={`w-4 h-4 flex-shrink-0 mt-0.5 ${config.iconClass}`} />
+      <div className="min-w-0 flex-1">
+        <p className={`text-sm font-semibold ${config.titleClass}`}>{label}</p>
+        {isExpired || status === 'inactive' ? (
+          <p className={`mt-0.5 text-xs ${config.textClass}`}>
+            To renew, contact us at{' '}
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="font-semibold underline underline-offset-2">
+              {SUPPORT_EMAIL}
+            </a>{' '}
+            or <span className="font-semibold">{SUPPORT_PHONE}</span>.
+          </p>
+        ) : (
+          <p className={`mt-0.5 text-xs opacity-75 ${config.textClass}`}>
+            For renewals, contact{' '}
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-2">
+              {SUPPORT_EMAIL}
+            </a>{' '}
+            · {SUPPORT_PHONE}
+          </p>
+        )}
+      </div>
     </div>
   )
 }

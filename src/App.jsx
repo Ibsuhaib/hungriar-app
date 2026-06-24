@@ -24,6 +24,8 @@ import Categories from './pages/admin/Categories'
 import Tables from './pages/admin/Tables'
 import MenuManagement from './pages/admin/MenuManagement'
 import Orders from './pages/admin/Orders'
+import Chef from './pages/admin/Chef'
+import Expired from './pages/admin/Expired'
 import Billing from './pages/admin/Billing'
 import History from './pages/admin/History'
 import Analytics from './pages/admin/Analytics'
@@ -70,6 +72,8 @@ export default function App() {
           <Route path="/admin" element={<ProtectedRoute />}>
             <Route index element={<Dashboard />} />
             <Route path="agreement" element={<AdminAgreement />} />
+            <Route path="chef" element={<Chef />} />
+            <Route path="expired" element={<Expired />} />
             <Route path="orders" element={<Orders />} />
             <Route path="billing" element={<Billing />} />
             <Route path="history" element={<History />} />

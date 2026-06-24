@@ -37,7 +37,7 @@ export function useSubscriptionStatus(restaurant) {
 
     let label
     if (restaurant.subscription_status === 'inactive') {
-      label = 'Deactivated by Goana AR'
+      label = 'Deactivated by HungriAR'
     } else if (isExpired) {
       label = 'Subscription expired'
     } else if (isTrial) {

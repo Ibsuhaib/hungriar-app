@@ -46,10 +46,10 @@ export const ORDER_STATUS_COLORS = {
 
 export const ORDER_STATUS_FLOW = ['pending', 'preparing', 'served', 'completed']
 
+// Simplified flow: any active order goes directly to completed in one tap.
 export function nextOrderStatus(status) {
-  const idx = ORDER_STATUS_FLOW.indexOf(status)
-  if (idx === -1 || idx === ORDER_STATUS_FLOW.length - 1) return null
-  return ORDER_STATUS_FLOW[idx + 1]
+  if (status === 'completed') return null
+  return 'completed'
 }
 
 export function truncate(text, maxLength = 100) {

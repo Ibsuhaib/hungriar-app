@@ -1,14 +1,14 @@
 import { Link } from 'react-router-dom'
 
-const SUPPORT_EMAIL = 'support@goanaar.example'
-const SUPPORT_PHONE = '+91-90000-00000'
+const SUPPORT_EMAIL = 'bgo83418@gmail.com'
+const SUPPORT_PHONE = '+91-81970-02978'
 
 export default function Privacy() {
   return (
     <div className="min-h-screen bg-sand-100 px-4 py-10">
       <div className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow-xl sm:p-8">
         <Link to="/" className="text-sm font-medium text-primary-600 hover:underline">
-          &larr; Back to Goana AR
+          &larr; Back to HungriAR
         </Link>
 
         <h1 className="mt-4 text-2xl font-bold text-gray-900">Privacy Policy</h1>
@@ -18,8 +18,8 @@ export default function Privacy() {
           <section>
             <h2 className="text-base font-semibold text-gray-900">1. Overview</h2>
             <p className="mt-1">
-              This policy explains what information Goana AR collects when restaurants and their diners use the
-              Service, and how that information is used and stored. Goana AR is built on Supabase (database,
+              This policy explains what information HungriAR collects when restaurants and their diners use the
+              Service, and how that information is used and stored. HungriAR is built on Supabase (database,
               authentication, and file storage) and, optionally, Cloudflare R2 for media storage.
             </p>
           </section>
@@ -59,7 +59,7 @@ export default function Privacy() {
               <li>Menu data you manage: categories, items, descriptions, prices, photos, and AR / 3D models.</li>
               <li>Table configuration and generated QR tokens.</li>
               <li>Records of agreement acceptance (version and timestamp) and last login time.</li>
-              <li>Subscription status, trial/paid-until dates, and internal notes maintained by the Goana AR team.</li>
+              <li>Subscription status, trial/paid-until dates, and internal notes maintained by the HungriAR team.</li>
             </ul>
           </section>
 

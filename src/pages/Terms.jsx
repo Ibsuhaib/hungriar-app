@@ -1,14 +1,14 @@
 import { Link } from 'react-router-dom'
 
-const SUPPORT_EMAIL = 'support@goanaar.example'
-const SUPPORT_PHONE = '+91-90000-00000'
+const SUPPORT_EMAIL = 'bgo83418@gmail.com'
+const SUPPORT_PHONE = '+91-81970-02978'
 
 export default function Terms() {
   return (
     <div className="min-h-screen bg-sand-100 px-4 py-10">
       <div className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow-xl sm:p-8">
         <Link to="/" className="text-sm font-medium text-primary-600 hover:underline">
-          &larr; Back to Goana AR
+          &larr; Back to HungriAR
         </Link>
 
         <h1 className="mt-4 text-2xl font-bold text-gray-900">Terms of Service</h1>
@@ -18,17 +18,17 @@ export default function Terms() {
           <section>
             <h2 className="text-base font-semibold text-gray-900">1. The Service</h2>
             <p className="mt-1">
-              Goana AR ("the Service") is a digital menu and ordering platform that lets restaurants publish a
+              HungriAR ("the Service") is a digital menu and ordering platform that lets restaurants publish a
               menu - including photos and AR / 3D models of dishes - that diners can browse and order from by
               scanning a table QR code. The Service is operated and provided to your restaurant ("you", "the
-              Restaurant") by the Goana AR team.
+              Restaurant") by the HungriAR team.
             </p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-gray-900">2. Accounts and Access</h2>
             <p className="mt-1">
-              Restaurant admin accounts are created by the Goana AR team. You are responsible for keeping your
+              Restaurant admin accounts are created by the HungriAR team. You are responsible for keeping your
               login credentials confidential and for all activity that occurs under your account. Notify us
               immediately at {SUPPORT_EMAIL} if you suspect unauthorised access.
             </p>
@@ -38,7 +38,7 @@ export default function Terms() {
             <h2 className="text-base font-semibold text-gray-900">3. Subscriptions and Payments</h2>
             <ul className="mt-1 list-disc space-y-1 pl-5">
               <li>
-                Subscription fees and any one-time AR model creation fees are collected directly by Goana AR via
+                Subscription fees and any one-time AR model creation fees are collected directly by HungriAR via
                 UPI, cash, or bank transfer, as agreed with you separately. The Service does not process card or
                 online payments.
               </li>
@@ -47,7 +47,7 @@ export default function Terms() {
                 active paid subscription.
               </li>
               <li>
-                Payments are recorded manually by the Goana AR team. Your admin dashboard always shows your
+                Payments are recorded manually by the HungriAR team. Your admin dashboard always shows your
                 current subscription status and the date your access is paid until.
               </li>
               <li>
@@ -62,7 +62,7 @@ export default function Terms() {
             <p className="mt-1">
               You are responsible for the accuracy of your menu items, descriptions, prices, categories, table
               setup, and item availability. AR / 3D models and product photos are created and uploaded by the
-              Goana AR team using materials and information you provide, and remain associated with your
+              HungriAR team using materials and information you provide, and remain associated with your
               restaurant account for as long as you use the Service.
             </p>
             <p className="mt-1">
@@ -93,7 +93,7 @@ export default function Terms() {
           <section>
             <h2 className="text-base font-semibold text-gray-900">7. Suspension and Termination</h2>
             <p className="mt-1">
-              Goana AR may suspend or deactivate a restaurant's access for overdue payments, violation of these
+              HungriAR may suspend or deactivate a restaurant's access for overdue payments, violation of these
               terms, or misuse of the platform, after reasonable notice where practical. You may request
               discontinuation of the Service at any time by contacting us.
             </p>
@@ -104,7 +104,7 @@ export default function Terms() {
             <p className="mt-1">
               The Service is provided on an "as is" and "as available" basis. While we aim for high availability,
               we do not guarantee the Service will be uninterrupted or error-free. To the extent permitted by law,
-              Goana AR's liability for any claim relating to the Service is limited to the subscription fees paid
+              HungriAR's liability for any claim relating to the Service is limited to the subscription fees paid
               by you in the three months preceding the claim.
             </p>
           </section>

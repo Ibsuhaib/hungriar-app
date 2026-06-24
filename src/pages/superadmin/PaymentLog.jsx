@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+import { motion } from 'framer-motion'
+import { PlusCircle, Receipt, Info } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
@@ -10,6 +12,13 @@ const METHOD_LABELS = {
   cash: 'Cash',
   bank_transfer: 'Bank Transfer',
   other: 'Other',
+}
+
+const METHOD_COLORS = {
+  upi: 'bg-violet-50 text-violet-700 border border-violet-100',
+  cash: 'bg-green-50 text-green-700 border border-green-100',
+  bank_transfer: 'bg-blue-50 text-blue-700 border border-blue-100',
+  other: 'bg-gray-100 text-gray-600 border border-gray-200',
 }
 
 function todayString() {
@@ -40,33 +49,23 @@ export default function PaymentLog() {
         .order('created_at', { ascending: false }),
       supabase.from('restaurants').select('id, name').order('name'),
     ])
-
     if (!paymentsRes.error) setPayments(paymentsRes.data || [])
     if (!restaurantsRes.error) setRestaurants(restaurantsRes.data || [])
     setLoading(false)
   }, [])
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  useEffect(() => { fetchData() }, [fetchData])
 
-  const handleSubmit = async (event) => {
-    event.preventDefault()
+  const setField = (field, value) => setForm((prev) => ({ ...prev, [field]: value }))
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
     if (saving) return
-
     const amount = Number(form.amount)
-    if (!form.restaurant_id) {
-      toast.error('Select a restaurant')
-      return
-    }
-    if (Number.isNaN(amount) || amount < 0) {
-      toast.error('Enter a valid amount')
-      return
-    }
-
+    if (!form.restaurant_id) { toast.error('Select a restaurant'); return }
+    if (Number.isNaN(amount) || amount < 0) { toast.error('Enter a valid amount'); return }
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) return
-
     setSaving(true)
     try {
       const { error } = await supabase.from('subscription_payments').insert({
@@ -77,9 +76,7 @@ export default function PaymentLog() {
         receipt_number: form.receipt_number.trim() || null,
         notes: form.notes.trim() || null,
       })
-
       if (error) throw error
-
       toast.success('Payment recorded')
       setForm(emptyForm())
       await fetchData()
@@ -92,150 +89,135 @@ export default function PaymentLog() {
 
   return (
     <div className="space-y-6">
-      <form onSubmit={handleSubmit} className="card space-y-4">
-        <h2 className="text-lg font-semibold text-gray-900">Record Payment</h2>
-        <p className="text-sm text-gray-500">
-          Log a payment collected outside the app (UPI / cash / bank transfer). This does not change the subscription status -
-          use Subscriptions to extend access after recording a payment here.
-        </p>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="payment-restaurant">
-              Restaurant
-            </label>
-            <select
-              id="payment-restaurant"
-              className="input"
-              value={form.restaurant_id}
-              onChange={(event) => setForm((prev) => ({ ...prev, restaurant_id: event.target.value }))}
-              required
-            >
-              <option value="">Select a restaurant</option>
-              {restaurants.map((restaurant) => (
-                <option key={restaurant.id} value={restaurant.id}>
-                  {restaurant.name}
-                </option>
-              ))}
-            </select>
+      {/* Record form */}
+      <div className="card space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50">
+            <PlusCircle className="w-4 h-4 text-primary-600" />
           </div>
-          <div>
-            <label className="label" htmlFor="payment-amount">
-              Amount
-            </label>
-            <input
-              id="payment-amount"
-              type="number"
-              min="0"
-              step="0.01"
-              className="input"
-              value={form.amount}
-              onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
-              required
-            />
-          </div>
+          <h2 className="text-base font-bold text-gray-900 font-display">Record Payment</h2>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div>
-            <label className="label" htmlFor="payment-date">
-              Date
-            </label>
-            <input
-              id="payment-date"
-              type="date"
-              className="input"
-              value={form.payment_date}
-              onChange={(event) => setForm((prev) => ({ ...prev, payment_date: event.target.value }))}
-              required
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="payment-method">
-              Method
-            </label>
-            <select
-              id="payment-method"
-              className="input"
-              value={form.method}
-              onChange={(event) => setForm((prev) => ({ ...prev, method: event.target.value }))}
-            >
-              {Object.entries(METHOD_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="payment-receipt">
-              Receipt #
-            </label>
-            <input
-              id="payment-receipt"
-              className="input"
-              value={form.receipt_number}
-              onChange={(event) => setForm((prev) => ({ ...prev, receipt_number: event.target.value }))}
-              maxLength={100}
-            />
-          </div>
+        <div className="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3">
+          <Info className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-700">
+            This only logs the payment. Go to <span className="font-semibold">Subscriptions</span> and click
+            <span className="font-semibold"> Extend 30 Days</span> to actually activate access.
+          </p>
         </div>
 
-        <div>
-          <label className="label" htmlFor="payment-notes">
-            Notes
-          </label>
-          <textarea
-            id="payment-notes"
-            className="input"
-            rows={2}
-            maxLength={500}
-            value={form.notes}
-            onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
-          />
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="pay-restaurant">Restaurant</label>
+              <select id="pay-restaurant" className="input" required value={form.restaurant_id}
+                onChange={(e) => setField('restaurant_id', e.target.value)}>
+                <option value="">Select a restaurant…</option>
+                {restaurants.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="pay-amount">Amount (₹)</label>
+              <input id="pay-amount" type="number" min="0" step="0.01" required className="input"
+                value={form.amount} onChange={(e) => setField('amount', e.target.value)} placeholder="0.00" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <label className="label" htmlFor="pay-date">Date</label>
+              <input id="pay-date" type="date" required className="input"
+                value={form.payment_date} onChange={(e) => setField('payment_date', e.target.value)} />
+            </div>
+            <div>
+              <label className="label" htmlFor="pay-method">Method</label>
+              <select id="pay-method" className="input" value={form.method}
+                onChange={(e) => setField('method', e.target.value)}>
+                {Object.entries(METHOD_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="pay-receipt">Receipt #</label>
+              <input id="pay-receipt" className="input" maxLength={100} placeholder="Optional"
+                value={form.receipt_number} onChange={(e) => setField('receipt_number', e.target.value)} />
+            </div>
+          </div>
+
+          <div>
+            <label className="label" htmlFor="pay-notes">Notes</label>
+            <textarea id="pay-notes" className="input resize-none" rows={2} maxLength={500}
+              placeholder="Optional — e.g., UPI transaction ID, contact name"
+              value={form.notes} onChange={(e) => setField('notes', e.target.value)} />
+          </div>
+
+          <button type="submit" disabled={saving} className="btn-primary gap-2">
+            {saving
+              ? <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+              : <PlusCircle className="w-4 h-4" />}
+            {saving ? 'Saving…' : 'Record Payment'}
+          </button>
+        </form>
+      </div>
+
+      {/* Payment log table */}
+      <div className="card overflow-hidden p-0">
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
+          <Receipt className="w-4 h-4 text-gray-400" />
+          <h2 className="text-sm font-semibold text-gray-700">Payment History</h2>
+          {!loading && (
+            <span className="ml-auto badge bg-gray-100 text-gray-600 text-xs">{payments.length} records</span>
+          )}
         </div>
 
-        <button type="submit" disabled={saving} className="btn-primary">
-          {saving ? 'Saving...' : 'Record Payment'}
-        </button>
-      </form>
-
-      {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="skeleton h-16 rounded-xl" />
-          ))}
-        </div>
-      ) : payments.length === 0 ? (
-        <p className="py-12 text-center text-gray-500">No payments recorded yet.</p>
-      ) : (
-        <div className="card overflow-hidden p-0">
-          <table className="w-full text-sm">
-            <thead className="bg-sand-100 text-left text-xs uppercase tracking-wide text-gray-500">
-              <tr>
-                <th className="px-4 py-2">Date</th>
-                <th className="px-4 py-2">Restaurant</th>
-                <th className="px-4 py-2 text-right">Amount</th>
-                <th className="px-4 py-2">Method</th>
-                <th className="px-4 py-2">Receipt #</th>
-                <th className="px-4 py-2">Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {payments.map((payment) => (
-                <tr key={payment.id}>
-                  <td className="px-4 py-2 text-gray-700">{formatDate(payment.payment_date)}</td>
-                  <td className="px-4 py-2 text-gray-700">{payment.restaurants?.name ?? '-'}</td>
-                  <td className="px-4 py-2 text-right font-semibold text-gray-900">{formatCurrency(payment.amount, '₹')}</td>
-                  <td className="px-4 py-2 text-gray-700">{METHOD_LABELS[payment.method] || payment.method}</td>
-                  <td className="px-4 py-2 text-gray-700">{payment.receipt_number || '-'}</td>
-                  <td className="px-4 py-2 text-gray-500">{payment.notes || '-'}</td>
+        {loading ? (
+          <div className="p-4 space-y-2">
+            {Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton h-12 rounded-xl" />)}
+          </div>
+        ) : payments.length === 0 ? (
+          <div className="py-12 text-center">
+            <Receipt className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">No payments recorded yet.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table-base">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Restaurant</th>
+                  <th className="text-right">Amount</th>
+                  <th>Method</th>
+                  <th>Receipt #</th>
+                  <th>Notes</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {payments.map((payment, i) => (
+                  <motion.tr key={payment.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.03 }}>
+                    <td className="whitespace-nowrap">{formatDate(payment.payment_date)}</td>
+                    <td className="font-medium text-gray-900">{payment.restaurants?.name ?? '—'}</td>
+                    <td className="text-right font-semibold text-gray-900 whitespace-nowrap">
+                      {formatCurrency(payment.amount, '₹')}
+                    </td>
+                    <td>
+                      <span className={`badge-sm ${METHOD_COLORS[payment.method] || METHOD_COLORS.other}`}>
+                        {METHOD_LABELS[payment.method] || payment.method}
+                      </span>
+                    </td>
+                    <td className="text-gray-500">{payment.receipt_number || '—'}</td>
+                    <td className="text-gray-400 max-w-[200px] truncate" title={payment.notes || ''}>
+                      {payment.notes || '—'}
+                    </td>
+                  </motion.tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

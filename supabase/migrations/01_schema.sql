@@ -428,10 +428,17 @@ begin
   end if;
 
   select json_build_object(
-    'total_orders', (select count(*) from public.orders where restaurant_id = p_restaurant_id),
+    'total_orders', (
+      (select count(*) from public.orders where restaurant_id = p_restaurant_id)
+      +
+      (select coalesce(sum(jsonb_array_length(orders_json)), 0) from public.billing_history where restaurant_id = p_restaurant_id)
+    ),
     'total_revenue', (
-      select coalesce(sum(total_amount), 0) from public.orders
-      where restaurant_id = p_restaurant_id and status = 'completed'
+      (select coalesce(sum(total_amount), 0) from public.orders
+       where restaurant_id = p_restaurant_id and status = 'completed')
+      +
+      (select coalesce(sum(total_amount), 0) from public.billing_history
+       where restaurant_id = p_restaurant_id)
     ),
     'top_items', (
       select coalesce(json_agg(t), '[]'::json) from (
@@ -449,7 +456,15 @@ begin
     'daily_orders', (
       select coalesce(json_agg(d), '[]'::json) from (
         select to_char(gs.day, 'YYYY-MM-DD') as date,
-               coalesce(count(o.id), 0)::int as count
+               (
+                 coalesce(count(o.id), 0) +
+                 coalesce((
+                   select sum(jsonb_array_length(bh.orders_json))
+                   from public.billing_history bh
+                   where bh.restaurant_id = p_restaurant_id
+                     and date_trunc('day', bh.bill_date) = gs.day
+                 ), 0)
+               )::int as count
         from generate_series(current_date - interval '6 days', current_date, interval '1 day') as gs(day)
         left join public.orders o
           on o.restaurant_id = p_restaurant_id

@@ -1,9 +1,62 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Receipt, CheckCircle2, Printer, AlertCircle, TriangleAlert } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency, formatTime } from '../../utils/formatters'
+
+function ConfirmDialog({ table, activeCount, onConfirm, onCancel, loading }) {
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+        onClick={onCancel}
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ pointerEvents: 'none' }}
+      >
+        <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full" style={{ pointerEvents: 'auto' }}>
+          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl mb-4 ${activeCount > 0 ? 'bg-amber-50' : 'bg-secondary-50'}`}>
+            {activeCount > 0
+              ? <TriangleAlert className="w-5 h-5 text-amber-500" />
+              : <CheckCircle2 className="w-5 h-5 text-secondary-500" />
+            }
+          </div>
+          <h3 className="text-base font-bold text-gray-900 font-display">Settle bill for Table {table.table_number}?</h3>
+
+          {activeCount > 0 && (
+            <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
+              <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700 leading-relaxed">
+                <span className="font-semibold">{activeCount} order{activeCount !== 1 ? 's' : ''} still in the kitchen.</span>{' '}
+                Only completed orders will be settled. Active orders remain open.
+              </p>
+            </div>
+          )}
+
+          <p className="text-sm text-gray-500 mt-3 leading-relaxed">
+            Completed orders will be archived to History. This cannot be undone.
+          </p>
+          <div className="flex gap-3 mt-5">
+            <button type="button" onClick={onCancel} className="btn-outline flex-1">Cancel</button>
+            <button type="button" onClick={onConfirm} disabled={loading} className="btn-secondary flex-1">
+              {loading ? 'Settling…' : 'Settle Bill'}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
 
 export default function Billing() {
   const { restaurant, user } = useAuth()
@@ -11,127 +64,177 @@ export default function Billing() {
 
   const [tables, setTables] = useState([])
   const [orders, setOrders] = useState([])
+  const [taxPercentage, setTaxPercentage] = useState(0)
   const [loading, setLoading] = useState(true)
   const [settlingTableId, setSettlingTableId] = useState(null)
+  const [confirmTable, setConfirmTable] = useState(null)
+  const [activeOrdersCount, setActiveOrdersCount] = useState(0)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [tablesRes, ordersRes] = await Promise.all([
+    const [tablesRes, ordersRes, restaurantRes] = await Promise.all([
       supabase.from('tables').select('*').eq('restaurant_id', restaurant.id).order('table_number'),
-      supabase
-        .from('orders')
-        .select('*, order_items(*)')
-        .eq('restaurant_id', restaurant.id)
-        .eq('status', 'completed')
-        .order('order_time'),
+      supabase.from('orders').select('*, order_items(*)').eq('restaurant_id', restaurant.id).eq('status', 'completed').order('order_time'),
+      supabase.from('restaurants').select('tax_percentage').eq('id', restaurant.id).maybeSingle(),
     ])
-
     if (!tablesRes.error) setTables(tablesRes.data || [])
     if (!ordersRes.error) setOrders(ordersRes.data || [])
+    if (!restaurantRes.error) setTaxPercentage(Number(restaurantRes.data?.tax_percentage) || 0)
     setLoading(false)
   }, [restaurant.id])
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  useEffect(() => { fetchData() }, [fetchData])
 
-  const bills = useMemo(() => {
-    return tables
+  const bills = useMemo(() =>
+    tables
       .map((table) => {
-        const tableOrders = orders.filter((order) => order.table_id === table.id)
-        const total = tableOrders.reduce((sum, order) => sum + Number(order.total_amount), 0)
+        const tableOrders = orders.filter((o) => o.table_id === table.id)
+        const total = tableOrders.reduce((s, o) => s + Number(o.total_amount), 0)
         return { table, orders: tableOrders, total }
       })
-      .filter((bill) => bill.orders.length > 0)
-  }, [tables, orders])
+      .filter((b) => b.orders.length > 0),
+    [tables, orders],
+  )
 
-  const handleSettle = async (tableId) => {
-    if (settlingTableId) return
-    if (!window.confirm('Settle this bill? Completed orders for this table will be archived to history.')) return
+  const handleClickSettle = async (table) => {
+    const { count } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('restaurant_id', restaurant.id)
+      .eq('table_id', table.id)
+      .neq('status', 'completed')
+    setActiveOrdersCount(count ?? 0)
+    setConfirmTable(table)
+  }
 
+  const handleSettle = async () => {
+    if (!confirmTable || settlingTableId) return
     const allowed = await checkAdminLimit(user?.id)
-    if (!allowed) return
+    if (!allowed) { setConfirmTable(null); return }
 
-    setSettlingTableId(tableId)
+    setSettlingTableId(confirmTable.id)
     try {
       const { data, error } = await supabase.rpc('reset_table_billing', {
         p_restaurant_id: restaurant.id,
-        p_table_id: tableId,
+        p_table_id: confirmTable.id,
       })
-
       if (error) throw error
-      if (!data) {
-        toast.error('No completed orders to settle for this table')
-        return
-      }
-
+      if (!data) { toast.error('No completed orders to settle for this table'); return }
       toast.success('Bill settled and archived to history')
       await fetchData()
     } catch (err) {
       toast.error(err.message || 'Failed to settle bill')
     } finally {
       setSettlingTableId(null)
+      setConfirmTable(null)
     }
   }
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-500">
-        Tables with completed but unsettled orders appear below. Settling a bill archives those orders to{' '}
-        <span className="font-medium">History</span> and clears the table for new orders.
-      </p>
+      <div className="flex items-start gap-3 rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
+        <AlertCircle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+        <p className="text-sm text-blue-700 leading-relaxed">
+          Tables with completed but unsettled orders appear below. Settling archives those orders to{' '}
+          <span className="font-semibold">History</span> and clears the table for new customers.
+        </p>
+      </div>
 
       {loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="skeleton h-40 rounded-2xl" />
-          ))}
+          {Array.from({ length: 2 }).map((_, i) => <div key={i} className="skeleton h-48 rounded-2xl" />)}
         </div>
       ) : bills.length === 0 ? (
-        <p className="py-12 text-center text-gray-500">No tables currently have unsettled bills.</p>
+        <div className="card py-14 text-center bg-gray-50">
+          <CheckCircle2 className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+          <p className="text-sm font-medium text-gray-500">No unsettled bills.</p>
+          <p className="text-xs text-gray-400 mt-1">All tables are clear.</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {bills.map(({ table, orders: tableOrders, total }) => (
-            <div key={table.id} className="card space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900">Table {table.table_number}</h2>
-                <span className="badge bg-gray-100 text-gray-600">{tableOrders.length} order{tableOrders.length === 1 ? '' : 's'}</span>
+            <motion.div
+              key={table.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="card overflow-hidden p-0 print:shadow-none"
+            >
+              {/* Invoice header */}
+              <div className="flex items-center justify-between gap-3 bg-gray-50 border-b border-gray-100 px-5 py-4 no-print">
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-gray-400" />
+                  <h2 className="text-base font-bold text-gray-900 font-display">Table {table.table_number}</h2>
+                </div>
+                <span className="badge bg-amber-100 text-amber-700">
+                  {tableOrders.length} order{tableOrders.length !== 1 ? 's' : ''}
+                </span>
               </div>
 
-              <ul className="divide-y divide-gray-100 text-sm">
-                {tableOrders.map((order) => (
-                  <li key={order.id} className="py-1.5">
-                    <div className="flex justify-between text-gray-700">
-                      <span>Order at {formatTime(order.order_time)}</span>
-                      <span className="font-medium">{formatCurrency(order.total_amount, restaurant?.currency)}</span>
-                    </div>
-                    <ul className="mt-0.5 pl-3 text-xs text-gray-500">
-                      {(order.order_items || []).map((item) => (
-                        <li key={item.id}>
-                          {item.quantity} &times; {item.item_name}
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="flex items-center justify-between border-t pt-2">
-                <span className="font-semibold text-gray-900">Total Due</span>
-                <span className="text-lg font-bold text-gray-900">{formatCurrency(total, restaurant?.currency)}</span>
+              {/* Orders list */}
+              <div className="px-5 py-4">
+                <ul className="divide-y divide-gray-50 space-y-0">
+                  {tableOrders.map((order) => (
+                    <li key={order.id} className="py-2.5 first:pt-0 last:pb-0">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Order at {formatTime(order.order_time)}</span>
+                        <span className="font-semibold text-gray-800">{formatCurrency(order.total_amount, restaurant?.currency)}</span>
+                      </div>
+                      <ul className="mt-1 pl-3 space-y-0.5">
+                        {(order.order_items || []).map((item) => (
+                          <li key={item.id} className="flex items-center gap-1.5 text-xs text-gray-400">
+                            <span className="font-medium text-gray-500">{item.quantity}×</span>
+                            {item.item_name}
+                            {item.notes && <span className="italic text-gray-300">— {item.notes}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleSettle(table.id)}
-                disabled={settlingTableId === table.id}
-                className="btn-primary w-full"
-              >
-                {settlingTableId === table.id ? 'Settling...' : 'Settle Bill'}
-              </button>
-            </div>
+              {/* Total + actions */}
+              <div className="border-t border-gray-100 px-5 py-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold text-gray-600">Total Due</span>
+                  <span className="text-xl font-bold text-gray-900 font-display">{formatCurrency(total, restaurant?.currency)}</span>
+                </div>
+                {taxPercentage > 0 && (
+                  <p className="text-xs text-gray-400 mb-4">Includes {taxPercentage}% tax</p>
+                )}
+                {taxPercentage === 0 && <div className="mb-4" />}
+                <div className="flex gap-2 no-print">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="btn-outline flex-1 gap-2 text-sm"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    Print
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleClickSettle(table)}
+                    disabled={settlingTableId === table.id}
+                    className="btn-secondary flex-1 text-sm"
+                  >
+                    {settlingTableId === table.id ? 'Settling…' : 'Settle Bill'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
           ))}
         </div>
+      )}
+
+      {confirmTable && (
+        <ConfirmDialog
+          table={confirmTable}
+          activeCount={activeOrdersCount}
+          onConfirm={handleSettle}
+          onCancel={() => setConfirmTable(null)}
+          loading={!!settlingTableId}
+        />
       )}
     </div>
   )

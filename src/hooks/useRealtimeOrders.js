@@ -1,30 +1,19 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-/**
- * Live-updating list of orders (with their order_items and table number)
- * for either:
- *  - an entire restaurant (admin dashboard / orders page): pass restaurantId
- *  - a single order (customer order status page): pass orderId
- *
- * Subscribes to Supabase Realtime postgres_changes on `orders` and
- * `order_items` and refetches whenever something relevant changes.
- * `onInsert` fires for brand new orders (used for sound/toast alerts).
- */
-export function useRealtimeOrders({ restaurantId, orderId, onInsert } = {}) {
+export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterval = 5000 } = {}) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const onInsertRef = useRef(onInsert)
   onInsertRef.current = onInsert
 
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async ({ silent = false } = {}) => {
     if (!restaurantId && !orderId) {
       setOrders([])
       setLoading(false)
       return
     }
-
-    setLoading(true)
+    if (!silent) setLoading(true)
 
     let query = supabase
       .from('orders')
@@ -35,38 +24,62 @@ export function useRealtimeOrders({ restaurantId, orderId, onInsert } = {}) {
     if (orderId) query = query.eq('id', orderId)
 
     const { data, error } = await query
-
     if (!error) setOrders(data || [])
     setLoading(false)
   }, [restaurantId, orderId])
 
+  // Optimistic patch — instant UI feedback before DB confirms
+  const patchOrder = useCallback((id, patch) => {
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)))
+  }, [])
+
+  // Initial load
   useEffect(() => {
     fetchOrders()
   }, [fetchOrders])
 
+  // Realtime subscription for instant updates
   useEffect(() => {
     if (!restaurantId && !orderId) return
 
     const filter = restaurantId ? `restaurant_id=eq.${restaurantId}` : `id=eq.${orderId}`
-    const channelName = `orders-${restaurantId || orderId}`
+    // Unique name avoids conflicts when navigating between pages that use this hook
+    const channelName = `orders-${restaurantId || orderId}-${Date.now()}`
 
     const channel = supabase
       .channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter }, (payload) => {
         if (payload.eventType === 'INSERT') {
           onInsertRef.current?.(payload.new)
+          fetchOrders({ silent: true })
+          // Delayed refetch ensures order_items are committed before we reload
+          setTimeout(() => fetchOrders({ silent: true }), 400)
+        } else if (payload.eventType === 'UPDATE') {
+          patchOrder(payload.new.id, payload.new)
+        } else if (payload.eventType === 'DELETE') {
+          setOrders((prev) => prev.filter((o) => o.id !== payload.old.id))
         }
-        fetchOrders()
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => {
-        fetchOrders()
       })
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [restaurantId, orderId, fetchOrders])
+  }, [restaurantId, orderId, fetchOrders, patchOrder])
 
-  return { orders, loading, refetch: fetchOrders }
+  // Polling fallback — catches any INSERT events Realtime misses
+  useEffect(() => {
+    if (!restaurantId && !orderId) return
+    const timer = setInterval(() => fetchOrders({ silent: true }), pollInterval)
+    return () => clearInterval(timer)
+  }, [restaurantId, orderId, fetchOrders, pollInterval])
+
+  // Refetch when the admin switches back to this browser tab
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) fetchOrders({ silent: true }) }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [fetchOrders])
+
+  return { orders, loading, refetch: fetchOrders, patchOrder }
 }

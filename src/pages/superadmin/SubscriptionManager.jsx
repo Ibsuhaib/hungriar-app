@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+import { motion } from 'framer-motion'
+import { CalendarDays, Zap, Save, Info } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
@@ -30,19 +32,17 @@ export default function SubscriptionManager() {
     setLoading(false)
   }, [])
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  useEffect(() => { fetchData() }, [fetchData])
 
   useEffect(() => {
     setForms((prev) => {
       const next = { ...prev }
-      for (const restaurant of restaurants) {
-        if (!next[restaurant.id]) {
-          next[restaurant.id] = {
-            subscription_status: restaurant.subscription_status,
-            paid_until_at: toDateInputValue(restaurant.paid_until_at),
-            super_admin_notes: restaurant.super_admin_notes || '',
+      for (const r of restaurants) {
+        if (!next[r.id]) {
+          next[r.id] = {
+            subscription_status: r.subscription_status,
+            paid_until_at: toDateInputValue(r.paid_until_at),
+            super_admin_notes: r.super_admin_notes || '',
           }
         }
       }
@@ -50,31 +50,23 @@ export default function SubscriptionManager() {
     })
   }, [restaurants])
 
-  const updateForm = (restaurantId, field, value) => {
-    setForms((prev) => ({ ...prev, [restaurantId]: { ...prev[restaurantId], [field]: value } }))
-  }
+  const updateForm = (id, field, value) =>
+    setForms((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }))
 
   const handleSave = async (restaurantId) => {
     if (savingId) return
     const form = forms[restaurantId]
     if (!form) return
-
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) return
-
     setSavingId(restaurantId)
     try {
-      const { error } = await supabase
-        .from('restaurants')
-        .update({
-          subscription_status: form.subscription_status,
-          paid_until_at: form.paid_until_at ? new Date(form.paid_until_at).toISOString() : null,
-          super_admin_notes: form.super_admin_notes.trim() || null,
-        })
-        .eq('id', restaurantId)
-
+      const { error } = await supabase.from('restaurants').update({
+        subscription_status: form.subscription_status,
+        paid_until_at: form.paid_until_at ? new Date(form.paid_until_at).toISOString() : null,
+        super_admin_notes: form.super_admin_notes.trim() || null,
+      }).eq('id', restaurantId)
       if (error) throw error
-
       toast.success('Subscription updated')
       await fetchData()
     } catch (err) {
@@ -86,24 +78,18 @@ export default function SubscriptionManager() {
 
   const handleExtend = async (restaurant) => {
     if (savingId) return
-
     const now = new Date()
     const currentPaidUntil = restaurant.paid_until_at ? new Date(restaurant.paid_until_at) : null
     const base = currentPaidUntil && currentPaidUntil > now ? currentPaidUntil : now
     const newPaidUntil = new Date(base.getTime() + EXTEND_DAYS * 24 * 60 * 60 * 1000)
-
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) return
-
     setSavingId(restaurant.id)
     try {
-      const { error } = await supabase
-        .from('restaurants')
+      const { error } = await supabase.from('restaurants')
         .update({ subscription_status: 'active', paid_until_at: newPaidUntil.toISOString() })
         .eq('id', restaurant.id)
-
       if (error) throw error
-
       setForms((prev) => ({
         ...prev,
         [restaurant.id]: {
@@ -112,7 +98,6 @@ export default function SubscriptionManager() {
           paid_until_at: toDateInputValue(newPaidUntil.toISOString()),
         },
       }))
-
       toast.success(`Extended by ${EXTEND_DAYS} days`)
       await fetchData()
     } catch (err) {
@@ -123,20 +108,23 @@ export default function SubscriptionManager() {
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-gray-500">
-        Subscription status is set manually after a developer collects payment (UPI / cash) outside the app. Use{' '}
-        <span className="font-medium">Extend {EXTEND_DAYS} Days</span> after recording a payment in the Payment Log.
-      </p>
+    <div className="space-y-5">
+      <div className="flex items-start gap-3 rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
+        <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+        <p className="text-sm text-blue-700">
+          Subscription status is set manually after collecting payment (UPI / cash) outside the app.
+          Use <span className="font-semibold">Extend {EXTEND_DAYS} Days</span> after recording a payment in the Payment Log.
+        </p>
+      </div>
 
       {loading ? (
         <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="skeleton h-40 rounded-2xl" />
-          ))}
+          {Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-44 rounded-2xl" />)}
         </div>
       ) : restaurants.length === 0 ? (
-        <p className="py-12 text-center text-gray-500">No restaurants yet.</p>
+        <div className="card py-12 text-center bg-gray-50">
+          <p className="text-sm text-gray-500">No restaurants yet.</p>
+        </div>
       ) : (
         <div className="space-y-4">
           {restaurants.map((restaurant) => {
@@ -145,75 +133,68 @@ export default function SubscriptionManager() {
             const isSaving = savingId === restaurant.id
 
             return (
-              <div key={restaurant.id} className="card space-y-3">
-                <div className="flex items-start justify-between gap-2">
+              <motion.div
+                key={restaurant.id}
+                layout
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="card space-y-4"
+              >
+                <div className="flex items-start gap-3 justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-900">{restaurant.name}</h2>
-                    <p className="text-xs text-gray-500">
-                      /{restaurant.slug} &middot; Trial ends {formatDate(restaurant.trial_ends_at)}
+                    <h2 className="text-base font-bold text-gray-900 font-display">{restaurant.name}</h2>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      /{restaurant.slug} · Trial ends {formatDate(restaurant.trial_ends_at)}
                     </p>
                   </div>
-                  <span className={`badge ${SUBSCRIPTION_STATUS_COLORS[restaurant.subscription_status] || 'bg-gray-100 text-gray-600'}`}>
+                  <span className={`badge flex-shrink-0 ${SUBSCRIPTION_STATUS_COLORS[restaurant.subscription_status] || 'bg-gray-100 text-gray-600'}`}>
                     {SUBSCRIPTION_STATUS_LABELS[restaurant.subscription_status] || restaurant.subscription_status}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="label" htmlFor={`status-${restaurant.id}`}>
-                      Subscription Status
-                    </label>
-                    <select
-                      id={`status-${restaurant.id}`}
-                      className="input"
-                      value={form.subscription_status}
-                      onChange={(event) => updateForm(restaurant.id, 'subscription_status', event.target.value)}
-                    >
-                      {Object.entries(SUBSCRIPTION_STATUS_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
+                    <label className="label" htmlFor={`status-${restaurant.id}`}>Subscription Status</label>
+                    <select id={`status-${restaurant.id}`} className="input" value={form.subscription_status}
+                      onChange={(e) => updateForm(restaurant.id, 'subscription_status', e.target.value)}>
+                      {Object.entries(SUBSCRIPTION_STATUS_LABELS).map(([v, l]) => (
+                        <option key={v} value={v}>{l}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="label" htmlFor={`paid-until-${restaurant.id}`}>
+                    <label className="label" htmlFor={`paid-${restaurant.id}`}>
+                      <CalendarDays className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" />
                       Paid Until
                     </label>
-                    <input
-                      id={`paid-until-${restaurant.id}`}
-                      type="date"
-                      className="input"
-                      value={form.paid_until_at}
-                      onChange={(event) => updateForm(restaurant.id, 'paid_until_at', event.target.value)}
-                    />
+                    <input id={`paid-${restaurant.id}`} type="date" className="input" value={form.paid_until_at}
+                      onChange={(e) => updateForm(restaurant.id, 'paid_until_at', e.target.value)} />
                   </div>
                 </div>
 
                 <div>
-                  <label className="label" htmlFor={`notes-${restaurant.id}`}>
-                    Internal Notes
-                  </label>
-                  <textarea
-                    id={`notes-${restaurant.id}`}
-                    className="input"
-                    rows={2}
-                    maxLength={1000}
-                    placeholder="Visible to super admins only - e.g. payment reference, follow-up reminders"
+                  <label className="label" htmlFor={`notes-${restaurant.id}`}>Internal Notes</label>
+                  <textarea id={`notes-${restaurant.id}`} className="input resize-none" rows={2}
+                    maxLength={1000} placeholder="Payment reference, follow-up reminders…"
                     value={form.super_admin_notes}
-                    onChange={(event) => updateForm(restaurant.id, 'super_admin_notes', event.target.value)}
-                  />
+                    onChange={(e) => updateForm(restaurant.id, 'super_admin_notes', e.target.value)} />
                 </div>
 
                 <div className="flex gap-2">
-                  <button type="button" disabled={isSaving} onClick={() => handleSave(restaurant.id)} className="btn-primary">
-                    {isSaving ? 'Saving...' : 'Save'}
+                  <button type="button" disabled={isSaving} onClick={() => handleSave(restaurant.id)}
+                    className="btn-primary gap-2">
+                    {isSaving
+                      ? <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      : <Save className="w-3.5 h-3.5" />}
+                    {isSaving ? 'Saving…' : 'Save'}
                   </button>
-                  <button type="button" disabled={isSaving} onClick={() => handleExtend(restaurant)} className="btn-secondary">
+                  <button type="button" disabled={isSaving} onClick={() => handleExtend(restaurant)}
+                    className="btn-secondary gap-2">
+                    <Zap className="w-3.5 h-3.5" />
                     Extend {EXTEND_DAYS} Days
                   </button>
                 </div>
-              </div>
+              </motion.div>
             )
           })}
         </div>

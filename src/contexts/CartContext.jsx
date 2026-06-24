@@ -5,7 +5,7 @@ const CartContext = createContext(null)
 const MAX_QUANTITY = 50
 
 function storageKey(restaurantSlug) {
-  return `goana_cart_${restaurantSlug}`
+  return `hungriar_cart_${restaurantSlug}`
 }
 
 /**
@@ -48,6 +48,7 @@ export function CartProvider({ restaurantSlug, children }) {
           price: Number(menuItem.price),
           image_url: menuItem.image_url ?? null,
           quantity: Math.min(quantity, MAX_QUANTITY),
+          notes: '',
         },
       ]
     })
@@ -62,6 +63,12 @@ export function CartProvider({ restaurantSlug, children }) {
 
   const removeItem = useCallback((itemId) => {
     setItems((prev) => prev.filter((i) => i.id !== itemId))
+  }, [])
+
+  const updateNotes = useCallback((itemId, notes) => {
+    setItems((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, notes: notes.slice(0, 200) } : i)),
+    )
   }, [])
 
   const clearCart = useCallback(() => {
@@ -79,6 +86,7 @@ export function CartProvider({ restaurantSlug, children }) {
     addItem,
     updateQuantity,
     removeItem,
+    updateNotes,
     clearCart,
     subtotal,
     itemCount,

@@ -5,7 +5,7 @@ const LIMITS = {
   admin: 120, // requests per minute per authenticated user
 }
 
-const CUSTOMER_ID_KEY = 'goana_customer_id'
+const CUSTOMER_ID_KEY = 'hungriar_customer_id'
 
 /**
  * Returns (and lazily creates) a random, persistent identifier for this

@@ -6,70 +6,21 @@ import { verifyTableToken } from '../_shared/tableToken.ts'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const TABLE_TOKEN_SECRET = Deno.env.get('TABLE_TOKEN_SECRET')!
-const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY') ?? ''
-const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY') ?? ''
-const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') ?? ''
+const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')
+const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')
 
 const MAX_ITEMS = 50
 const MAX_QUANTITY = 50
+const MAX_NOTES_LENGTH = 200
 
 interface RequestedItem {
   menuItemId: string
   quantity: number
+  notes?: string
 }
 
 /**
- * Sends web push notifications to all subscribed admin devices for a restaurant.
- * Uses a dynamic import so that a missing/broken web-push module never breaks
- * the order placement flow — all errors are caught and logged only.
- */
-async function notifyAdmins(
-  admin: ReturnType<typeof createClient>,
-  restaurantId: string,
-  tableName: string,
-  itemCount: number,
-) {
-  try {
-    // deno-lint-ignore no-explicit-any
-    const { default: webPush } = await import('npm:web-push') as { default: any }
-    webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
-
-    const { data: subs } = await admin
-      .from('push_subscriptions')
-      .select('endpoint, p256dh, auth_key')
-      .eq('restaurant_id', restaurantId)
-
-    if (!subs || subs.length === 0) return
-
-    const payload = JSON.stringify({
-      title: 'New Order!',
-      body: `Table ${tableName}: ${itemCount} item${itemCount !== 1 ? 's' : ''}`,
-      url: '/admin/orders',
-    })
-
-    await Promise.allSettled(
-      subs.map(async (sub: { endpoint: string; p256dh: string; auth_key: string }) => {
-        try {
-          await webPush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth_key } },
-            payload,
-          )
-        } catch (err: unknown) {
-          const e = err as { statusCode?: number }
-          if (e.statusCode === 410 || e.statusCode === 404) {
-            // Subscription is no longer valid — clean it up
-            await admin.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
-          }
-        }
-      }),
-    )
-  } catch (err) {
-    console.error('push notification error:', err)
-  }
-}
-
-/**
- * POST { token, items: [{ menuItemId, quantity }] }
+ * POST { token, items: [{ menuItemId, quantity, notes? }] }
  * Public endpoint (no auth) - rate limited per IP.
  *
  * Prices are always re-read from the database (never trusted from the
@@ -113,7 +64,7 @@ Deno.serve(async (req) => {
 
     const { data: restaurant, error: restaurantError } = await supabaseAdmin
       .from('restaurants')
-      .select('id, subscription_status')
+      .select('id, subscription_status, tax_percentage')
       .eq('id', restaurantId)
       .maybeSingle()
 
@@ -123,7 +74,7 @@ Deno.serve(async (req) => {
 
     const { data: table, error: tableError } = await supabaseAdmin
       .from('tables')
-      .select('id, name')
+      .select('id, table_number')
       .eq('id', tableId)
       .eq('restaurant_id', restaurantId)
       .maybeSingle()
@@ -133,13 +84,17 @@ Deno.serve(async (req) => {
     }
 
     // Sanitize + dedupe requested items (sum quantities for duplicate ids)
-    const requested = new Map<string, number>()
+    const requested = new Map<string, { quantity: number; notes: string }>()
     for (const raw of body.items as unknown[]) {
       const item = raw as Partial<RequestedItem>
       if (!item || typeof item.menuItemId !== 'string' || item.menuItemId.length > 64) continue
       const quantity = Number(item.quantity)
       if (!Number.isInteger(quantity) || quantity <= 0 || quantity > MAX_QUANTITY) continue
-      requested.set(item.menuItemId, (requested.get(item.menuItemId) ?? 0) + quantity)
+      const notes = typeof item.notes === 'string'
+        ? item.notes.trim().slice(0, MAX_NOTES_LENGTH)
+        : ''
+      const existing = requested.get(item.menuItemId)
+      requested.set(item.menuItemId, { quantity: (existing?.quantity ?? 0) + quantity, notes })
     }
 
     if (requested.size === 0) {
@@ -160,10 +115,10 @@ Deno.serve(async (req) => {
 
     const menuById = new Map((menuItems ?? []).map((m) => [m.id as string, m]))
 
-    const orderItemsPayload: { menu_item_id: string; item_name: string; quantity: number; unit_price: number }[] = []
+    const orderItemsPayload: { menu_item_id: string; item_name: string; quantity: number; unit_price: number; notes: string }[] = []
     let total = 0
 
-    for (const [menuItemId, quantity] of requested.entries()) {
+    for (const [menuItemId, { quantity, notes }] of requested.entries()) {
       const menuItem = menuById.get(menuItemId)
       if (!menuItem || !menuItem.available) continue
       const unitPrice = Number(menuItem.price)
@@ -172,6 +127,7 @@ Deno.serve(async (req) => {
         item_name: menuItem.name as string,
         quantity,
         unit_price: unitPrice,
+        notes,
       })
       total += unitPrice * quantity
     }
@@ -180,7 +136,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'None of the requested items are currently available' }, 400)
     }
 
-    total = Math.round(total * 100) / 100
+    const taxPercentage = Number(restaurant.tax_percentage) || 0
+    const taxAmount = Math.round(total * taxPercentage) / 100
+    total = Math.round((total + taxAmount) * 100) / 100
 
     const { data: order, error: orderError } = await supabaseAdmin
       .from('orders')
@@ -207,9 +165,11 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Failed to place order' }, 500)
     }
 
-    // Fire push notifications without awaiting — must not block or fail the order response
-    if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY && VAPID_SUBJECT) {
-      notifyAdmins(supabaseAdmin, restaurantId, (table as { id: string; name: string }).name, orderItemsPayload.length)
+    // Send push notifications (fire-and-forget — never blocks the response)
+    if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+      sendPushNotifications(supabaseAdmin, restaurantId, table.table_number, orderItemsPayload.length).catch(
+        (err) => console.error('push notification error', err),
+      )
     }
 
     return jsonResponse(
@@ -226,3 +186,40 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Internal server error' }, 500)
   }
 })
+
+async function sendPushNotifications(
+  // deno-lint-ignore no-explicit-any
+  supabaseAdmin: any,
+  restaurantId: string,
+  tableNumber: number | null,
+  itemCount: number,
+) {
+  const { data: subscriptions } = await supabaseAdmin
+    .from('push_subscriptions')
+    .select('endpoint, p256dh, auth')
+    .eq('restaurant_id', restaurantId)
+
+  if (!subscriptions || subscriptions.length === 0) return
+
+  const { default: webpush } = await import('npm:web-push')
+  webpush.setVapidDetails(
+    'mailto:noreply@hungriar.app',
+    VAPID_PUBLIC_KEY!,
+    VAPID_PRIVATE_KEY!,
+  )
+
+  const payload = JSON.stringify({
+    title: `New Order — Table ${tableNumber ?? '?'}`,
+    body: `${itemCount} item${itemCount !== 1 ? 's' : ''} ordered`,
+    url: '/admin/orders',
+  })
+
+  await Promise.allSettled(
+    subscriptions.map((sub: { endpoint: string; p256dh: string; auth: string }) =>
+      webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        payload,
+      )
+    ),
+  )
+}

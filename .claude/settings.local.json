@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(ls d:\\\\goana-ar-app\\\\node_modules | Where-Object { $_.Name -in @\\('framer-motion', 'lucide-react'\\) } | Select-Object Name)",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\goana-ar-app\" -Recurse -Exclude node_modules,dist | Select-Object FullName | ForEach-Object { $_.FullName.Substring\\(15\\) } | Sort-Object)"
+    ]
+  }
+}

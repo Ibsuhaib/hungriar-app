@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { invokeEdgeFunction } from '../lib/supabase'
 
-const SESSION_PREFIX = 'goana_table_session_'
+const SESSION_PREFIX = 'hungriar_table_session_'
 
 /**
  * Resolves a verified { restaurantId, tableId, ... } session for a given

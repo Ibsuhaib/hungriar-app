@@ -1,6 +1,8 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { motion } from 'framer-motion'
+import { Clock, CheckCircle2, TrendingUp, ArrowRight, Bell, BellOff, ChefHat } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -8,22 +10,7 @@ import { supabase } from '../../lib/supabase'
 import SubscriptionBanner from '../../components/SubscriptionBanner'
 import OrderCard from '../../components/OrderCard'
 import { formatCurrency } from '../../utils/formatters'
-
-const STAT_TONES = {
-  amber: 'bg-amber-50 text-amber-700',
-  blue: 'bg-blue-50 text-blue-700',
-  secondary: 'bg-secondary-50 text-secondary-700',
-  primary: 'bg-primary-50 text-primary-700',
-}
-
-function StatCard({ label, value, tone }) {
-  return (
-    <div className={`rounded-xl p-4 shadow-card ${STAT_TONES[tone]}`}>
-      <p className="text-sm font-medium opacity-80">{label}</p>
-      <p className="mt-1 text-3xl font-bold">{value}</p>
-    </div>
-  )
-}
+import { usePushNotifications, showNotification } from '../../hooks/usePushNotifications'
 
 function playNotificationSound() {
   try {
@@ -41,76 +28,214 @@ function playNotificationSound() {
     oscillator.stop(ctx.currentTime + 0.25)
     oscillator.onended = () => ctx.close()
   } catch {
-    // audio not available - ignore
+    // audio not available
   }
 }
+
+function NotificationButton({ restaurantId }) {
+  const { status, isSupported, enable } = usePushNotifications({ restaurantId })
+  if (!isSupported) return null
+  if (status === 'subscribed') {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 border border-green-100 rounded-full px-3 py-1 font-medium">
+        <Bell className="w-3 h-3" /> Notifications on
+      </span>
+    )
+  }
+  if (status === 'denied') {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-full px-3 py-1">
+        <BellOff className="w-3 h-3" /> Notifications blocked
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={enable}
+      disabled={status === 'requesting'}
+      className="flex items-center gap-1.5 text-xs text-primary-600 bg-primary-50 border border-primary-100 rounded-full px-3 py-1 font-medium hover:bg-primary-100 transition-colors disabled:opacity-60"
+    >
+      <Bell className="w-3 h-3" />
+      {status === 'requesting' ? 'Enabling…' : 'Enable notifications'}
+    </button>
+  )
+}
+
+const STAT_CONFIG = [
+  { key: 'pending', label: 'Awaiting', icon: Clock, gradient: 'from-amber-400 to-amber-500', bg: 'bg-amber-50', text: 'text-amber-700' },
+  { key: 'completedToday', label: 'Completed Today', icon: CheckCircle2, gradient: 'from-green-400 to-green-500', bg: 'bg-green-50', text: 'text-green-700' },
+]
+
+function StatCard({ config, value, index }) {
+  const Icon = config.icon
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.07, duration: 0.25 }}
+      className={`card flex items-center gap-4 ${config.bg}`}
+    >
+      <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${config.gradient} shadow-sm`}>
+        <Icon className="w-5 h-5 text-white" />
+      </div>
+      <div>
+        <p className={`text-sm font-medium ${config.text} opacity-80`}>{config.label}</p>
+        <p className={`text-3xl font-bold ${config.text} leading-none mt-0.5`}>{value}</p>
+      </div>
+    </motion.div>
+  )
+}
+
+const QUICK_LINKS = [
+  { to: '/admin/orders', label: 'View All Orders', icon: '📋' },
+  { to: '/admin/tables', label: 'Tables & QR', icon: '🪑' },
+  { to: '/admin/menu', label: 'Manage Menu', icon: '🍽' },
+  { to: '/admin/analytics', label: 'Analytics', icon: '📊' },
+]
 
 export default function Dashboard() {
   const { restaurant, user } = useAuth()
   const { checkAdminLimit } = useRateLimit()
+  const [settledToday, setSettledToday] = useState({ count: 0, revenue: 0 })
+
+  useEffect(() => {
+    if (!restaurant?.id) return
+    function fetchSettled() {
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
+      supabase
+        .from('billing_history')
+        .select('orders_json, total_amount')
+        .eq('restaurant_id', restaurant.id)
+        .gte('bill_date', todayStart.toISOString())
+        .then(({ data }) => {
+          const settled = (data || []).reduce(
+            (acc, row) => ({
+              count: acc.count + (Array.isArray(row.orders_json) ? row.orders_json.length : 0),
+              revenue: acc.revenue + Number(row.total_amount),
+            }),
+            { count: 0, revenue: 0 },
+          )
+          setSettledToday(settled)
+        })
+    }
+    fetchSettled()
+    const timer = setInterval(fetchSettled, 15000)
+    return () => clearInterval(timer)
+  }, [restaurant?.id])
 
   const handleNewOrder = useCallback((order) => {
     playNotificationSound()
-    toast.success('New order received!', { id: `order-${order.id}` })
+    toast.success('New order received!', { id: `order-${order.id}`, icon: '🔔' })
+    showNotification(
+      'New Order!',
+      `Table ${order.tables?.table_number ?? '?'} placed an order`,
+    )
   }, [])
 
-  const { orders, loading } = useRealtimeOrders({ restaurantId: restaurant?.id, onInsert: handleNewOrder })
+  const { orders, loading, patchOrder } = useRealtimeOrders({ restaurantId: restaurant?.id, onInsert: handleNewOrder, pollInterval: 3000 })
 
   const stats = useMemo(() => {
     const todayKey = new Date().toDateString()
-    const todayOrders = orders.filter((order) => new Date(order.order_time).toDateString() === todayKey)
-
+    const todayOrders = orders.filter((o) => new Date(o.order_time).toDateString() === todayKey)
+    const activeCompletedToday = todayOrders.filter((o) => o.status === 'completed')
     return {
-      pending: orders.filter((order) => order.status === 'pending').length,
-      preparing: orders.filter((order) => order.status === 'preparing').length,
-      served: orders.filter((order) => order.status === 'served').length,
-      todayCount: todayOrders.length,
-      todayRevenue: todayOrders
-        .filter((order) => order.status === 'completed')
-        .reduce((sum, order) => sum + Number(order.total_amount), 0),
+      pending: orders.filter((o) => o.status !== 'completed').length,
+      completedToday: activeCompletedToday.length + settledToday.count,
+      todayRevenue:
+        activeCompletedToday.reduce((sum, o) => sum + Number(o.total_amount), 0) + settledToday.revenue,
     }
-  }, [orders])
+  }, [orders, settledToday])
 
-  const activeOrders = useMemo(() => orders.filter((order) => order.status !== 'completed').slice(0, 6), [orders])
+  const activeOrders = useMemo(
+    () => orders.filter((o) => o.status !== 'completed').slice(0, 6),
+    [orders],
+  )
 
   const handleStatusChange = async (orderId, newStatus) => {
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) return
-
+    const prevStatus = orders.find((o) => o.id === orderId)?.status
+    patchOrder(orderId, { status: newStatus })
     const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId)
-    if (error) toast.error('Failed to update order status')
+    if (error) {
+      toast.error('Failed to update order status')
+      if (prevStatus) patchOrder(orderId, { status: prevStatus })
+    }
   }
 
   return (
     <div className="space-y-6">
       <SubscriptionBanner restaurant={restaurant} />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Pending" value={stats.pending} tone="amber" />
-        <StatCard label="Preparing" value={stats.preparing} tone="blue" />
-        <StatCard label="Served" value={stats.served} tone="secondary" />
-        <StatCard label="Today's Orders" value={stats.todayCount} tone="primary" />
-      </div>
-
-      <div className="card">
-        <p className="text-sm text-gray-500">Today's Revenue (completed orders)</p>
-        <p className="mt-1 text-2xl font-bold text-gray-900">{formatCurrency(stats.todayRevenue, restaurant?.currency)}</p>
-      </div>
-
-      <div className="flex flex-wrap gap-3">
-        <Link to="/admin/orders" className="btn-outline">
-          View All Orders
-        </Link>
-        <Link to="/admin/tables" className="btn-outline">
-          Manage Tables & QR
-        </Link>
-        <Link to="/admin/menu" className="btn-outline">
-          Manage Menu
+      {/* Notification + Chef mode row */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <NotificationButton restaurantId={restaurant?.id} />
+        <Link
+          to="/admin/chef"
+          className="flex items-center gap-1.5 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-full px-3 py-1 font-medium hover:bg-gray-100 transition-colors"
+        >
+          <ChefHat className="w-3 h-3" /> Open Chef View
         </Link>
       </div>
 
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 gap-3">
+        {STAT_CONFIG.map((config, i) => (
+          <StatCard key={config.key} config={config} value={stats[config.key]} index={i} />
+        ))}
+      </div>
+
+      {/* Revenue card */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3, duration: 0.25 }}
+        className="card flex items-center justify-between gap-4"
+      >
+        <div>
+          <p className="text-sm text-gray-500">Today's Revenue</p>
+          <p className="text-3xl font-bold text-gray-900 mt-0.5 font-display">
+            {formatCurrency(stats.todayRevenue, restaurant?.currency)}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">From completed orders today</p>
+        </div>
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-400 to-primary-600 flex-shrink-0 shadow-sm">
+          <TrendingUp className="w-6 h-6 text-white" />
+        </div>
+      </motion.div>
+
+      {/* Quick links */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {QUICK_LINKS.map((link) => (
+          <Link
+            key={link.to}
+            to={link.to}
+            className="card flex items-center gap-2.5 hover:shadow-card-hover hover:bg-gray-50 transition-all duration-200 group"
+          >
+            <span className="text-xl">{link.icon}</span>
+            <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900 leading-tight">{link.label}</span>
+            <ArrowRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-primary-400 ml-auto transition-colors" />
+          </Link>
+        ))}
+      </div>
+
+      {/* Active orders */}
       <div>
-        <h2 className="mb-3 text-lg font-semibold text-gray-900">Active Orders</h2>
+        <div className="flex items-center gap-2 mb-4">
+          <Bell className="w-4 h-4 text-primary-500" />
+          <h2 className="text-base font-bold text-gray-900 font-display">Active Orders</h2>
+          {activeOrders.length > 0 && (
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700">
+              {activeOrders.length}
+            </span>
+          )}
+          <Link to="/admin/orders" className="ml-auto text-xs font-medium text-primary-600 hover:underline">
+            See all
+          </Link>
+        </div>
+
         {loading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -118,11 +243,20 @@ export default function Dashboard() {
             ))}
           </div>
         ) : activeOrders.length === 0 ? (
-          <p className="text-gray-500">No active orders right now.</p>
+          <div className="card text-center py-10 bg-gray-50">
+            <p className="text-2xl mb-2">🎉</p>
+            <p className="text-sm font-medium text-gray-500">No active orders right now.</p>
+            <p className="text-xs text-gray-400 mt-1">New orders will appear here automatically.</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {activeOrders.map((order) => (
-              <OrderCard key={order.id} order={order} onStatusChange={handleStatusChange} currency={restaurant?.currency} />
+              <OrderCard
+                key={order.id}
+                order={order}
+                onStatusChange={handleStatusChange}
+                currency={restaurant?.currency}
+              />
             ))}
           </div>
         )}

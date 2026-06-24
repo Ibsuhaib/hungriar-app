@@ -1,6 +1,6 @@
 import { SHA256 } from 'crypto-js'
 
-const SALT_KEY = 'goana_fp_salt'
+const SALT_KEY = 'hungriar_fp_salt'
 
 function getOrCreateSalt() {
   let salt = localStorage.getItem(SALT_KEY)

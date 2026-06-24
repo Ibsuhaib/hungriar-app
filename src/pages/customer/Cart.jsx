@@ -1,13 +1,32 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ArrowLeft, Trash2, Minus, Plus, ShoppingBag } from 'lucide-react'
 import { useCart } from '../../contexts/CartContext'
 import { useRestaurant } from '../../contexts/RestaurantContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { invokeEdgeFunction } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
+import { getOptimizedImageUrl } from '../../utils/imageOptimizer'
 
-const ORDERS_STORAGE_PREFIX = 'goana_orders_'
+// Local state so typing never touches CartContext — updates on blur only
+function NoteInput({ itemId, initialNote, onSave }) {
+  const [note, setNote] = useState(initialNote || '')
+  return (
+    <input
+      type="text"
+      value={note}
+      onChange={(e) => setNote(e.target.value)}
+      onBlur={() => onSave(itemId, note)}
+      placeholder="Add a note, e.g. no onions…"
+      maxLength={200}
+      className="w-full text-xs border border-sand-200 bg-sand-50 rounded-lg px-3 py-2 text-gray-600 placeholder-gray-300 focus:outline-none focus:border-primary-300 transition-colors"
+    />
+  )
+}
+
+const ORDERS_STORAGE_PREFIX = 'hungriar_orders_'
 const MAX_STORED_ORDERS = 10
 
 function rememberOrder(restaurantSlug, orderId) {
@@ -24,7 +43,7 @@ function rememberOrder(restaurantSlug, orderId) {
 export default function Cart() {
   const { restaurantSlug } = useParams()
   const navigate = useNavigate()
-  const { items, updateQuantity, removeItem, clearCart, subtotal, getTax } = useCart()
+  const { items, updateQuantity, removeItem, updateNotes, clearCart, subtotal, getTax } = useCart()
   const { restaurant, session, table, loading } = useRestaurant()
   const { checkCustomerLimit } = useRateLimit()
   const [placing, setPlacing] = useState(false)
@@ -43,12 +62,13 @@ export default function Cart() {
   const taxPercentage = Number(restaurant?.tax_percentage) || 0
   const tax = getTax(taxPercentage)
   const total = subtotal + tax
+  const totalQty = items.reduce((a, i) => a + i.quantity, 0)
 
   const handlePlaceOrder = async () => {
     if (items.length === 0 || placing) return
 
     if (!session?.token) {
-      toast.error('Your table session has expired. Please rescan the QR code on your table.')
+      toast.error('Your table session has expired. Please rescan the QR code.')
       return
     }
 
@@ -59,13 +79,13 @@ export default function Cart() {
     try {
       const result = await invokeEdgeFunction('place-order', {
         token: session.token,
-        items: items.map((item) => ({ menuItemId: item.id, quantity: item.quantity })),
+        items: items.map((item) => ({ menuItemId: item.id, quantity: item.quantity, notes: item.notes || '' })),
       })
 
       rememberOrder(restaurantSlug, result.orderId)
       clearCart()
       toast.success('Order placed! The kitchen has been notified.')
-      navigate(`/r/${restaurantSlug}/order/${result.orderId}`)
+      navigate(`/r/${restaurantSlug}/order/${result.orderId}`, { replace: true })
     } catch (err) {
       toast.error(err.message || 'Failed to place order. Please try again.')
     } finally {
@@ -75,99 +95,167 @@ export default function Cart() {
 
   return (
     <div className="min-h-screen bg-sand-100 pb-32">
-      <header className="sticky top-0 z-10 flex items-center gap-3 bg-white px-4 py-3 shadow-sm">
-        <button
-          type="button"
-          onClick={() => navigate(`/r/${restaurantSlug}`)}
-          aria-label="Back to menu"
-          className="flex h-9 w-9 items-center justify-center rounded-full text-lg text-gray-600 hover:bg-gray-100"
-        >
-          ←
-        </button>
-        <h1 className="text-lg font-bold text-gray-900">Your Order</h1>
-        {table && <span className="badge ml-auto bg-secondary-100 text-secondary-800">Table {table.number}</span>}
+      <header className="sticky top-0 z-10 bg-white shadow-sm">
+        <div className="mx-auto max-w-2xl flex items-center gap-3 px-4 py-3">
+          <motion.button
+            type="button"
+            onClick={() => navigate(-1)}
+            whileTap={{ scale: 0.88 }}
+            aria-label="Back to menu"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </motion.button>
+          <h1 className="text-lg font-bold text-gray-900 flex-1">Your Order</h1>
+          {table && (
+            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-secondary-100 text-secondary-800">
+              Table {table.number}
+            </span>
+          )}
+        </div>
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-4">
         {items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center text-gray-500">
-            <p className="text-4xl">🛒</p>
-            <p className="mt-3">Your cart is empty.</p>
-            <button type="button" onClick={() => navigate(`/r/${restaurantSlug}`)} className="btn-primary mt-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center py-20 text-center"
+          >
+            <ShoppingBag className="w-14 h-14 text-gray-200 mb-4" />
+            <p className="font-semibold text-gray-500 text-lg">Your cart is empty</p>
+            <p className="text-sm text-gray-400 mt-1">Add something delicious from the menu</p>
+            <button
+              type="button"
+              onClick={() => navigate(`/r/${restaurantSlug}`)}
+              className="btn-primary mt-6"
+            >
               Browse Menu
             </button>
-          </div>
+          </motion.div>
         ) : (
           <>
             <ul className="space-y-3">
-              {items.map((item) => (
-                <li key={item.id} className="card flex items-center gap-3">
-                  {item.image_url ? (
-                    <img src={item.image_url} alt={item.name} className="h-16 w-16 flex-shrink-0 rounded-lg object-cover" />
-                  ) : (
-                    <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg bg-sand-200 text-xl">🍽</div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-gray-900">{item.name}</p>
-                    <p className="text-sm text-gray-500">{formatCurrency(item.price, currency)} each</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                      aria-label={`Decrease ${item.name} quantity`}
-                      className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-600 hover:bg-gray-50"
-                    >
-                      -
-                    </button>
-                    <span className="w-6 text-center font-medium">{item.quantity}</span>
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                      aria-label={`Increase ${item.name} quantity`}
-                      className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-600 hover:bg-gray-50"
-                    >
-                      +
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeItem(item.id)}
-                    aria-label={`Remove ${item.name}`}
-                    className="ml-1 text-gray-400 hover:text-red-500"
+              <AnimatePresence>
+                {items.map((item) => (
+                  <motion.li
+                    key={item.id}
+                    layout
+                    initial={{ opacity: 0, x: -16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20, height: 0, marginBottom: 0 }}
+                    transition={{ duration: 0.22 }}
+                    className="bg-white rounded-2xl shadow-card overflow-hidden"
                   >
-                    ✕
-                  </button>
-                </li>
-              ))}
+                    <div className="flex items-center gap-3 p-3">
+                      {item.image_url ? (
+                        <img
+                          src={getOptimizedImageUrl(item.image_url, { width: 128, quality: 75 })}
+                          alt={item.name}
+                          className="h-16 w-16 flex-shrink-0 rounded-xl object-cover"
+                        />
+                      ) : (
+                        <div className="h-16 w-16 flex-shrink-0 flex items-center justify-center rounded-xl bg-sand-200 text-xl">
+                          🍽
+                        </div>
+                      )}
+
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-sm truncate">{item.name}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {formatCurrency(item.price, currency)} each
+                        </p>
+                        <p className="text-sm font-bold text-primary-600 mt-1">
+                          {formatCurrency(item.price * item.quantity, currency)}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <div className="flex items-center gap-1 bg-sand-100 rounded-xl p-1">
+                          <motion.button
+                            type="button"
+                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                            whileTap={{ scale: 0.82 }}
+                            aria-label={`Decrease ${item.name} quantity`}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-600 hover:bg-white transition-colors"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </motion.button>
+                          <span className="w-5 text-center text-sm font-bold text-gray-900">
+                            {item.quantity}
+                          </span>
+                          <motion.button
+                            type="button"
+                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                            whileTap={{ scale: 0.82 }}
+                            aria-label={`Increase ${item.name} quantity`}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-600 hover:bg-white transition-colors"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </motion.button>
+                        </div>
+
+                        <motion.button
+                          type="button"
+                          onClick={() => removeItem(item.id)}
+                          whileTap={{ scale: 0.82 }}
+                          aria-label={`Remove ${item.name}`}
+                          className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </motion.button>
+                      </div>
+                    </div>
+
+                    {/* Per-item note */}
+                    <div className="px-3 pb-3">
+                      <NoteInput
+                        itemId={item.id}
+                        initialNote={item.notes}
+                        onSave={updateNotes}
+                      />
+                    </div>
+                  </motion.li>
+                ))}
+              </AnimatePresence>
             </ul>
 
-            <div className="card mt-4 space-y-1">
-              <div className="flex justify-between text-sm text-gray-600">
-                <span>Subtotal</span>
-                <span>{formatCurrency(subtotal, currency)}</span>
+            {/* Summary card */}
+            <motion.div layout className="mt-4 bg-white rounded-2xl shadow-card p-4 space-y-2.5">
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>Subtotal ({totalQty} {totalQty === 1 ? 'item' : 'items'})</span>
+                <span className="text-gray-700 font-medium">{formatCurrency(subtotal, currency)}</span>
               </div>
               {taxPercentage > 0 && (
-                <div className="flex justify-between text-sm text-gray-500">
+                <div className="flex justify-between text-sm text-gray-400">
                   <span>Tax ({taxPercentage}%)</span>
                   <span>{formatCurrency(tax, currency)}</span>
                 </div>
               )}
-              <div className="flex justify-between border-t pt-2 text-lg font-bold text-gray-900">
-                <span>Total</span>
-                <span>{formatCurrency(total, currency)}</span>
+              <div className="flex justify-between pt-2.5 border-t border-sand-200 text-base font-bold">
+                <span className="text-gray-900">Total</span>
+                <span className="text-primary-600">{formatCurrency(total, currency)}</span>
               </div>
-            </div>
+            </motion.div>
           </>
         )}
       </main>
 
+      {/* Place order fixed bar */}
       {items.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 border-t bg-white p-4 shadow-lg">
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-sand-200 p-4 shadow-xl">
           <div className="mx-auto max-w-2xl">
-            <button type="button" onClick={handlePlaceOrder} disabled={placing} className="btn-primary w-full">
-              {placing ? 'Placing order...' : `Place Order · ${formatCurrency(total, currency)}`}
-            </button>
+            <motion.button
+              type="button"
+              onClick={handlePlaceOrder}
+              disabled={placing}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              className="w-full flex items-center justify-between bg-primary-500 hover:bg-primary-600 disabled:opacity-60 disabled:cursor-not-allowed text-white px-5 py-3.5 rounded-xl font-semibold transition-colors shadow-sm"
+            >
+              <span>{placing ? 'Placing order...' : 'Place Order'}</span>
+              <span className="font-bold">{formatCurrency(total, currency)}</span>
+            </motion.button>
           </div>
         </div>
       )}

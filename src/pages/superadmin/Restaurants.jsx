@@ -1,29 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Plus, X, ChevronDown, ChevronUp, KeyRound, Trash2, Edit2, Store } from 'lucide-react'
 import { useAuth, MAX_PASSWORD_LENGTH } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase, invokeEdgeFunction } from '../../lib/supabase'
 import { formatDate, SUBSCRIPTION_STATUS_LABELS, SUBSCRIPTION_STATUS_COLORS } from '../../utils/formatters'
 
 const EMPTY_ADD_FORM = {
-  name: '',
-  slug: '',
-  contactEmail: '',
-  currency: '₹',
-  taxPercentage: '5',
-  adminEmail: '',
-  adminPassword: '',
+  name: '', slug: '', contactEmail: '', currency: '₹', taxPercentage: '5', adminEmail: '', adminPassword: '',
 }
-
 const MIN_PASSWORD_LENGTH = 8
 const SLUG_PATTERN = /^[a-z0-9-]+$/
 
-function slugify(value) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+function slugify(v) {
+  return v.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
 export default function Restaurants() {
@@ -33,15 +24,13 @@ export default function Restaurants() {
   const [restaurants, setRestaurants] = useState([])
   const [admins, setAdmins] = useState({})
   const [loading, setLoading] = useState(true)
-
   const [showAddForm, setShowAddForm] = useState(false)
   const [addForm, setAddForm] = useState({ ...EMPTY_ADD_FORM })
   const [adding, setAdding] = useState(false)
-
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState(null)
   const [savingId, setSavingId] = useState(null)
-
+  const [expandedId, setExpandedId] = useState(null)
   const [resetTarget, setResetTarget] = useState(null)
   const [resetPassword, setResetPassword] = useState('')
   const [resetting, setResetting] = useState(false)
@@ -52,188 +41,104 @@ export default function Restaurants() {
       supabase.from('restaurants').select('*').order('created_at', { ascending: false }),
       invokeEdgeFunction('admin-management', { action: 'list_admins' }).catch(() => ({ admins: [] })),
     ])
-
     if (!restaurantsRes.error) setRestaurants(restaurantsRes.data || [])
-
     const adminMap = {}
-    for (const admin of adminsRes?.admins || []) {
-      if (!adminMap[admin.restaurantId]) adminMap[admin.restaurantId] = admin
+    for (const a of adminsRes?.admins || []) {
+      if (!adminMap[a.restaurantId]) adminMap[a.restaurantId] = a
     }
     setAdmins(adminMap)
     setLoading(false)
   }, [])
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  useEffect(() => { fetchData() }, [fetchData])
 
-  const handleAddSubmit = async (event) => {
-    event.preventDefault()
+  const handleAddSubmit = async (e) => {
+    e.preventDefault()
     if (adding) return
-
     const name = addForm.name.trim()
     const slug = addForm.slug.trim() || slugify(name)
     const adminEmail = addForm.adminEmail.trim()
     const adminPassword = addForm.adminPassword
     const taxPercentage = Number(addForm.taxPercentage)
-
-    if (!name || !slug) {
-      toast.error('Name and slug are required')
-      return
-    }
-    if (!SLUG_PATTERN.test(slug)) {
-      toast.error('Slug can only contain lowercase letters, numbers and hyphens')
-      return
-    }
-    if (!adminEmail) {
-      toast.error('Admin email is required')
-      return
-    }
+    if (!name || !slug) { toast.error('Name and slug are required'); return }
+    if (!SLUG_PATTERN.test(slug)) { toast.error('Slug: lowercase letters, numbers and hyphens only'); return }
+    if (!adminEmail) { toast.error('Admin email is required'); return }
     if (adminPassword.length < MIN_PASSWORD_LENGTH || adminPassword.length > MAX_PASSWORD_LENGTH) {
-      toast.error(`Admin password must be between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} characters`)
-      return
+      toast.error(`Admin password must be ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters`); return
     }
     if (Number.isNaN(taxPercentage) || taxPercentage < 0 || taxPercentage > 50) {
-      toast.error('Tax percentage must be between 0 and 50')
-      return
+      toast.error('Tax percentage must be 0–50'); return
     }
-
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) return
-
     setAdding(true)
-    let newRestaurantId = null
+    let newId = null
     try {
-      const { data: restaurant, error: restaurantError } = await supabase
-        .from('restaurants')
-        .insert({
-          name,
-          slug,
-          contact_email: addForm.contactEmail.trim() || null,
-          currency: addForm.currency.trim() || '₹',
-          tax_percentage: taxPercentage,
-        })
-        .select()
-        .single()
-
-      if (restaurantError) throw restaurantError
-      newRestaurantId = restaurant.id
-
+      const { data: restaurant, error: rErr } = await supabase.from('restaurants').insert({
+        name, slug,
+        contact_email: addForm.contactEmail.trim() || null,
+        currency: addForm.currency.trim() || '₹',
+        tax_percentage: taxPercentage,
+      }).select().single()
+      if (rErr) throw rErr
+      newId = restaurant.id
       await invokeEdgeFunction('admin-management', {
-        action: 'create_restaurant_admin',
-        email: adminEmail,
-        password: adminPassword,
-        restaurantId: restaurant.id,
+        action: 'create_restaurant_admin', email: adminEmail, password: adminPassword, restaurantId: restaurant.id,
       })
-
-      toast.success(`Restaurant created. Admin login: ${adminEmail}`)
+      toast.success(`Restaurant created. Admin: ${adminEmail}`)
       setAddForm({ ...EMPTY_ADD_FORM })
       setShowAddForm(false)
       await fetchData()
     } catch (err) {
-      if (newRestaurantId) {
-        await supabase.from('restaurants').delete().eq('id', newRestaurantId)
-      }
-      if (err.code === '23505') {
-        toast.error('A restaurant with this slug already exists')
-      } else {
-        toast.error(err.message || 'Failed to create restaurant')
-      }
+      if (newId) await supabase.from('restaurants').delete().eq('id', newId)
+      toast.error(err.code === '23505' ? 'A restaurant with this slug already exists' : err.message || 'Failed to create restaurant')
     } finally {
       setAdding(false)
     }
   }
 
-  const openEditForm = (restaurant) => {
-    setEditingId(restaurant.id)
-    setEditForm({
-      name: restaurant.name,
-      slug: restaurant.slug,
-      contact_email: restaurant.contact_email || '',
-      currency: restaurant.currency,
-      tax_percentage: String(restaurant.tax_percentage),
-    })
-  }
-
-  const closeEditForm = () => {
-    setEditingId(null)
-    setEditForm(null)
-  }
-
   const handleEditSave = async (restaurantId) => {
     if (savingId) return
-
     const name = editForm.name.trim()
     const slug = editForm.slug.trim()
     const taxPercentage = Number(editForm.tax_percentage)
-
-    if (!name || !slug) {
-      toast.error('Name and slug are required')
-      return
-    }
-    if (!SLUG_PATTERN.test(slug)) {
-      toast.error('Slug can only contain lowercase letters, numbers and hyphens')
-      return
-    }
-    if (Number.isNaN(taxPercentage) || taxPercentage < 0 || taxPercentage > 50) {
-      toast.error('Tax percentage must be between 0 and 50')
-      return
-    }
-
+    if (!name || !slug) { toast.error('Name and slug are required'); return }
+    if (!SLUG_PATTERN.test(slug)) { toast.error('Slug: lowercase letters, numbers and hyphens only'); return }
+    if (Number.isNaN(taxPercentage) || taxPercentage < 0 || taxPercentage > 50) { toast.error('Tax must be 0–50'); return }
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) return
-
     setSavingId(restaurantId)
     try {
-      const { error } = await supabase
-        .from('restaurants')
-        .update({
-          name,
-          slug,
-          contact_email: editForm.contact_email.trim() || null,
-          currency: editForm.currency.trim() || '₹',
-          tax_percentage: taxPercentage,
-        })
-        .eq('id', restaurantId)
-
+      const { error } = await supabase.from('restaurants').update({
+        name, slug,
+        contact_email: editForm.contact_email.trim() || null,
+        currency: editForm.currency.trim() || '₹',
+        tax_percentage: taxPercentage,
+      }).eq('id', restaurantId)
       if (error) throw error
-
       toast.success('Restaurant updated')
-      closeEditForm()
+      setEditingId(null)
+      setEditForm(null)
       await fetchData()
     } catch (err) {
-      if (err.code === '23505') toast.error('A restaurant with this slug already exists')
-      else toast.error(err.message || 'Failed to update restaurant')
+      toast.error(err.code === '23505' ? 'Slug already taken' : err.message || 'Failed to update')
     } finally {
       setSavingId(null)
     }
   }
 
   const handleDelete = async (restaurant) => {
-    if (
-      !window.confirm(
-        `Delete "${restaurant.name}"? This permanently removes its menu, tables, orders and history. This cannot be undone.`,
-      )
-    ) {
-      return
-    }
-
+    if (!window.confirm(`Delete "${restaurant.name}"? This permanently removes all data.`)) return
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) return
-
     const admin = admins[restaurant.id]
     setSavingId(restaurant.id)
     try {
       const { error } = await supabase.from('restaurants').delete().eq('id', restaurant.id)
       if (error) throw error
-
       if (admin?.userId) {
-        await invokeEdgeFunction('admin-management', {
-          action: 'delete_restaurant_admin_user',
-          userId: admin.userId,
-        }).catch(() => {})
+        await invokeEdgeFunction('admin-management', { action: 'delete_restaurant_admin_user', userId: admin.userId }).catch(() => {})
       }
-
       toast.success('Restaurant deleted')
       await fetchData()
     } catch (err) {
@@ -243,30 +148,17 @@ export default function Restaurants() {
     }
   }
 
-  const openResetForm = (admin) => {
-    setResetTarget(admin)
-    setResetPassword('')
-  }
-
-  const handleResetPassword = async (event) => {
-    event.preventDefault()
+  const handleResetPassword = async (e) => {
+    e.preventDefault()
     if (resetting || !resetTarget) return
-
     if (resetPassword.length < MIN_PASSWORD_LENGTH || resetPassword.length > MAX_PASSWORD_LENGTH) {
-      toast.error(`Password must be between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} characters`)
-      return
+      toast.error(`Password must be ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters`); return
     }
-
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) return
-
     setResetting(true)
     try {
-      await invokeEdgeFunction('admin-management', {
-        action: 'reset_password',
-        userId: resetTarget.userId,
-        newPassword: resetPassword,
-      })
+      await invokeEdgeFunction('admin-management', { action: 'reset_password', userId: resetTarget.userId, newPassword: resetPassword })
       toast.success(`Password updated for ${resetTarget.email}`)
       setResetTarget(null)
       setResetPassword('')
@@ -278,326 +170,247 @@ export default function Restaurants() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{restaurants.length} restaurant{restaurants.length === 1 ? '' : 's'} on Goana AR</p>
-        {!showAddForm && (
-          <button type="button" onClick={() => setShowAddForm(true)} className="btn-primary">
-            + Add Restaurant
-          </button>
-        )}
+        <p className="text-sm text-gray-500">{restaurants.length} restaurant{restaurants.length !== 1 ? 's' : ''}</p>
+        <button type="button" onClick={() => setShowAddForm((v) => !v)} className="btn-primary gap-2">
+          <Plus className="w-4 h-4" /> Add Restaurant
+        </button>
       </div>
 
-      {showAddForm && (
-        <form onSubmit={handleAddSubmit} className="card space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">New Restaurant</h2>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="label" htmlFor="add-name">
-                Restaurant Name
-              </label>
-              <input
-                id="add-name"
-                className="input"
-                value={addForm.name}
-                onChange={(event) => setAddForm((prev) => ({ ...prev, name: event.target.value }))}
-                maxLength={120}
-                required
-              />
+      {/* Add form */}
+      <AnimatePresence>
+        {showAddForm && (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="card space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-gray-900 font-display">New Restaurant</h2>
+              <button type="button" onClick={() => { setShowAddForm(false); setAddForm({ ...EMPTY_ADD_FORM }) }}
+                className="btn btn-ghost btn-sm p-1.5"><X className="w-4 h-4" /></button>
             </div>
-            <div>
-              <label className="label" htmlFor="add-slug">
-                Slug (used in QR links)
-              </label>
-              <input
-                id="add-slug"
-                className="input"
-                placeholder={addForm.name ? slugify(addForm.name) : 'auto-generated from name'}
-                value={addForm.slug}
-                onChange={(event) => setAddForm((prev) => ({ ...prev, slug: event.target.value }))}
-                maxLength={80}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div>
-              <label className="label" htmlFor="add-contact-email">
-                Contact Email
-              </label>
-              <input
-                id="add-contact-email"
-                type="email"
-                className="input"
-                value={addForm.contactEmail}
-                onChange={(event) => setAddForm((prev) => ({ ...prev, contactEmail: event.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="add-currency">
-                Currency Symbol
-              </label>
-              <input
-                id="add-currency"
-                className="input"
-                value={addForm.currency}
-                onChange={(event) => setAddForm((prev) => ({ ...prev, currency: event.target.value }))}
-                maxLength={5}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="add-tax">
-                Tax %
-              </label>
-              <input
-                id="add-tax"
-                type="number"
-                min="0"
-                max="50"
-                step="0.01"
-                className="input"
-                value={addForm.taxPercentage}
-                onChange={(event) => setAddForm((prev) => ({ ...prev, taxPercentage: event.target.value }))}
-              />
-            </div>
-          </div>
-
-          <div className="border-t pt-4">
-            <p className="mb-2 text-sm font-medium text-gray-700">Restaurant Admin Login</p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="label" htmlFor="add-admin-email">
-                  Admin Email
-                </label>
-                <input
-                  id="add-admin-email"
-                  type="email"
-                  className="input"
-                  value={addForm.adminEmail}
-                  onChange={(event) => setAddForm((prev) => ({ ...prev, adminEmail: event.target.value }))}
-                  required
-                />
+            <form onSubmit={handleAddSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="label" htmlFor="add-name">Restaurant Name</label>
+                  <input id="add-name" className="input" value={addForm.name} maxLength={120} required
+                    onChange={(e) => setAddForm((p) => ({ ...p, name: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="add-slug">Slug (URL identifier)</label>
+                  <input id="add-slug" className="input" placeholder={addForm.name ? slugify(addForm.name) : 'auto-generated'}
+                    value={addForm.slug} maxLength={80}
+                    onChange={(e) => setAddForm((p) => ({ ...p, slug: e.target.value }))} />
+                </div>
               </div>
-              <div>
-                <label className="label" htmlFor="add-admin-password">
-                  Admin Password
-                </label>
-                <input
-                  id="add-admin-password"
-                  type="text"
-                  className="input"
-                  value={addForm.adminPassword}
-                  onChange={(event) => setAddForm((prev) => ({ ...prev, adminPassword: event.target.value }))}
-                  maxLength={MAX_PASSWORD_LENGTH}
-                  required
-                />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <label className="label" htmlFor="add-email">Contact Email</label>
+                  <input id="add-email" type="email" className="input" value={addForm.contactEmail}
+                    onChange={(e) => setAddForm((p) => ({ ...p, contactEmail: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="add-currency">Currency</label>
+                  <input id="add-currency" className="input" value={addForm.currency} maxLength={5}
+                    onChange={(e) => setAddForm((p) => ({ ...p, currency: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="add-tax">Tax %</label>
+                  <input id="add-tax" type="number" min="0" max="50" step="0.01" className="input"
+                    value={addForm.taxPercentage} onChange={(e) => setAddForm((p) => ({ ...p, taxPercentage: e.target.value }))} />
+                </div>
               </div>
-            </div>
-            <p className="mt-2 text-xs text-gray-400">
-              Share this email and password with the restaurant owner. They can change the password later from Settings.
-            </p>
-          </div>
+              <div className="border-t border-gray-100 pt-4">
+                <p className="label mb-3">Admin Login Credentials</p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="label" htmlFor="add-admin-email">Admin Email</label>
+                    <input id="add-admin-email" type="email" className="input" value={addForm.adminEmail} required
+                      onChange={(e) => setAddForm((p) => ({ ...p, adminEmail: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="add-admin-pw">Admin Password</label>
+                    <input id="add-admin-pw" type="text" className="input" value={addForm.adminPassword}
+                      maxLength={MAX_PASSWORD_LENGTH} required
+                      onChange={(e) => setAddForm((p) => ({ ...p, adminPassword: e.target.value }))} />
+                  </div>
+                </div>
+                <p className="label-hint mt-2">Share these credentials with the restaurant owner. They can change the password later.</p>
+              </div>
+              <div className="flex gap-3">
+                <button type="submit" disabled={adding} className="btn-primary">
+                  {adding ? (
+                    <span className="flex gap-2 items-center">
+                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" /> Creating…
+                    </span>
+                  ) : 'Create Restaurant'}
+                </button>
+                <button type="button" onClick={() => { setShowAddForm(false); setAddForm({ ...EMPTY_ADD_FORM }) }} className="btn-outline">Cancel</button>
+              </div>
+            </form>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          <div className="flex gap-2">
-            <button type="submit" disabled={adding} className="btn-primary">
-              {adding ? 'Creating...' : 'Create Restaurant'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowAddForm(false)
-                setAddForm({ ...EMPTY_ADD_FORM })
-              }}
-              className="btn-outline"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-
+      {/* Restaurants list */}
       {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="skeleton h-48 rounded-2xl" />
-          ))}
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-20 rounded-2xl" />)}
         </div>
       ) : restaurants.length === 0 ? (
-        <p className="py-12 text-center text-gray-500">No restaurants yet. Add the first one above.</p>
+        <div className="card py-14 text-center bg-gray-50">
+          <Store className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+          <p className="text-sm font-medium text-gray-500">No restaurants yet.</p>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-3">
           {restaurants.map((restaurant) => {
             const admin = admins[restaurant.id]
             const isEditing = editingId === restaurant.id
             const isSaving = savingId === restaurant.id
+            const isExpanded = expandedId === restaurant.id
 
             return (
-              <div key={restaurant.id} className="card space-y-3">
-                {isEditing ? (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="label" htmlFor={`edit-name-${restaurant.id}`}>
-                          Name
-                        </label>
-                        <input
-                          id={`edit-name-${restaurant.id}`}
-                          className="input"
-                          value={editForm.name}
-                          onChange={(event) => setEditForm((prev) => ({ ...prev, name: event.target.value }))}
-                          maxLength={120}
-                        />
-                      </div>
-                      <div>
-                        <label className="label" htmlFor={`edit-slug-${restaurant.id}`}>
-                          Slug
-                        </label>
-                        <input
-                          id={`edit-slug-${restaurant.id}`}
-                          className="input"
-                          value={editForm.slug}
-                          onChange={(event) => setEditForm((prev) => ({ ...prev, slug: event.target.value }))}
-                          maxLength={80}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="label" htmlFor={`edit-email-${restaurant.id}`}>
-                        Contact Email
-                      </label>
-                      <input
-                        id={`edit-email-${restaurant.id}`}
-                        type="email"
-                        className="input"
-                        value={editForm.contact_email}
-                        onChange={(event) => setEditForm((prev) => ({ ...prev, contact_email: event.target.value }))}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="label" htmlFor={`edit-currency-${restaurant.id}`}>
-                          Currency
-                        </label>
-                        <input
-                          id={`edit-currency-${restaurant.id}`}
-                          className="input"
-                          value={editForm.currency}
-                          onChange={(event) => setEditForm((prev) => ({ ...prev, currency: event.target.value }))}
-                          maxLength={5}
-                        />
-                      </div>
-                      <div>
-                        <label className="label" htmlFor={`edit-tax-${restaurant.id}`}>
-                          Tax %
-                        </label>
-                        <input
-                          id={`edit-tax-${restaurant.id}`}
-                          type="number"
-                          min="0"
-                          max="50"
-                          step="0.01"
-                          className="input"
-                          value={editForm.tax_percentage}
-                          onChange={(event) => setEditForm((prev) => ({ ...prev, tax_percentage: event.target.value }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" disabled={isSaving} onClick={() => handleEditSave(restaurant.id)} className="btn-primary">
-                        {isSaving ? 'Saving...' : 'Save'}
-                      </button>
-                      <button type="button" onClick={closeEditForm} className="btn-outline">
-                        Cancel
-                      </button>
-                    </div>
+              <motion.div
+                key={restaurant.id}
+                layout
+                className="card overflow-hidden p-0"
+              >
+                {/* Restaurant row */}
+                <div
+                  className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                  onClick={() => setExpandedId(isExpanded ? null : restaurant.id)}
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex-shrink-0 shadow-sm">
+                    <span className="text-white font-bold text-sm">{restaurant.name.charAt(0)}</span>
                   </div>
-                ) : (
-                  <>
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h2 className="text-lg font-semibold text-gray-900">{restaurant.name}</h2>
-                        <p className="text-xs text-gray-500">/{restaurant.slug}</p>
-                      </div>
-                      <span className={`badge ${SUBSCRIPTION_STATUS_COLORS[restaurant.subscription_status] || 'bg-gray-100 text-gray-600'}`}>
-                        {SUBSCRIPTION_STATUS_LABELS[restaurant.subscription_status] || restaurant.subscription_status}
-                      </span>
-                    </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 truncate text-sm">{restaurant.name}</p>
+                    <p className="text-xs text-gray-400">/{restaurant.slug} · {admin?.email || 'No admin'}</p>
+                  </div>
+                  <span className={`badge flex-shrink-0 ${SUBSCRIPTION_STATUS_COLORS[restaurant.subscription_status] || 'bg-gray-100 text-gray-600'}`}>
+                    {SUBSCRIPTION_STATUS_LABELS[restaurant.subscription_status] || restaurant.subscription_status}
+                  </span>
+                  {isExpanded
+                    ? <ChevronUp className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    : <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  }
+                </div>
 
-                    <dl className="grid grid-cols-2 gap-2 text-sm text-gray-600">
-                      <div>
-                        <dt className="text-xs text-gray-400">Contact</dt>
-                        <dd className="truncate">{restaurant.contact_email || '-'}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-gray-400">Currency / Tax</dt>
-                        <dd>{restaurant.currency} &middot; {restaurant.tax_percentage}%</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-gray-400">Trial Ends</dt>
-                        <dd>{formatDate(restaurant.trial_ends_at)}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-gray-400">Paid Until</dt>
-                        <dd>{formatDate(restaurant.paid_until_at)}</dd>
-                      </div>
-                    </dl>
+                {/* Expanded details */}
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-5 pb-5 border-t border-gray-100">
+                        {isEditing ? (
+                          <div className="pt-4 space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div><label className="label" htmlFor={`en-${restaurant.id}`}>Name</label>
+                                <input id={`en-${restaurant.id}`} className="input" value={editForm.name} maxLength={120}
+                                  onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))} /></div>
+                              <div><label className="label" htmlFor={`es-${restaurant.id}`}>Slug</label>
+                                <input id={`es-${restaurant.id}`} className="input" value={editForm.slug} maxLength={80}
+                                  onChange={(e) => setEditForm((p) => ({ ...p, slug: e.target.value }))} /></div>
+                            </div>
+                            <div><label className="label" htmlFor={`ee-${restaurant.id}`}>Contact Email</label>
+                              <input id={`ee-${restaurant.id}`} type="email" className="input" value={editForm.contact_email}
+                                onChange={(e) => setEditForm((p) => ({ ...p, contact_email: e.target.value }))} /></div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div><label className="label" htmlFor={`ec-${restaurant.id}`}>Currency</label>
+                                <input id={`ec-${restaurant.id}`} className="input" value={editForm.currency} maxLength={5}
+                                  onChange={(e) => setEditForm((p) => ({ ...p, currency: e.target.value }))} /></div>
+                              <div><label className="label" htmlFor={`et-${restaurant.id}`}>Tax %</label>
+                                <input id={`et-${restaurant.id}`} type="number" min="0" max="50" step="0.01" className="input"
+                                  value={editForm.tax_percentage} onChange={(e) => setEditForm((p) => ({ ...p, tax_percentage: e.target.value }))} /></div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button type="button" disabled={isSaving} onClick={() => handleEditSave(restaurant.id)} className="btn-primary text-sm">
+                                {isSaving ? 'Saving…' : 'Save'}
+                              </button>
+                              <button type="button" onClick={() => { setEditingId(null); setEditForm(null) }} className="btn-outline text-sm">Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="pt-4 space-y-3">
+                            <dl className="grid grid-cols-2 gap-2 text-sm">
+                              <div className="col-span-1">
+                                <dt className="text-xs text-gray-400">Contact</dt>
+                                <dd className="text-gray-700 truncate">{restaurant.contact_email || '—'}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-xs text-gray-400">Currency / Tax</dt>
+                                <dd className="text-gray-700">{restaurant.currency} · {restaurant.tax_percentage}%</dd>
+                              </div>
+                              <div>
+                                <dt className="text-xs text-gray-400">Trial Ends</dt>
+                                <dd className="text-gray-700">{formatDate(restaurant.trial_ends_at)}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-xs text-gray-400">Paid Until</dt>
+                                <dd className="text-gray-700">{formatDate(restaurant.paid_until_at)}</dd>
+                              </div>
+                            </dl>
 
-                    <div className="border-t pt-2 text-sm">
-                      <p className="text-xs text-gray-400">Admin Login</p>
-                      {admin ? (
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-gray-700">{admin.email}</span>
-                          <button type="button" onClick={() => openResetForm(admin)} className="text-xs font-medium text-primary-600 hover:underline">
-                            Reset Password
-                          </button>
-                        </div>
-                      ) : (
-                        <p className="text-gray-400">No admin account linked</p>
-                      )}
-                    </div>
+                            {/* Admin section */}
+                            <div className="rounded-xl bg-gray-50 px-4 py-3 space-y-2">
+                              <p className="text-xs font-medium text-gray-500">Admin Account</p>
+                              {admin ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-gray-700 truncate flex-1">{admin.email}</span>
+                                  <button type="button" onClick={() => { setResetTarget(admin); setResetPassword('') }}
+                                    className="btn btn-ghost btn-sm gap-1 text-xs flex-shrink-0 text-primary-600">
+                                    <KeyRound className="w-3 h-3" /> Reset Password
+                                  </button>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-gray-400">No admin account linked.</p>
+                              )}
 
-                    {resetTarget?.userId === admin?.userId && resetTarget && (
-                      <form onSubmit={handleResetPassword} className="space-y-2 rounded-lg bg-sand-100 p-3">
-                        <label className="label" htmlFor={`reset-password-${restaurant.id}`}>
-                          New password for {resetTarget.email}
-                        </label>
-                        <input
-                          id={`reset-password-${restaurant.id}`}
-                          type="text"
-                          className="input"
-                          value={resetPassword}
-                          onChange={(event) => setResetPassword(event.target.value)}
-                          maxLength={MAX_PASSWORD_LENGTH}
-                          autoFocus
-                        />
-                        <div className="flex gap-2">
-                          <button type="submit" disabled={resetting} className="btn-primary px-3 py-1.5 text-xs">
-                            {resetting ? 'Saving...' : 'Set Password'}
-                          </button>
-                          <button type="button" onClick={() => setResetTarget(null)} className="btn-outline px-3 py-1.5 text-xs">
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    )}
+                              <AnimatePresence>
+                                {resetTarget?.userId === admin?.userId && resetTarget && (
+                                  <motion.form
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    onSubmit={handleResetPassword}
+                                    className="space-y-2 overflow-hidden"
+                                  >
+                                    <label className="label text-xs" htmlFor={`rp-${restaurant.id}`}>New password for {resetTarget.email}</label>
+                                    <input id={`rp-${restaurant.id}`} type="text" className="input" value={resetPassword}
+                                      onChange={(e) => setResetPassword(e.target.value)} maxLength={MAX_PASSWORD_LENGTH} autoFocus />
+                                    <div className="flex gap-2">
+                                      <button type="submit" disabled={resetting} className="btn-primary text-xs py-1.5 px-3">
+                                        {resetting ? 'Saving…' : 'Set Password'}
+                                      </button>
+                                      <button type="button" onClick={() => setResetTarget(null)} className="btn-outline text-xs py-1.5 px-3">Cancel</button>
+                                    </div>
+                                  </motion.form>
+                                )}
+                              </AnimatePresence>
+                            </div>
 
-                    <div className="flex gap-2 pt-1">
-                      <button type="button" onClick={() => openEditForm(restaurant)} className="btn-outline px-3 py-1.5 text-xs">
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isSaving}
-                        onClick={() => handleDelete(restaurant)}
-                        className="btn-danger px-3 py-1.5 text-xs"
-                      >
-                        {isSaving ? 'Deleting...' : 'Delete'}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
+                            <div className="flex gap-2">
+                              <button type="button" onClick={() => { setEditingId(restaurant.id); setExpandedId(restaurant.id); setEditForm({ name: restaurant.name, slug: restaurant.slug, contact_email: restaurant.contact_email || '', currency: restaurant.currency, tax_percentage: String(restaurant.tax_percentage) }) }}
+                                className="btn-outline text-xs gap-1"><Edit2 className="w-3 h-3" /> Edit</button>
+                              <button type="button" disabled={isSaving} onClick={() => handleDelete(restaurant)}
+                                className="btn-danger text-xs gap-1"><Trash2 className="w-3 h-3" /> {isSaving ? 'Deleting…' : 'Delete'}</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
             )
           })}
         </div>

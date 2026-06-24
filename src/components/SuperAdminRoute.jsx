@@ -1,11 +1,12 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Store, CreditCard, FileText } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import Layout from './Layout'
 
 const NAV_ITEMS = [
-  { to: '/superadmin', label: 'Restaurants', end: true },
-  { to: '/superadmin/subscriptions', label: 'Subscriptions' },
-  { to: '/superadmin/payments', label: 'Payment Log' },
+  { to: '/superadmin', label: 'Restaurants', icon: Store, end: true },
+  { to: '/superadmin/subscriptions', label: 'Subscriptions', icon: CreditCard },
+  { to: '/superadmin/payments', label: 'Payment Log', icon: FileText },
 ]
 
 const PAGE_TITLES = {
@@ -24,8 +25,11 @@ export default function SuperAdminRoute() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-sand-100">
-        <div className="skeleton h-10 w-40 rounded-lg" />
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 animate-pulse" />
+          <div className="skeleton h-2 w-24 rounded-full" />
+        </div>
       </div>
     )
   }

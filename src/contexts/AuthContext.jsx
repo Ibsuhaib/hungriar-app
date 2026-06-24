@@ -1,13 +1,10 @@
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import isEmail from 'validator/lib/isEmail'
-import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
-import { getFingerprintHash } from '../utils/fingerprint'
 
 const AuthContext = createContext(null)
 
 export const MAX_PASSWORD_LENGTH = 128
-const SESSION_CHECK_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
@@ -15,7 +12,6 @@ export function AuthProvider({ children }) {
   const [role, setRole] = useState(null) // 'admin' | 'super_admin' | null
   const [restaurantAdmin, setRestaurantAdmin] = useState(null)
   const [loading, setLoading] = useState(true)
-  const fingerprintRef = useRef(null)
 
   const loadProfile = useCallback(async (currentUser) => {
     if (!currentUser) {
@@ -69,28 +65,6 @@ export function AuthProvider({ children }) {
     }
   }, [loadProfile])
 
-  // Device-fingerprint replay protection: periodically confirm this
-  // browser's session is still the one recorded in admin_sessions. If a
-  // newer login from elsewhere replaced it, sign out locally.
-  useEffect(() => {
-    if (!user || !role) return
-
-    fingerprintRef.current = getFingerprintHash()
-
-    const interval = setInterval(async () => {
-      const { data, error } = await supabase.rpc('validate_admin_session', {
-        p_fingerprint_hash: fingerprintRef.current,
-      })
-
-      if (!error && data === false) {
-        toast.error('Your session has expired. Please sign in again.')
-        await supabase.auth.signOut()
-      }
-    }, SESSION_CHECK_INTERVAL_MS)
-
-    return () => clearInterval(interval)
-  }, [user, role])
-
   const signIn = useCallback(
     async (email, password) => {
       if (!isEmail(email)) {
@@ -105,10 +79,6 @@ export function AuthProvider({ children }) {
 
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
-
-      const fingerprintHash = getFingerprintHash()
-      fingerprintRef.current = fingerprintHash
-      await supabase.rpc('upsert_admin_session', { p_fingerprint_hash: fingerprintHash })
 
       const { data: roleRow } = await supabase
         .from('user_roles')
