@@ -24,18 +24,24 @@ function playNotificationSound() {
   const ring = () => {
     try {
       const now = ctx.currentTime
-      ;[[880, 0.5], [1320, 0.25], [2200, 0.1]].forEach(([freq, vol]) => {
-        const osc = ctx.createOscillator()
-        const gain = ctx.createGain()
-        osc.connect(gain)
-        gain.connect(ctx.destination)
-        osc.type = 'sine'
-        osc.frequency.value = freq
-        gain.gain.setValueAtTime(vol, now)
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2)
-        osc.start(now)
-        osc.stop(now + 1.2)
-      })
+      // Two "ring ring" bursts — dual tone 440 Hz + 480 Hz, 0.4 s each with 0.2 s gap
+      for (let burst = 0; burst < 2; burst++) {
+        const t = now + burst * 0.6
+        ;[440, 480].forEach((freq) => {
+          const osc = ctx.createOscillator()
+          const gain = ctx.createGain()
+          osc.type = 'sine'
+          osc.frequency.value = freq
+          osc.connect(gain)
+          gain.connect(ctx.destination)
+          gain.gain.setValueAtTime(0, t)
+          gain.gain.linearRampToValueAtTime(0.25, t + 0.02)
+          gain.gain.setValueAtTime(0.25, t + 0.35)
+          gain.gain.linearRampToValueAtTime(0, t + 0.4)
+          osc.start(t)
+          osc.stop(t + 0.4)
+        })
+      }
     } catch (_) {}
   }
   if (ctx.state === 'suspended') ctx.resume().then(ring).catch(() => {})
