@@ -28,19 +28,26 @@ function playBell() {
   const ring = () => {
     try {
       const now = ctx.currentTime
-      // Two "ring ring" bursts — dual tone 440 Hz + 480 Hz, 0.4 s each with 0.2 s gap
-      for (let burst = 0; burst < 2; burst++) {
-        const t = now + burst * 0.6
-        ;[440, 480].forEach((freq) => {
+      // Compressor lets us push gain hard without clipping
+      const comp = ctx.createDynamicsCompressor()
+      comp.threshold.value = -3
+      comp.ratio.value = 20
+      comp.attack.value = 0.001
+      comp.release.value = 0.05
+      comp.connect(ctx.destination)
+      // Three loud bursts — 880 Hz + 1100 Hz for a piercing ring ring ring
+      for (let burst = 0; burst < 3; burst++) {
+        const t = now + burst * 0.55
+        ;[880, 1100].forEach((freq) => {
           const osc = ctx.createOscillator()
           const gain = ctx.createGain()
           osc.type = 'sine'
           osc.frequency.value = freq
           osc.connect(gain)
-          gain.connect(ctx.destination)
+          gain.connect(comp)
           gain.gain.setValueAtTime(0, t)
-          gain.gain.linearRampToValueAtTime(0.25, t + 0.02)
-          gain.gain.setValueAtTime(0.25, t + 0.35)
+          gain.gain.linearRampToValueAtTime(0.8, t + 0.01)
+          gain.gain.setValueAtTime(0.8, t + 0.35)
           gain.gain.linearRampToValueAtTime(0, t + 0.4)
           osc.start(t)
           osc.stop(t + 0.4)
