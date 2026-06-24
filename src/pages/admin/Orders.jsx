@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Clock, CheckCircle2, Bell, BellOff } from 'lucide-react'
@@ -8,6 +8,28 @@ import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
 import OrderCard from '../../components/OrderCard'
 import { usePushNotifications } from '../../hooks/usePushNotifications'
+
+// Synthesised bell tone — plays when a new order arrives while the tab is open.
+// Uses Web Audio API so no audio file is needed.
+function playBell() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const now = ctx.currentTime
+    ;[[880, 0.5], [1320, 0.25], [2200, 0.1]].forEach(([freq, vol]) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(vol, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2)
+      osc.start(now)
+      osc.stop(now + 1.2)
+    })
+    setTimeout(() => ctx.close().catch(() => {}), 1500)
+  } catch (_) {}
+}
 
 function NotificationButton({ restaurantId }) {
   const { status, isSupported, enable } = usePushNotifications({ restaurantId })
@@ -42,7 +64,8 @@ function NotificationButton({ restaurantId }) {
 export default function Orders() {
   const { restaurant, user } = useAuth()
   const { checkAdminLimit } = useRateLimit()
-  const { orders, loading, patchOrder } = useRealtimeOrders({ restaurantId: restaurant?.id, pollInterval: 3000 })
+  const handleNewOrder = useCallback(() => { playBell() }, [])
+  const { orders, loading, patchOrder } = useRealtimeOrders({ restaurantId: restaurant?.id, pollInterval: 3000, onInsert: handleNewOrder })
   const [settledTodayCount, setSettledTodayCount] = useState(0)
 
   useEffect(() => {
