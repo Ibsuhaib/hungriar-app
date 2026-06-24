@@ -86,11 +86,15 @@ export default function Orders() {
   const { orders, loading, patchOrder } = useRealtimeOrders({ restaurantId: restaurant?.id, pollInterval: 3000, onInsert: handleNewOrder })
   const [settledTodayCount, setSettledTodayCount] = useState(0)
 
-  // Unlock Web Audio on first user interaction so the bell can play.
-  // Browsers block AudioContext created without a prior gesture.
+  // Create AudioContext on mount (suspended) and resume on any user click.
   useEffect(() => {
+    unlockAudio()
     document.addEventListener('click', unlockAudio)
-    return () => document.removeEventListener('click', unlockAudio)
+    document.addEventListener('touchend', unlockAudio)
+    return () => {
+      document.removeEventListener('click', unlockAudio)
+      document.removeEventListener('touchend', unlockAudio)
+    }
   }, [])
 
   useEffect(() => {

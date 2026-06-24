@@ -9,22 +9,37 @@ import { supabase } from '../../lib/supabase'
 import OrderCard from '../../components/OrderCard'
 import { usePushNotifications, showNotification } from '../../hooks/usePushNotifications'
 
-function playNotificationSound() {
+let _audioCtx = null
+
+function unlockAudio() {
   try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext
-    if (!AudioCtx) return
-    const ctx = new AudioCtx()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.value = 880
-    gain.gain.value = 0.15
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start()
-    osc.stop(ctx.currentTime + 0.25)
-    osc.onended = () => ctx.close()
-  } catch { /* audio unavailable */ }
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {})
+  } catch (_) {}
+}
+
+function playNotificationSound() {
+  const ctx = _audioCtx
+  if (!ctx) return
+  const ring = () => {
+    try {
+      const now = ctx.currentTime
+      ;[[880, 0.5], [1320, 0.25], [2200, 0.1]].forEach(([freq, vol]) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.type = 'sine'
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(vol, now)
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2)
+        osc.start(now)
+        osc.stop(now + 1.2)
+      })
+    } catch (_) {}
+  }
+  if (ctx.state === 'suspended') ctx.resume().then(ring).catch(() => {})
+  else ring()
 }
 
 function PinEntry({ onSuccess }) {
@@ -109,6 +124,18 @@ function ChefOrdersView({ onLock }) {
   const { restaurant, user } = useAuth()
   const { checkAdminLimit } = useRateLimit()
   const { status: notifStatus, isSupported: notifSupported, enable: enableNotif } = usePushNotifications({ restaurantId: restaurant?.id })
+
+  // Unlock audio immediately — chef just entered their PIN (user gesture still active),
+  // so resume() succeeds here. Also unlock on any subsequent click/tap.
+  useEffect(() => {
+    unlockAudio()
+    document.addEventListener('click', unlockAudio)
+    document.addEventListener('touchend', unlockAudio)
+    return () => {
+      document.removeEventListener('click', unlockAudio)
+      document.removeEventListener('touchend', unlockAudio)
+    }
+  }, [])
 
   const handleNewOrder = useCallback((order) => {
     playNotificationSound()
