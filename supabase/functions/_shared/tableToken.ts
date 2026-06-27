@@ -8,7 +8,7 @@
  * No `eval`, regex or string-based SQL is used anywhere in this module.
  */
 
-export const TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60 // 30 days
+// No TTL — tokens are permanent (QR codes are physical stickers on tables)
 
 async function hmacSha256Hex(message: string, secret: string): Promise<string> {
   const enc = new TextEncoder()
@@ -63,7 +63,7 @@ export interface VerifyResult {
   restaurantId?: string
   tableId?: string
   issuedAt?: number
-  reason?: 'malformed' | 'invalid_signature' | 'expired'
+  reason?: 'malformed' | 'invalid_signature'
 }
 
 export async function verifyTableToken(token: string, secret: string): Promise<VerifyResult> {
@@ -82,11 +82,6 @@ export async function verifyTableToken(token: string, secret: string): Promise<V
     const expectedSignature = await hmacSha256Hex(payload, secret)
     if (!timingSafeEqual(signature, expectedSignature)) {
       return { valid: false, reason: 'invalid_signature' }
-    }
-
-    const nowSeconds = Math.floor(Date.now() / 1000)
-    if (nowSeconds - issuedAt > TOKEN_TTL_SECONDS) {
-      return { valid: false, reason: 'expired' }
     }
 
     return { valid: true, restaurantId, tableId, issuedAt }

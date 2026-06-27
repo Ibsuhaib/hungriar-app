@@ -7,10 +7,8 @@ import { useRateLimit } from '../hooks/useRateLimit'
 import { useAuth } from '../contexts/AuthContext'
 
 /**
- * Generates and displays a signed QR code for a single table. The token is
- * created on demand via the generate-table-token edge function (HMAC
- * signed, 30 day expiry) so codes can be regenerated if a table's QR is
- * lost or compromised.
+ * Generates and displays a permanent signed QR code for a single table.
+ * Token is HMAC-signed (never expires). Regenerate only if a sticker is lost.
  */
 export default function TableQR({ table, restaurantId }) {
   const [qrUrl, setQrUrl] = useState(null)
@@ -74,7 +72,7 @@ export default function TableQR({ table, restaurantId }) {
             </button>
           </div>
           <button type="button" onClick={generate} disabled={loading} className="text-xs font-medium text-secondary-600 hover:underline disabled:opacity-50">
-            {loading ? 'Regenerating...' : 'Regenerate (new 30-day code)'}
+            {loading ? 'Regenerating...' : 'Regenerate QR'}
           </button>
         </>
       ) : (
