@@ -63,7 +63,7 @@ ${expenses.length===0?'<p style="color:#888;font-size:11px;padding:4px 0">No exp
   setTimeout(() => { w.print(); w.close() }, 300)
 }
 
-// ─── Confirmation modal ───────────────────────────────────────────────────────
+// ─── Confirmation bottom sheet ────────────────────────────────────────────────
 
 function ConfirmModal({ activeOrderCount, totalCollected, totalExpenses, netTotal, currency, onConfirm, onCancel, loading }) {
   return (
@@ -74,61 +74,65 @@ function ConfirmModal({ activeOrderCount, totalCollected, totalExpenses, netTota
         onClick={onCancel}
       />
       <motion.div
-        initial={{ opacity: 0, scale: 0.92, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.92, y: 20 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-        className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-50 bg-white rounded-3xl shadow-2xl max-w-sm mx-auto p-6"
+        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl"
       >
-        <button type="button" onClick={onCancel} className="absolute right-4 top-4 p-1.5 rounded-full hover:bg-gray-100">
-          <X className="w-4 h-4 text-gray-400" />
-        </button>
-
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center mx-auto mb-4 shadow-lg">
-          <Sunset className="w-7 h-7 text-white" />
+        {/* drag handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 bg-gray-200 rounded-full" />
         </div>
 
-        <h2 className="text-lg font-bold text-gray-900 text-center mb-1">End Day?</h2>
-        <p className="text-sm text-gray-500 text-center mb-5">
-          This will close today and mark the dashboard fresh for tomorrow.
-        </p>
-
-        {activeOrderCount > 0 && (
-          <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 mb-4">
-            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-700 font-medium">
-              <span className="font-bold">{activeOrderCount} active order{activeOrderCount !== 1 ? 's' : ''}</span> will be cancelled. Settle them first if needed.
-            </p>
+        <div className="px-5 pb-8 pt-2">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center shadow-lg flex-shrink-0">
+              <Sunset className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">End Day?</h2>
+              <p className="text-xs text-gray-400">Dashboard resets fresh for tomorrow</p>
+            </div>
+            <button type="button" onClick={onCancel} className="ml-auto p-1.5 rounded-full hover:bg-gray-100">
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
           </div>
-        )}
 
-        {/* Day summary */}
-        <div className="space-y-1.5 mb-5 bg-gray-50 rounded-2xl px-4 py-3">
-          <div className="flex justify-between text-sm text-gray-600">
-            <span>Total Collected</span>
-            <span className="font-semibold">{formatCurrency(totalCollected, currency)}</span>
-          </div>
-          {totalExpenses > 0 && (
-            <div className="flex justify-between text-sm text-gray-600">
-              <span>Total Expenses</span>
-              <span className="font-semibold text-rose-500">− {formatCurrency(totalExpenses, currency)}</span>
+          {activeOrderCount > 0 && (
+            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 mb-4">
+              <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700 font-medium">
+                <span className="font-bold">{activeOrderCount} active order{activeOrderCount !== 1 ? 's' : ''}</span> will be cancelled. Settle them first if needed.
+              </p>
             </div>
           )}
-          <div className="flex justify-between text-sm font-bold text-gray-900 pt-1 border-t border-dashed border-gray-200">
-            <span>Net Total</span>
-            <span>{formatCurrency(netTotal, currency)}</span>
-          </div>
-        </div>
 
-        <div className="flex gap-3">
-          <button type="button" onClick={onCancel}
-            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
-            Cancel
-          </button>
-          <button type="button" onClick={onConfirm} disabled={loading}
-            className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">
-            {loading ? 'Closing…' : 'End Day'}
-          </button>
+          <div className="space-y-1.5 mb-5 bg-gray-50 rounded-2xl px-4 py-3">
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Total Collected</span>
+              <span className="font-semibold">{formatCurrency(totalCollected, currency)}</span>
+            </div>
+            {totalExpenses > 0 && (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Total Expenses</span>
+                <span className="font-semibold text-rose-500">− {formatCurrency(totalExpenses, currency)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm font-bold text-gray-900 pt-1 border-t border-dashed border-gray-200">
+              <span>Net Total</span>
+              <span>{formatCurrency(netTotal, currency)}</span>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button type="button" onClick={onCancel}
+              className="flex-1 py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+              Cancel
+            </button>
+            <button type="button" onClick={onConfirm} disabled={loading}
+              className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">
+              {loading ? 'Closing…' : 'Confirm End Day'}
+            </button>
+          </div>
         </div>
       </motion.div>
     </>
@@ -415,7 +419,7 @@ export default function DayEnd() {
   // ── Normal day-end view ────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-5 max-w-2xl">
+    <div className="space-y-5 max-w-2xl pb-28">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -583,17 +587,21 @@ export default function DayEnd() {
         </div>
       )}
 
-      {/* ── End Day button ──────────────────────────────────────────────────── */}
-      <button
-        type="button"
-        onClick={() => setShowConfirm(true)}
-        className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold text-base shadow-lg shadow-rose-200 hover:opacity-90 transition-opacity"
-      >
-        <Sunset className="w-5 h-5" />
-        End Day
-      </button>
+      {/* ── Sticky End Day bar ─────────────────────────────────────────────── */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 p-4 bg-white/80 backdrop-blur-md border-t border-gray-100">
+        <div className="max-w-2xl mx-auto">
+          <button
+            type="button"
+            onClick={() => setShowConfirm(true)}
+            className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold text-base shadow-lg shadow-rose-200 hover:opacity-90 transition-opacity"
+          >
+            <Sunset className="w-5 h-5" />
+            End Day
+          </button>
+        </div>
+      </div>
 
-      {/* Confirmation modal */}
+      {/* Confirmation bottom sheet */}
       <AnimatePresence>
         {showConfirm && (
           <ConfirmModal
