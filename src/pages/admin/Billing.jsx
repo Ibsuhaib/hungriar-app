@@ -447,16 +447,16 @@ export default function Billing() {
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Round Off</p>
                       <div className="flex items-center gap-2">
                         {/* Preview: show what the rounded total will be */}
-                        {(total - discountAmt) % 1 !== 0 && (
+                        {(total - discountAmt) % 5 !== 0 && (
                           <span className="text-[10px] text-gray-400">
-                            → {cur}{Math.floor(total - discountAmt)}
+                            → {cur}{Math.floor((total - discountAmt) / 5) * 5}
                           </span>
                         )}
                         <button
                           type="button"
                           onClick={() => {
                             const afterDiscount = total - discountAmt
-                            const rounded = Math.floor(afterDiscount)
+                            const rounded = Math.floor(afterDiscount / 5) * 5  // nearest ₹5
                             const ro = rounded - afterDiscount
                             patchAdj(table.id, { roundOff: ro === 0 ? '' : ro.toFixed(2) })
                           }}
