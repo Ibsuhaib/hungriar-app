@@ -1,20 +1,55 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, X, ChevronDown, ChevronUp, KeyRound, Trash2, Edit2, Store } from 'lucide-react'
+import { Plus, X, ChevronDown, ChevronUp, KeyRound, Trash2, Edit2, Store, Phone, CheckCircle, AlertCircle, Copy, Link } from 'lucide-react'
 import { useAuth, MAX_PASSWORD_LENGTH } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase, invokeEdgeFunction } from '../../lib/supabase'
 import { formatDate, SUBSCRIPTION_STATUS_LABELS, SUBSCRIPTION_STATUS_COLORS } from '../../utils/formatters'
 
 const EMPTY_ADD_FORM = {
-  name: '', slug: '', contactEmail: '', currency: '₹', taxPercentage: '5', adminEmail: '', adminPassword: '',
+  name: '', slug: '', contactEmail: '', currency: '₹', taxPercentage: '5',
+  adminEmail: '', adminPassword: '', adminPhone: '',
 }
 const MIN_PASSWORD_LENGTH = 8
 const SLUG_PATTERN = /^[a-z0-9-]+$/
+const BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME ?? 'HungriARBot'
 
 function slugify(v) {
   return v.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+function TelegramStatus({ phoneNumber, telegramLinked }) {
+  if (!phoneNumber) return null
+  const link = `https://t.me/${BOT_USERNAME}?start=${encodeURIComponent(phoneNumber)}`
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(link)
+    toast.success('Telegram link copied!')
+  }
+
+  return (
+    <div className="flex items-center gap-2 mt-1">
+      {telegramLinked ? (
+        <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+          <CheckCircle className="w-3.5 h-3.5" /> Telegram linked
+        </span>
+      ) : (
+        <span className="flex items-center gap-1 text-xs text-amber-600 font-medium">
+          <AlertCircle className="w-3.5 h-3.5" /> Not linked yet
+        </span>
+      )}
+      {!telegramLinked && (
+        <button
+          type="button"
+          onClick={copyLink}
+          className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium"
+        >
+          <Copy className="w-3 h-3" /> Copy invite link
+        </button>
+      )}
+    </div>
+  )
 }
 
 export default function Restaurants() {
@@ -34,6 +69,9 @@ export default function Restaurants() {
   const [resetTarget, setResetTarget] = useState(null)
   const [resetPassword, setResetPassword] = useState('')
   const [resetting, setResetting] = useState(false)
+  const [phoneTarget, setPhoneTarget] = useState(null) // { restaurantId, email, current }
+  const [phoneInput, setPhoneInput] = useState('')
+  const [savingPhone, setSavingPhone] = useState(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -59,6 +97,7 @@ export default function Restaurants() {
     const slug = addForm.slug.trim() || slugify(name)
     const adminEmail = addForm.adminEmail.trim()
     const adminPassword = addForm.adminPassword
+    const adminPhone = addForm.adminPhone.trim()
     const taxPercentage = Number(addForm.taxPercentage)
     if (!name || !slug) { toast.error('Name and slug are required'); return }
     if (!SLUG_PATTERN.test(slug)) { toast.error('Slug: lowercase letters, numbers and hyphens only'); return }
@@ -83,7 +122,11 @@ export default function Restaurants() {
       if (rErr) throw rErr
       newId = restaurant.id
       await invokeEdgeFunction('admin-management', {
-        action: 'create_restaurant_admin', email: adminEmail, password: adminPassword, restaurantId: restaurant.id,
+        action: 'create_restaurant_admin',
+        email: adminEmail,
+        password: adminPassword,
+        restaurantId: restaurant.id,
+        phoneNumber: adminPhone || undefined,
       })
       toast.success(`Restaurant created. Admin: ${adminEmail}`)
       setAddForm({ ...EMPTY_ADD_FORM })
@@ -169,6 +212,29 @@ export default function Restaurants() {
     }
   }
 
+  const handleSavePhone = async (e) => {
+    e.preventDefault()
+    if (savingPhone || !phoneTarget) return
+    const phone = phoneInput.trim()
+    setSavingPhone(true)
+    try {
+      if (!phone) {
+        await invokeEdgeFunction('admin-management', { action: 'remove_owner_phone', restaurantId: phoneTarget.restaurantId })
+        toast.success('Phone number removed')
+      } else {
+        await invokeEdgeFunction('admin-management', { action: 'set_owner_phone', restaurantId: phoneTarget.restaurantId, phoneNumber: phone })
+        toast.success('Phone number saved')
+      }
+      setPhoneTarget(null)
+      setPhoneInput('')
+      await fetchData()
+    } catch (err) {
+      toast.error(err.message || 'Failed to save phone number')
+    } finally {
+      setSavingPhone(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -223,23 +289,44 @@ export default function Restaurants() {
                     value={addForm.taxPercentage} onChange={(e) => setAddForm((p) => ({ ...p, taxPercentage: e.target.value }))} />
                 </div>
               </div>
+
               <div className="border-t border-gray-100 pt-4">
-                <p className="label mb-3">Admin Login Credentials</p>
+                <p className="label mb-3">Owner Login</p>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="label" htmlFor="add-admin-email">Admin Email</label>
+                    <label className="label" htmlFor="add-admin-email">Email</label>
                     <input id="add-admin-email" type="email" className="input" value={addForm.adminEmail} required
                       onChange={(e) => setAddForm((p) => ({ ...p, adminEmail: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="label" htmlFor="add-admin-pw">Admin Password</label>
+                    <label className="label" htmlFor="add-admin-pw">Password</label>
                     <input id="add-admin-pw" type="text" className="input" value={addForm.adminPassword}
                       maxLength={MAX_PASSWORD_LENGTH} required
                       onChange={(e) => setAddForm((p) => ({ ...p, adminPassword: e.target.value }))} />
                   </div>
                 </div>
-                <p className="label-hint mt-2">Share these credentials with the restaurant owner. They can change the password later.</p>
+                <div className="mt-3">
+                  <label className="label" htmlFor="add-admin-phone">
+                    Owner Phone Number
+                    <span className="ml-1 text-gray-400 font-normal">(for Telegram OTP login)</span>
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      id="add-admin-phone"
+                      type="tel"
+                      className="input pl-9"
+                      placeholder="9876543210"
+                      value={addForm.adminPhone}
+                      onChange={(e) => setAddForm((p) => ({ ...p, adminPhone: e.target.value }))}
+                    />
+                  </div>
+                  <p className="label-hint mt-1.5">
+                    After saving, share <strong>t.me/{BOT_USERNAME}</strong> with the owner — they press Start once to link their Telegram, then log in via OTP.
+                  </p>
+                </div>
               </div>
+
               <div className="flex gap-3">
                 <button type="submit" disabled={adding} className="btn-primary">
                   {adding ? (
@@ -274,11 +361,7 @@ export default function Restaurants() {
             const isExpanded = expandedId === restaurant.id
 
             return (
-              <motion.div
-                key={restaurant.id}
-                layout
-                className="card overflow-hidden p-0"
-              >
+              <motion.div key={restaurant.id} layout className="card overflow-hidden p-0">
                 {/* Restaurant row */}
                 <div
                   className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition-colors"
@@ -360,46 +443,134 @@ export default function Restaurants() {
                               </div>
                             </dl>
 
-                            {/* Admin section */}
-                            <div className="rounded-xl bg-gray-50 px-4 py-3 space-y-2">
+                            {/* Admin Account section */}
+                            <div className="rounded-xl bg-gray-50 px-4 py-3 space-y-3">
                               <p className="text-xs font-medium text-gray-500">Admin Account</p>
                               {admin ? (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm text-gray-700 truncate flex-1">{admin.email}</span>
-                                  <button type="button" onClick={() => { setResetTarget(admin); setResetPassword('') }}
-                                    className="btn btn-ghost btn-sm gap-1 text-xs flex-shrink-0 text-primary-600">
-                                    <KeyRound className="w-3 h-3" /> Reset Password
-                                  </button>
-                                </div>
+                                <>
+                                  {/* Email + password reset */}
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-gray-700 truncate flex-1">{admin.email}</span>
+                                    <button type="button"
+                                      onClick={() => { setResetTarget(admin); setResetPassword('') }}
+                                      className="btn btn-ghost btn-sm gap-1 text-xs flex-shrink-0 text-primary-600">
+                                      <KeyRound className="w-3 h-3" /> Reset Password
+                                    </button>
+                                  </div>
+
+                                  <AnimatePresence>
+                                    {resetTarget?.userId === admin?.userId && resetTarget && (
+                                      <motion.form
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        onSubmit={handleResetPassword}
+                                        className="space-y-2 overflow-hidden"
+                                      >
+                                        <label className="label text-xs" htmlFor={`rp-${restaurant.id}`}>New password</label>
+                                        <input id={`rp-${restaurant.id}`} type="text" className="input" value={resetPassword}
+                                          onChange={(e) => setResetPassword(e.target.value)} maxLength={MAX_PASSWORD_LENGTH} autoFocus />
+                                        <div className="flex gap-2">
+                                          <button type="submit" disabled={resetting} className="btn-primary text-xs py-1.5 px-3">
+                                            {resetting ? 'Saving…' : 'Set Password'}
+                                          </button>
+                                          <button type="button" onClick={() => setResetTarget(null)} className="btn-outline text-xs py-1.5 px-3">Cancel</button>
+                                        </div>
+                                      </motion.form>
+                                    )}
+                                  </AnimatePresence>
+
+                                  {/* Phone number + Telegram status */}
+                                  <div className="border-t border-gray-200 pt-3">
+                                    <div className="flex items-center gap-2">
+                                      <Phone className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                                      <span className="text-sm text-gray-700 flex-1 truncate">
+                                        {admin.phoneNumber || <span className="text-gray-400 italic">No phone set</span>}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setPhoneTarget({ restaurantId: restaurant.id, email: admin.email, current: admin.phoneNumber })
+                                          setPhoneInput(admin.phoneNumber ?? '')
+                                          setResetTarget(null)
+                                        }}
+                                        className="btn btn-ghost btn-sm gap-1 text-xs flex-shrink-0 text-primary-600"
+                                      >
+                                        <Edit2 className="w-3 h-3" /> {admin.phoneNumber ? 'Edit' : 'Set Phone'}
+                                      </button>
+                                    </div>
+
+                                    {admin.phoneNumber && (
+                                      <TelegramStatus
+                                        phoneNumber={admin.phoneNumber}
+                                        telegramLinked={admin.telegramLinked}
+                                      />
+                                    )}
+                                  </div>
+
+                                  <AnimatePresence>
+                                    {phoneTarget?.restaurantId === restaurant.id && phoneTarget && (
+                                      <motion.form
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        onSubmit={handleSavePhone}
+                                        className="space-y-2 overflow-hidden"
+                                      >
+                                        <label className="label text-xs" htmlFor={`ph-${restaurant.id}`}>
+                                          Phone number (leave blank to remove)
+                                        </label>
+                                        <div className="relative">
+                                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                          <input
+                                            id={`ph-${restaurant.id}`}
+                                            type="tel"
+                                            className="input pl-9"
+                                            placeholder="9876543210"
+                                            value={phoneInput}
+                                            onChange={(e) => setPhoneInput(e.target.value)}
+                                            autoFocus
+                                          />
+                                        </div>
+                                        {phoneInput.trim() && (
+                                          <div className="flex items-center gap-1.5 text-xs text-gray-500 bg-blue-50 rounded-lg px-3 py-2">
+                                            <Link className="w-3 h-3 flex-shrink-0" />
+                                            Share this with the owner:{' '}
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const link = `https://t.me/${BOT_USERNAME}?start=${encodeURIComponent(phoneInput.trim())}`
+                                                navigator.clipboard.writeText(link)
+                                                toast.success('Link copied!')
+                                              }}
+                                              className="text-primary-600 font-medium hover:underline"
+                                            >
+                                              Copy Telegram invite link
+                                            </button>
+                                          </div>
+                                        )}
+                                        <div className="flex gap-2">
+                                          <button type="submit" disabled={savingPhone} className="btn-primary text-xs py-1.5 px-3">
+                                            {savingPhone ? 'Saving…' : 'Save'}
+                                          </button>
+                                          <button type="button" onClick={() => { setPhoneTarget(null); setPhoneInput('') }} className="btn-outline text-xs py-1.5 px-3">Cancel</button>
+                                        </div>
+                                      </motion.form>
+                                    )}
+                                  </AnimatePresence>
+                                </>
                               ) : (
                                 <p className="text-xs text-gray-400">No admin account linked.</p>
                               )}
-
-                              <AnimatePresence>
-                                {resetTarget?.userId === admin?.userId && resetTarget && (
-                                  <motion.form
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: 'auto', opacity: 1 }}
-                                    exit={{ height: 0, opacity: 0 }}
-                                    onSubmit={handleResetPassword}
-                                    className="space-y-2 overflow-hidden"
-                                  >
-                                    <label className="label text-xs" htmlFor={`rp-${restaurant.id}`}>New password for {resetTarget.email}</label>
-                                    <input id={`rp-${restaurant.id}`} type="text" className="input" value={resetPassword}
-                                      onChange={(e) => setResetPassword(e.target.value)} maxLength={MAX_PASSWORD_LENGTH} autoFocus />
-                                    <div className="flex gap-2">
-                                      <button type="submit" disabled={resetting} className="btn-primary text-xs py-1.5 px-3">
-                                        {resetting ? 'Saving…' : 'Set Password'}
-                                      </button>
-                                      <button type="button" onClick={() => setResetTarget(null)} className="btn-outline text-xs py-1.5 px-3">Cancel</button>
-                                    </div>
-                                  </motion.form>
-                                )}
-                              </AnimatePresence>
                             </div>
 
                             <div className="flex gap-2">
-                              <button type="button" onClick={() => { setEditingId(restaurant.id); setExpandedId(restaurant.id); setEditForm({ name: restaurant.name, slug: restaurant.slug, contact_email: restaurant.contact_email || '', currency: restaurant.currency, tax_percentage: String(restaurant.tax_percentage) }) }}
+                              <button type="button"
+                                onClick={() => {
+                                  setEditingId(restaurant.id)
+                                  setExpandedId(restaurant.id)
+                                  setEditForm({ name: restaurant.name, slug: restaurant.slug, contact_email: restaurant.contact_email || '', currency: restaurant.currency, tax_percentage: String(restaurant.tax_percentage) })
+                                }}
                                 className="btn-outline text-xs gap-1"><Edit2 className="w-3 h-3" /> Edit</button>
                               <button type="button" disabled={isSaving} onClick={() => handleDelete(restaurant)}
                                 className="btn-danger text-xs gap-1"><Trash2 className="w-3 h-3" /> {isSaving ? 'Deleting…' : 'Delete'}</button>

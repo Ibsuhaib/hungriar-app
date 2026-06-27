@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import isEmail from 'validator/lib/isEmail'
 import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
@@ -67,15 +66,8 @@ export function AuthProvider({ children }) {
 
   const signIn = useCallback(
     async (email, password) => {
-      if (!isEmail(email)) {
-        throw new Error('Please enter a valid email address')
-      }
-      if (password.length === 0) {
-        throw new Error('Password is required')
-      }
-      if (password.length > MAX_PASSWORD_LENGTH) {
-        throw new Error('Password is too long')
-      }
+      if (!email || !password) throw new Error('Email and password are required')
+      if (password.length > MAX_PASSWORD_LENGTH) throw new Error('Password is too long')
 
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
@@ -94,7 +86,6 @@ export function AuthProvider({ children }) {
       }
 
       await loadProfile(data.user)
-
       return { user: data.user, role: roleRow?.role ?? null }
     },
     [loadProfile],
