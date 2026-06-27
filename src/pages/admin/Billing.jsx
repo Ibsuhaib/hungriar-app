@@ -23,7 +23,20 @@ export const PAYMENT_BADGE = {
 
 const PM_LABELS = { cash: 'Cash', upi: 'UPI', card: 'Card', other: 'Other' }
 
-function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod, restaurant }) {
+const EMPTY_ADJ = { discountType: 'amount', discountValue: '', roundOff: '' }
+
+function computeFinals(total, adj) {
+  const dv = Number(adj.discountValue) || 0
+  const discountAmt = adj.discountType === 'percent'
+    ? Math.min(total, Math.round(total * dv / 100 * 100) / 100)
+    : Math.min(total, dv)
+  const afterDiscount = total - discountAmt
+  const roundOffAmt = Number(adj.roundOff) || 0
+  const finalTotal = Math.max(0, Math.round((afterDiscount + roundOffAmt) * 100) / 100)
+  return { discountAmt, roundOffAmt, finalTotal }
+}
+
+function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod, restaurant, discountAmt = 0, roundOffAmt = 0, finalTotal = null }) {
   const cur = restaurant?.currency || '₹'
   const fmt = (v) => `${cur}${Number(v).toFixed(2)}`
   const name = restaurant?.name || 'Restaurant'
@@ -32,8 +45,10 @@ function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod,
   const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
   const pm = PM_LABELS[paymentMethod] || paymentMethod || '—'
 
-  const subtotal = taxPercentage > 0 ? total / (1 + taxPercentage / 100) : total
-  const taxAmt = total - subtotal
+  const subtotalPreTax = taxPercentage > 0 ? total / (1 + taxPercentage / 100) : total
+  const taxAmt = total - subtotalPreTax
+  const displayTotal = finalTotal !== null ? finalTotal : total
+  const hasAdj = discountAmt > 0 || roundOffAmt !== 0
 
   const orderRows = tableOrders.map((order, idx) => {
     const activeItems = (order.order_items || []).filter((i) => !i.cancelled)
@@ -49,6 +64,22 @@ function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod,
       <tr class="order-hdr"><td colspan="2">Order ${idx + 1} &bull; ${oTime}</td></tr>
       ${itemRows}`
   }).join('')
+
+  const totalsSection = `
+    ${taxPercentage > 0 ? `
+      <tr class="sub-row"><td>Items</td><td class="r">${fmt(subtotalPreTax)}</td></tr>
+      <tr class="sub-row"><td>Tax (${taxPercentage}%)</td><td class="r">+${fmt(taxAmt)}</td></tr>
+      ${hasAdj ? `<tr class="sub-row b-row"><td>Subtotal</td><td class="r">${fmt(total)}</td></tr>` : ''}
+      <tr><td colspan="2"><div class="dash" style="margin:3px 0"></div></td></tr>
+    ` : hasAdj ? `
+      <tr class="sub-row"><td>Subtotal</td><td class="r">${fmt(total)}</td></tr>
+      <tr><td colspan="2"><div class="dash" style="margin:3px 0"></div></td></tr>
+    ` : ''}
+    ${discountAmt > 0 ? `<tr class="sub-row disc-row"><td>Discount</td><td class="r">-${fmt(discountAmt)}</td></tr>` : ''}
+    ${roundOffAmt !== 0 ? `<tr class="sub-row ro-row"><td>Round Off</td><td class="r">${roundOffAmt >= 0 ? '+' : '-'}${fmt(Math.abs(roundOffAmt))}</td></tr>` : ''}
+    ${hasAdj ? `<tr><td colspan="2"><div class="dash" style="margin:3px 0"></div></td></tr>` : ''}
+    <tr class="total-row"><td>TOTAL</td><td class="r">${fmt(displayTotal)}</td></tr>
+  `
 
   const html = `<!DOCTYPE html>
 <html>
@@ -71,6 +102,9 @@ function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod,
     .order-hdr td { font-size: 10px; color: #555; padding-top: 5px; }
     .total-row td { font-size: 13px; font-weight: bold; padding-top: 3px; }
     .sub-row td { font-size: 10px; color: #444; }
+    .b-row td { font-weight: 600; color: #222; }
+    .disc-row td { color: #1a7a1a; }
+    .ro-row td { color: #1a3d7a; }
   </style>
 </head>
 <body>
@@ -91,14 +125,7 @@ function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod,
 
   <div class="solid"></div>
 
-  <table>
-    ${taxPercentage > 0 ? `
-    <tr class="sub-row"><td>Subtotal</td><td class="r">${fmt(subtotal)}</td></tr>
-    <tr class="sub-row"><td>Tax (${taxPercentage}%)</td><td class="r">${fmt(taxAmt)}</td></tr>
-    <tr><td colspan="2"><div class="dash" style="margin:3px 0"></div></td></tr>
-    ` : ''}
-    <tr class="total-row"><td>TOTAL</td><td class="r">${fmt(total)}</td></tr>
-  </table>
+  <table>${totalsSection}</table>
 
   <div class="dash"></div>
 
@@ -182,6 +209,7 @@ export default function Billing() {
   const [confirmTable, setConfirmTable] = useState(null)
   const [activeOrdersCount, setActiveOrdersCount] = useState(0)
   const [selectedPayments, setSelectedPayments] = useState({})
+  const [adjustments, setAdjustments] = useState({})
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -209,9 +237,12 @@ export default function Billing() {
     [tables, orders],
   )
 
-  const selectPayment = (tableId, methodId) => {
+  const getAdj = (tableId) => adjustments[tableId] || EMPTY_ADJ
+  const patchAdj = (tableId, patch) =>
+    setAdjustments((prev) => ({ ...prev, [tableId]: { ...getAdj(tableId), ...patch } }))
+
+  const selectPayment = (tableId, methodId) =>
     setSelectedPayments((prev) => ({ ...prev, [tableId]: methodId }))
-  }
 
   const handleClickSettle = async (table) => {
     const { count } = await supabase
@@ -230,16 +261,21 @@ export default function Billing() {
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) { setConfirmTable(null); return }
 
-    // Print the receipt first (non-destructive), then settle
     const billData = bills.find((b) => b.table.id === confirmTable.id)
+    const adj = getAdj(confirmTable.id)
+    const { discountAmt, roundOffAmt, finalTotal } = computeFinals(billData?.total || 0, adj)
+
     if (billData) {
       printReceipt({
-        tableOrders: billData.orders,
-        table:        confirmTable,
-        total:        billData.total,
+        tableOrders:   billData.orders,
+        table:         confirmTable,
+        total:         billData.total,
         taxPercentage,
         paymentMethod: selectedPayments[confirmTable.id] || 'other',
         restaurant,
+        discountAmt,
+        roundOffAmt,
+        finalTotal,
       })
     }
 
@@ -249,11 +285,14 @@ export default function Billing() {
         p_restaurant_id:  restaurant.id,
         p_table_id:       confirmTable.id,
         p_payment_method: selectedPayments[confirmTable.id] || 'other',
+        p_discount:       discountAmt,
+        p_round_off:      roundOffAmt,
       })
       if (error) throw error
       if (!data) { toast.error('No completed orders to settle for this table'); return }
       toast.success('Bill printed and settled')
       setSelectedPayments((prev) => { const next = { ...prev }; delete next[confirmTable.id]; return next })
+      setAdjustments((prev) => { const next = { ...prev }; delete next[confirmTable.id]; return next })
       await fetchData()
     } catch (err) {
       toast.error(err.message || 'Failed to settle bill')
@@ -262,6 +301,8 @@ export default function Billing() {
       setConfirmTable(null)
     }
   }
+
+  const cur = restaurant?.currency || '₹'
 
   return (
     <div className="space-y-4">
@@ -286,6 +327,10 @@ export default function Billing() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {bills.map(({ table, orders: tableOrders, total }) => {
             const chosen = selectedPayments[table.id] || null
+            const adj = getAdj(table.id)
+            const { discountAmt, roundOffAmt, finalTotal } = computeFinals(total, adj)
+            const hasAdj = discountAmt > 0 || roundOffAmt !== 0
+
             return (
               <motion.div
                 key={table.id}
@@ -312,7 +357,7 @@ export default function Billing() {
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-500">Order at {formatTime(order.order_time)}</span>
                           <span className="font-semibold text-gray-800">
-                            {restaurant?.currency || '₹'}{Number(order.total_amount).toFixed(2)}
+                            {cur}{Number(order.total_amount).toFixed(2)}
                           </span>
                         </div>
                         <ul className="mt-1 pl-3 space-y-0.5">
@@ -329,19 +374,10 @@ export default function Billing() {
                   </ul>
                 </div>
 
-                {/* Total + payment method + actions */}
+                {/* Controls + totals */}
                 <div className="border-t border-gray-100 px-5 py-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-600">Total Due</span>
-                    <span className="text-xl font-bold text-gray-900 font-display">
-                      {restaurant?.currency || '₹'}{total.toFixed(2)}
-                    </span>
-                  </div>
-                  {taxPercentage > 0 && (
-                    <p className="text-xs text-gray-400 -mt-3">Includes {taxPercentage}% tax</p>
-                  )}
 
-                  {/* Payment method selector */}
+                  {/* Payment method */}
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Payment method</p>
                     <div className="grid grid-cols-4 gap-1.5">
@@ -363,11 +399,118 @@ export default function Billing() {
                     </div>
                   </div>
 
+                  {/* Discount */}
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Discount</p>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => patchAdj(table.id, { discountType: 'amount', discountValue: '' })}
+                        className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border-2 transition-all flex-shrink-0
+                          ${adj.discountType === 'amount'
+                            ? 'border-primary-400 bg-primary-50 text-primary-700'
+                            : 'border-gray-200 text-gray-400 hover:border-gray-300'
+                          }`}
+                      >
+                        {cur}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => patchAdj(table.id, { discountType: 'percent', discountValue: '' })}
+                        className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border-2 transition-all flex-shrink-0
+                          ${adj.discountType === 'percent'
+                            ? 'border-primary-400 bg-primary-50 text-primary-700'
+                            : 'border-gray-200 text-gray-400 hover:border-gray-300'
+                          }`}
+                      >
+                        %
+                      </button>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder={adj.discountType === 'percent' ? 'e.g. 10' : 'e.g. 50'}
+                        value={adj.discountValue}
+                        onChange={(e) => patchAdj(table.id, { discountValue: e.target.value })}
+                        className="input text-sm py-1.5 flex-1 min-w-0"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Round-off */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Round Off</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const afterDiscount = total - discountAmt
+                          const rounded = Math.round(afterDiscount)
+                          const ro = rounded - afterDiscount
+                          patchAdj(table.id, { roundOff: ro === 0 ? '' : ro.toFixed(2) })
+                        }}
+                        className="text-[10px] text-primary-500 font-semibold hover:underline"
+                      >
+                        Auto
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="e.g. -1.00  (negative deducts)"
+                      value={adj.roundOff}
+                      onChange={(e) => patchAdj(table.id, { roundOff: e.target.value })}
+                      className="input text-sm py-1.5 w-full"
+                    />
+                  </div>
+
+                  {/* Total breakdown */}
+                  <div className="space-y-1 pt-1 border-t border-dashed border-gray-200">
+                    {hasAdj && (
+                      <div className="space-y-0.5 pb-1.5">
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>Subtotal</span>
+                          <span>{cur}{total.toFixed(2)}</span>
+                        </div>
+                        {discountAmt > 0 && (
+                          <div className="flex justify-between text-xs font-semibold text-green-600">
+                            <span>
+                              Discount
+                              {adj.discountType === 'percent' && adj.discountValue
+                                ? ` (${adj.discountValue}%)`
+                                : ''}
+                            </span>
+                            <span>−{cur}{discountAmt.toFixed(2)}</span>
+                          </div>
+                        )}
+                        {roundOffAmt !== 0 && (
+                          <div className="flex justify-between text-xs font-semibold text-blue-600">
+                            <span>Round Off</span>
+                            <span>
+                              {roundOffAmt >= 0 ? '+' : '−'}{cur}{Math.abs(roundOffAmt).toFixed(2)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-gray-600">
+                        {hasAdj ? 'Final Total' : 'Total Due'}
+                      </span>
+                      <span className={`text-xl font-bold font-display ${hasAdj ? 'text-primary-600' : 'text-gray-900'}`}>
+                        {cur}{finalTotal.toFixed(2)}
+                      </span>
+                    </div>
+                    {taxPercentage > 0 && !hasAdj && (
+                      <p className="text-xs text-gray-400">Includes {taxPercentage}% tax</p>
+                    )}
+                  </div>
+
                   {/* Actions */}
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod: chosen, restaurant })}
+                      onClick={() => printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod: chosen, restaurant, discountAmt, roundOffAmt, finalTotal })}
                       title="Print receipt without settling"
                       className="btn-outline gap-1.5 text-sm px-3"
                     >
