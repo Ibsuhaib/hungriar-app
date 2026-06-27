@@ -29,6 +29,7 @@ import Expired from './pages/admin/Expired'
 import Billing from './pages/admin/Billing'
 import History from './pages/admin/History'
 import Analytics from './pages/admin/Analytics'
+import TakeOrder from './pages/admin/TakeOrder'
 
 import SuperAdminLogin from './pages/superadmin/Login'
 import Restaurants from './pages/superadmin/Restaurants'
@@ -82,6 +83,7 @@ export default function App() {
             <Route path="tables" element={<Tables />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="take-order" element={<TakeOrder />} />
           </Route>
 
           <Route path="/superadmin/login" element={<SuperAdminLogin />} />

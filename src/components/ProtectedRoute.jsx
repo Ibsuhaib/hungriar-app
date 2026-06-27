@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { LayoutDashboard, ClipboardList, Receipt, History, UtensilsCrossed, Tag, QrCode, BarChart2, Settings } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Receipt, History, UtensilsCrossed, Tag, QrCode, BarChart2, Settings, ConciergeBell } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useSubscriptionStatus } from '../hooks/useSubscriptionStatus'
 import Layout from './Layout'
@@ -8,6 +8,7 @@ import { AGREEMENT_VERSION } from './AgreementModal'
 const NAV_ITEMS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/admin/orders', label: 'Orders', icon: ClipboardList },
+  { to: '/admin/take-order', label: 'Take Order', icon: ConciergeBell },
   { to: '/admin/billing', label: 'Billing', icon: Receipt },
   { to: '/admin/history', label: 'History', icon: History },
   { to: '/admin/menu', label: 'Menu Items', icon: UtensilsCrossed },
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
 const PAGE_TITLES = {
   '/admin': 'Dashboard',
   '/admin/orders': 'Orders',
+  '/admin/take-order': 'Take Order',
   '/admin/billing': 'Billing',
   '/admin/history': 'Order History',
   '/admin/menu': 'Menu Management',
