@@ -22,7 +22,23 @@ export function CartProvider({ restaurantSlug, children }) {
     }
     try {
       const raw = localStorage.getItem(storageKey(restaurantSlug))
-      setItems(raw ? JSON.parse(raw) : [])
+      if (!raw) { setItems([]); return }
+      const parsed = JSON.parse(raw)
+      if (!Array.isArray(parsed)) { setItems([]); return }
+      // Validate each item to prevent corrupted/malicious localStorage data
+      const valid = parsed.filter(
+        (i) =>
+          i &&
+          typeof i.id === 'string' &&
+          typeof i.name === 'string' &&
+          typeof i.price === 'number' &&
+          i.price >= 0 &&
+          typeof i.quantity === 'number' &&
+          Number.isInteger(i.quantity) &&
+          i.quantity >= 1 &&
+          i.quantity <= MAX_QUANTITY,
+      )
+      setItems(valid)
     } catch {
       setItems([])
     }

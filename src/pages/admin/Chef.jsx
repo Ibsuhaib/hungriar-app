@@ -55,15 +55,31 @@ function playNotificationSound() {
   else ring()
 }
 
+const MAX_PIN_ATTEMPTS = 5
+const PIN_LOCKOUT_MS = 5 * 60 * 1000 // 5 minutes
+
 function PinEntry({ onSuccess }) {
   const { restaurant } = useAuth()
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [checking, setChecking] = useState(false)
+  const [attempts, setAttempts] = useState(0)
+  const [lockedUntil, setLockedUntil] = useState(null)
+
+  const isLocked = lockedUntil && Date.now() < lockedUntil
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!pin || checking) return
+    if (!pin || checking || isLocked) return
+
+    if (attempts >= MAX_PIN_ATTEMPTS) {
+      const until = Date.now() + PIN_LOCKOUT_MS
+      setLockedUntil(until)
+      setError('Too many incorrect attempts. Try again in 5 minutes.')
+      setPin('')
+      return
+    }
+
     setChecking(true)
     setError('')
 
@@ -74,12 +90,19 @@ function PinEntry({ onSuccess }) {
       .single()
 
     if (!data?.chef_pin) {
-      // No PIN set — allow any entry (admin hasn't configured it yet)
       onSuccess()
     } else if (data.chef_pin === pin) {
+      setAttempts(0)
       onSuccess()
     } else {
-      setError('Incorrect PIN. Try again.')
+      const newAttempts = attempts + 1
+      setAttempts(newAttempts)
+      if (newAttempts >= MAX_PIN_ATTEMPTS) {
+        setLockedUntil(Date.now() + PIN_LOCKOUT_MS)
+        setError('Too many incorrect attempts. Locked for 5 minutes.')
+      } else {
+        setError(`Incorrect PIN. ${MAX_PIN_ATTEMPTS - newAttempts} attempt${MAX_PIN_ATTEMPTS - newAttempts === 1 ? '' : 's'} remaining.`)
+      }
     }
     setChecking(false)
     setPin('')
@@ -118,10 +141,10 @@ function PinEntry({ onSuccess }) {
 
           <button
             type="submit"
-            disabled={!pin || checking}
+            disabled={!pin || checking || !!isLocked}
             className="w-full py-3.5 rounded-2xl font-bold text-white bg-gradient-to-r from-primary-500 to-primary-600 disabled:opacity-40 transition-opacity shadow-lg"
           >
-            {checking ? 'Checking…' : 'Enter'}
+            {checking ? 'Checking…' : isLocked ? 'Locked' : 'Enter'}
           </button>
         </form>
 

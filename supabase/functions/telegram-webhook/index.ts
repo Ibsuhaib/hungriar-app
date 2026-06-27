@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 import { jsonResponse } from '../_shared/utils.ts'
 
 const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')!
-const WEBHOOK_SECRET = Deno.env.get('TELEGRAM_WEBHOOK_SECRET')!
+const WEBHOOK_SECRET = Deno.env.get('TELEGRAM_WEBHOOK_SECRET')
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
@@ -19,8 +19,13 @@ async function sendMessage(chatId: number, text: string) {
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
 
+  // Always require the webhook secret — if it's not configured, reject all calls
+  if (!WEBHOOK_SECRET) {
+    console.error('TELEGRAM_WEBHOOK_SECRET is not set')
+    return new Response('Server misconfigured', { status: 500 })
+  }
   const incomingSecret = req.headers.get('X-Telegram-Bot-Api-Secret-Token')
-  if (WEBHOOK_SECRET && incomingSecret !== WEBHOOK_SECRET) {
+  if (incomingSecret !== WEBHOOK_SECRET) {
     return new Response('Unauthorized', { status: 401 })
   }
 
@@ -44,6 +49,12 @@ Deno.serve(async (req) => {
 
   if (!phoneNumber) {
     await sendMessage(chatId, '👋 Welcome to *HungriAR*!\n\nPlease use the app to link your Telegram account.')
+    return new Response('OK', { status: 200 })
+  }
+
+  // Basic phone sanity check
+  if (phoneNumber.length > 20 || !/^[\d+\-\s()]+$/.test(phoneNumber)) {
+    await sendMessage(chatId, '❌ Invalid phone number format.')
     return new Response('OK', { status: 200 })
   }
 

@@ -7,6 +7,8 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
@@ -23,25 +25,26 @@ Deno.serve(async (req) => {
   if (!phone_number || !code) {
     return jsonResponse({ error: 'phone_number and code are required' }, 400)
   }
+  if (phone_number.length > 20) return jsonResponse({ error: 'Invalid phone number' }, 400)
+  if (!/^\d{6}$/.test(code)) return jsonResponse({ error: 'Code must be 6 digits' }, 400)
 
-  // Validate OTP
-  const { data: otpRow } = await adminClient
+  // Atomic update: marks the OTP used in a single SQL statement.
+  // If two concurrent requests arrive with the same code, only one UPDATE
+  // will match (used=false), eliminating the TOCTOU replay window.
+  const { data: updated, error: updateError } = await adminClient
     .from('otp_codes')
-    .select('id')
+    .update({ used: true })
     .eq('phone_number', phone_number)
     .eq('code', code)
     .eq('used', false)
     .gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })
     .limit(1)
-    .maybeSingle()
+    .select('id')
 
-  if (!otpRow) {
+  if (updateError || !updated?.length) {
     return jsonResponse({ error: 'Invalid or expired code.' }, 401)
   }
-
-  // Mark OTP as used immediately to prevent replay
-  await adminClient.from('otp_codes').update({ used: true }).eq('id', otpRow.id)
 
   // Get all restaurants linked to this phone
   const { data: links } = await adminClient
@@ -66,7 +69,7 @@ Deno.serve(async (req) => {
       .maybeSingle()
 
     let adminEmail = ''
-    if (adminRow?.user_id) {
+    if (adminRow?.user_id && UUID_RE.test(adminRow.user_id)) {
       const { data: { user } } = await adminClient.auth.admin.getUserById(adminRow.user_id)
       adminEmail = user?.email ?? ''
     }
@@ -79,7 +82,5 @@ Deno.serve(async (req) => {
     })
   }
 
-  // No session created here — the actual Supabase auth session
-  // comes from the email+password login in Layer 2
   return jsonResponse({ restaurants })
 })

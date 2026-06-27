@@ -6,22 +6,17 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const CRON_SECRET = Deno.env.get('CRON_SECRET')
 
-/**
- * Deletes stale rate_limits / admin_sessions rows.
- * Intended to be invoked once a day by Supabase's pg_cron (via
- * `supabase.functions.invoke` from a cron job) or any external scheduler.
- *
- * If CRON_SECRET is set, the caller must send it in the `x-cron-secret`
- * header - this prevents random clients from triggering it repeatedly.
- */
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  if (CRON_SECRET) {
-    const provided = req.headers.get('x-cron-secret')
-    if (provided !== CRON_SECRET) {
-      return jsonResponse({ error: 'Unauthorized' }, 401)
-    }
+  // Always require the cron secret — if it's not configured, block all calls
+  if (!CRON_SECRET) {
+    console.error('CRON_SECRET is not configured')
+    return jsonResponse({ error: 'Server misconfigured' }, 500)
+  }
+  const provided = req.headers.get('x-cron-secret')
+  if (provided !== CRON_SECRET) {
+    return jsonResponse({ error: 'Unauthorized' }, 401)
   }
 
   try {

@@ -7,6 +7,15 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 const MIN_PASSWORD_LENGTH = 8
 const MAX_PASSWORD_LENGTH = 128
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function isValidUUID(v: unknown): v is string {
+  return typeof v === 'string' && UUID_RE.test(v)
+}
+function isValidEmail(v: unknown): v is string {
+  return typeof v === 'string' && EMAIL_RE.test(v) && v.length <= 254
+}
 
 /**
  * POST { action: string, ... }  — super_admin only.
@@ -131,8 +140,8 @@ Deno.serve(async (req) => {
 
     // ── create_restaurant_admin ──────────────────────────────────────────────
     if (body.action === 'create_restaurant_admin') {
-      if (typeof body.email !== 'string' || typeof body.password !== 'string' || typeof body.restaurantId !== 'string') {
-        return jsonResponse({ error: 'email, password and restaurantId are required' }, 400)
+      if (!isValidEmail(body.email) || typeof body.password !== 'string' || !isValidUUID(body.restaurantId)) {
+        return jsonResponse({ error: 'Valid email, password and restaurantId (UUID) are required' }, 400)
       }
       if (body.password.length < MIN_PASSWORD_LENGTH || body.password.length > MAX_PASSWORD_LENGTH) {
         return jsonResponse({ error: `Password must be ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters` }, 400)
@@ -183,7 +192,7 @@ Deno.serve(async (req) => {
 
     // ── delete_restaurant_admin_user ─────────────────────────────────────────
     if (body.action === 'delete_restaurant_admin_user') {
-      if (typeof body.userId !== 'string') return jsonResponse({ error: 'userId is required' }, 400)
+      if (!isValidUUID(body.userId)) return jsonResponse({ error: 'userId must be a valid UUID' }, 400)
 
       const { error } = await supabaseAdmin.auth.admin.deleteUser(body.userId)
       if (error) {
@@ -196,11 +205,11 @@ Deno.serve(async (req) => {
 
     // ── set_owner_phone ──────────────────────────────────────────────────────
     if (body.action === 'set_owner_phone') {
-      if (typeof body.restaurantId !== 'string' || typeof body.phoneNumber !== 'string') {
-        return jsonResponse({ error: 'restaurantId and phoneNumber are required' }, 400)
+      if (!isValidUUID(body.restaurantId) || typeof body.phoneNumber !== 'string') {
+        return jsonResponse({ error: 'restaurantId (UUID) and phoneNumber are required' }, 400)
       }
       const phone = body.phoneNumber.trim()
-      if (!phone) return jsonResponse({ error: 'phoneNumber cannot be empty' }, 400)
+      if (!phone || phone.length > 20) return jsonResponse({ error: 'Invalid phone number' }, 400)
 
       const { error } = await supabaseAdmin
         .from('phone_restaurant_links')
@@ -219,7 +228,7 @@ Deno.serve(async (req) => {
 
     // ── remove_owner_phone ───────────────────────────────────────────────────
     if (body.action === 'remove_owner_phone') {
-      if (typeof body.restaurantId !== 'string') return jsonResponse({ error: 'restaurantId is required' }, 400)
+      if (!isValidUUID(body.restaurantId)) return jsonResponse({ error: 'restaurantId must be a valid UUID' }, 400)
 
       await supabaseAdmin
         .from('phone_restaurant_links')

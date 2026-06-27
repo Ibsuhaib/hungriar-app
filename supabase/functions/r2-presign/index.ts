@@ -24,12 +24,14 @@ const ALLOWED_TYPES = new Set([
   'model/vnd.usdz+zip',
   'application/octet-stream',
 ])
+const ALLOWED_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'glb', 'usdz'])
 
 function sanitizeFileName(name: string): string {
   const lastDot = name.lastIndexOf('.')
-  const ext = lastDot >= 0 ? name.slice(lastDot + 1).toLowerCase() : ''
-  const safeExt = ext.replace(/[^a-z0-9]/g, '').slice(0, 10)
-  return safeExt ? `file.${safeExt}` : 'file'
+  const rawExt = lastDot >= 0 ? name.slice(lastDot + 1).toLowerCase() : ''
+  const ext = rawExt.replace(/[^a-z0-9]/g, '').slice(0, 10)
+  if (!ALLOWED_EXTENSIONS.has(ext)) return 'file'
+  return `file.${ext}`
 }
 
 /**

@@ -25,6 +25,7 @@ Deno.serve(async (req) => {
   }
 
   if (!phone_number) return jsonResponse({ error: 'phone_number is required' }, 400)
+  if (phone_number.length > 20) return jsonResponse({ error: 'Invalid phone number' }, 400)
 
   // Check phone has at least one restaurant linked
   const { data: links } = await supabase
