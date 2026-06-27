@@ -6,11 +6,13 @@ import {
   Banknote, Smartphone, CreditCard, Wallet,
   Plus, Trash2, Printer, ChevronDown,
   TrendingDown, ArrowRight, Sunset,
-  CheckCircle2, AlertTriangle, LayoutDashboard, X,
+  AlertTriangle, X,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { invokeEdgeFunction } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
+import { useSessionStart } from '../../hooks/useSessionStart'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -24,14 +26,16 @@ function getMeta(method) {
   const key = (method || 'cash').toLowerCase()
   return PAYMENT_META[key] || { ...PAYMENT_META.other, label: method }
 }
-function todayISO() { return new Date().toISOString().slice(0, 10) }
-function fmtDate(iso) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+function fmtTime(iso) {
+  return new Date(iso).toLocaleString('en-IN', {
+    day: 'numeric', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  })
 }
 
 // ─── Print ────────────────────────────────────────────────────────────────────
 
-function printReport({ restaurantName, date, collections, expenses, netMap, totalCollected, totalExpenses, currency }) {
+function printReport({ restaurantName, closedAt, collections, expenses, netMap, totalCollected, totalExpenses, currency }) {
   const fmt = (n) => formatCurrency(n, currency)
   const row = (l, v, bold) =>
     `<tr><td style="padding:3px 0;${bold?'font-weight:700':''}">${l}</td>
@@ -48,7 +52,7 @@ tr{border-bottom:1px dashed #e5e7eb}
 .foot{margin-top:12px;text-align:center;font-size:10px;color:#888}</style>
 </head><body>
 <h1>${restaurantName}</h1>
-<p class="sub">Day End Report &mdash; ${fmtDate(date)}</p>
+<p class="sub">Day End Report &mdash; ${fmtTime(closedAt)}</p>
 <p class="sec">Collections</p>
 <table>${collections.map(c=>row(`${getMeta(c.payment_method).label} (${c.count} bills)`,fmt(c.total))).join('')}${row('Total Collected',fmt(totalCollected),true)}</table>
 <p class="sec">Expenses</p>
@@ -78,7 +82,6 @@ function ConfirmModal({ activeOrderCount, totalCollected, totalExpenses, netTota
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
         className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl"
       >
-        {/* drag handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 bg-gray-200 rounded-full" />
         </div>
@@ -90,7 +93,7 @@ function ConfirmModal({ activeOrderCount, totalCollected, totalExpenses, netTota
             </div>
             <div>
               <h2 className="text-base font-bold text-gray-900">End Day?</h2>
-              <p className="text-xs text-gray-400">Dashboard resets fresh for tomorrow</p>
+              <p className="text-xs text-gray-400">Dashboard resets fresh immediately</p>
             </div>
             <button type="button" onClick={onCancel} className="ml-auto p-1.5 rounded-full hover:bg-gray-100">
               <X className="w-4 h-4 text-gray-400" />
@@ -123,6 +126,10 @@ function ConfirmModal({ activeOrderCount, totalCollected, totalExpenses, netTota
             </div>
           </div>
 
+          <p className="text-xs text-gray-400 text-center mb-4">
+            📱 Full report will be sent to the owner's Telegram
+          </p>
+
           <div className="flex gap-3">
             <button type="button" onClick={onCancel}
               className="flex-1 py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
@@ -139,108 +146,17 @@ function ConfirmModal({ activeOrderCount, totalCollected, totalExpenses, netTota
   )
 }
 
-// ─── Closed success screen ────────────────────────────────────────────────────
-
-function ClosedScreen({ closeRecord, currency, onGoToDashboard, onPrint, collections, expenses, netMap, totalCollected, totalExpenses, restaurantName, today }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="max-w-2xl space-y-5"
-    >
-      {/* Hero */}
-      <div className="card text-center py-8">
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ type: 'spring', delay: 0.1, damping: 18 }}
-          className="w-20 h-20 rounded-3xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center mx-auto mb-4 shadow-xl"
-        >
-          <Sunset className="w-10 h-10 text-white" />
-        </motion.div>
-        <h2 className="text-2xl font-bold text-gray-900 font-display">Day Closed!</h2>
-        <p className="text-sm text-gray-500 mt-1">{fmtDate(closeRecord.close_date)}</p>
-        <div className="mt-4 grid grid-cols-3 gap-3">
-          <div className="bg-gray-50 rounded-2xl px-3 py-3">
-            <p className="text-xs text-gray-400 mb-0.5">Collected</p>
-            <p className="text-base font-bold text-gray-900 tabular-nums">{formatCurrency(closeRecord.total_collected, currency)}</p>
-          </div>
-          <div className="bg-rose-50 rounded-2xl px-3 py-3">
-            <p className="text-xs text-gray-400 mb-0.5">Expenses</p>
-            <p className="text-base font-bold text-rose-600 tabular-nums">− {formatCurrency(closeRecord.total_expenses, currency)}</p>
-          </div>
-          <div className="bg-green-50 rounded-2xl px-3 py-3">
-            <p className="text-xs text-gray-400 mb-0.5">Net</p>
-            <p className="text-base font-bold text-green-700 tabular-nums">{formatCurrency(closeRecord.net_total, currency)}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Net per method */}
-      {Object.keys(netMap).length > 0 && (
-        <div className="card p-0 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <p className="text-sm font-bold text-gray-900">Cash in Hand</p>
-          </div>
-          <div className="divide-y divide-gray-50">
-            {Object.entries(netMap).map(([m, net]) => {
-              const meta = getMeta(m)
-              const Icon = meta.Icon
-              const expensed = expenses.filter(e => (e.payment_method||'cash').toLowerCase() === m).reduce((s,e)=>s+Number(e.amount),0)
-              const col = collections.find(c=>c.payment_method===m)?.total ?? 0
-              return (
-                <div key={m} className="flex items-center gap-3 px-4 py-3">
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${meta.iconBg} shadow-sm flex-shrink-0`}>
-                    <Icon className="w-3.5 h-3.5 text-white" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-800">{meta.label}</p>
-                    {expensed > 0 && (
-                      <p className="text-xs text-gray-400">{formatCurrency(col, currency)} − {formatCurrency(expensed, currency)}</p>
-                    )}
-                  </div>
-                  <p className={`text-sm font-bold tabular-nums ${net >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
-                    {formatCurrency(net, currency)}
-                  </p>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onPrint}
-          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
-        >
-          <Printer className="w-4 h-4" /> Print Report
-        </button>
-        <button
-          type="button"
-          onClick={onGoToDashboard}
-          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-primary-600 hover:bg-primary-500 text-white text-sm font-bold transition-colors shadow-sm"
-        >
-          <LayoutDashboard className="w-4 h-4" /> Go to Dashboard
-        </button>
-      </div>
-    </motion.div>
-  )
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function DayEnd() {
   const { restaurant } = useAuth()
   const navigate  = useNavigate()
   const currency  = restaurant?.currency || '₹'
-  const today     = todayISO()
+
+  const { sessionStart, refresh: refreshSession } = useSessionStart(restaurant?.id)
 
   const [collections,  setCollections]  = useState([])
   const [expenses,     setExpenses]     = useState([])
-  const [closeRecord,  setCloseRecord]  = useState(null)  // today's day_close row, if exists
   const [activeOrders, setActiveOrders] = useState(0)
   const [loading,      setLoading]      = useState(true)
 
@@ -255,28 +171,24 @@ export default function DayEnd() {
   const descRef = useRef(null)
 
   const load = useCallback(async () => {
+    if (!sessionStart) return
     setLoading(true)
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
 
-    const [collRes, expRes, closeRes, activeRes] = await Promise.all([
+    const [collRes, expRes, activeRes] = await Promise.all([
+      // Collections: all bills settled since session started
       supabase
         .from('billing_history')
         .select('payment_method, total_amount')
         .eq('restaurant_id', restaurant.id)
-        .gte('bill_date', today)
-        .lt('bill_date', tomorrow),
+        .gte('bill_date', sessionStart),
+      // Expenses: all expenses added since session started
       supabase
         .from('expenses')
         .select('*')
         .eq('restaurant_id', restaurant.id)
-        .eq('expense_date', today)
+        .gte('created_at', sessionStart)
         .order('created_at'),
-      supabase
-        .from('day_closes')
-        .select('*')
-        .eq('restaurant_id', restaurant.id)
-        .eq('close_date', today)
-        .maybeSingle(),
+      // Active orders count
       supabase
         .from('orders')
         .select('id', { count: 'exact', head: true })
@@ -294,11 +206,10 @@ export default function DayEnd() {
       }
       setCollections(Object.values(map).sort((a, b) => b.total - a.total))
     }
-    if (!expRes.error)   setExpenses(expRes.data || [])
-    if (!closeRes.error) setCloseRecord(closeRes.data || null)
+    if (!expRes.error)    setExpenses(expRes.data || [])
     if (!activeRes.error) setActiveOrders(activeRes.count ?? 0)
     setLoading(false)
-  }, [restaurant.id, today])
+  }, [restaurant?.id, sessionStart])
 
   useEffect(() => { load() }, [load])
 
@@ -325,6 +236,7 @@ export default function DayEnd() {
     if (!desc.trim() || !amt || amt <= 0) return
     setSaving(true)
     try {
+      const today = new Date().toISOString().slice(0, 10)
       const { error } = await supabase.from('expenses').insert({
         restaurant_id: restaurant.id, description: desc.trim(),
         amount: amt, payment_method: method, expense_date: today,
@@ -351,29 +263,45 @@ export default function DayEnd() {
   const handleEndDay = async () => {
     setClosing(true)
     try {
-      // Cancel all remaining active orders first
-      const { error: cancelError } = await supabase
-        .from('orders')
-        .update({ status: 'cancelled' })
-        .eq('restaurant_id', restaurant.id)
-        .in('status', ['pending', 'preparing', 'served'])
-      if (cancelError) throw cancelError
+      const today = new Date().toISOString().slice(0, 10)
 
+      // close_day RPC: cancels active orders + records the close
       const { error } = await supabase.rpc('close_day', {
         p_restaurant_id:   restaurant.id,
         p_close_date:      today,
         p_total_collected: totalCollected,
         p_total_expenses:  totalExpenses,
         p_net_total:       netTotal,
-        p_summary_json:    {
-          collections,
-          expense_count: expenses.length,
-          net_map:       netMap,
-        },
+        p_summary_json:    { collections, expense_count: expenses.length, net_map: netMap },
       })
       if (error) throw error
-      toast.success('Day closed! Dashboard is now fresh.')
+
+      // Send Telegram report to owner (non-blocking — don't fail End Day if report fails)
+      try {
+        await invokeEdgeFunction('send-day-report', {
+          restaurantId:   restaurant.id,
+          restaurantName: restaurant.name || 'Restaurant',
+          currency,
+          collections,
+          expenses,
+          netMap,
+          totalCollected,
+          totalExpenses,
+          netTotal,
+          closedAt: new Date().toISOString(),
+        })
+      } catch (reportErr) {
+        console.warn('Telegram report failed (non-fatal):', reportErr)
+      }
+
+      toast.success('Day closed! Report sent to Telegram.')
       setShowConfirm(false)
+
+      // Mark "just ended" for the dashboard banner
+      localStorage.setItem(`hungriar_day_ended_${restaurant.id}`, Date.now().toString())
+
+      // Refresh session so Dashboard + next DayEnd load use new sessionStart
+      await refreshSession()
       navigate('/admin')
     } catch (err) {
       toast.error(err.message || 'Failed to close day')
@@ -384,13 +312,14 @@ export default function DayEnd() {
 
   const handlePrint = () => printReport({
     restaurantName: restaurant.name || 'Restaurant',
-    date: today, collections, expenses, netMap,
+    closedAt: new Date().toISOString(),
+    collections, expenses, netMap,
     totalCollected, totalExpenses, currency,
   })
 
   // ── Loading ───────────────────────────────────────────────────────────────
 
-  if (loading) {
+  if (loading || !sessionStart) {
     return (
       <div className="space-y-4 max-w-2xl">
         <div className="flex justify-between">
@@ -404,35 +333,7 @@ export default function DayEnd() {
     )
   }
 
-  // ── Already closed today ───────────────────────────────────────────────────
-
-  if (closeRecord) {
-    return (
-      <div className="max-w-2xl space-y-4">
-        <ClosedScreen
-          closeRecord={closeRecord}
-          currency={currency}
-          onGoToDashboard={() => navigate('/admin')}
-          onPrint={handlePrint}
-          collections={collections}
-          expenses={expenses}
-          netMap={netMap}
-          totalCollected={totalCollected}
-          totalExpenses={totalExpenses}
-          restaurantName={restaurant.name || 'Restaurant'}
-          today={today}
-        />
-        <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3">
-          <CheckCircle2 className="w-4 h-4 text-blue-500 flex-shrink-0" />
-          <p className="text-xs text-blue-700 font-medium">
-            Expense panel resets fresh tomorrow. Come back then to start a new day.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Normal day-end view ────────────────────────────────────────────────────
+  // ── Main view ─────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-5 max-w-2xl pb-28">
@@ -440,7 +341,7 @@ export default function DayEnd() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs text-gray-400 font-medium uppercase tracking-widest">Day End</p>
-          <p className="text-sm font-semibold text-gray-600">{fmtDate(today)}</p>
+          <p className="text-sm font-semibold text-gray-600">Since {fmtTime(sessionStart)}</p>
         </div>
         <button
           type="button" onClick={handlePrint}
@@ -453,11 +354,11 @@ export default function DayEnd() {
       {/* Today's Collections */}
       <div className="card p-0 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
-          <h2 className="text-sm font-bold text-gray-900">Today's Collections</h2>
-          <p className="text-xs text-gray-400 mt-0.5">From settled bills today</p>
+          <h2 className="text-sm font-bold text-gray-900">Collections This Session</h2>
+          <p className="text-xs text-gray-400 mt-0.5">From settled bills since last day end</p>
         </div>
         {collections.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-8">No bills settled today yet.</p>
+          <p className="text-sm text-gray-400 text-center py-8">No bills settled this session yet.</p>
         ) : (
           <>
             <div className="divide-y divide-gray-50">
@@ -525,7 +426,7 @@ export default function DayEnd() {
       {expenses.length > 0 && (
         <div className="card p-0 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900">Today's Expenses</h2>
+            <h2 className="text-sm font-bold text-gray-900">Expenses This Session</h2>
             <span className="text-xs font-bold text-rose-600">− {formatCurrency(totalExpenses, currency)}</span>
           </div>
           <div className="divide-y divide-gray-50">
@@ -603,7 +504,7 @@ export default function DayEnd() {
         </div>
       )}
 
-      {/* ── Sticky End Day bar ─────────────────────────────────────────────── */}
+      {/* Sticky End Day bar */}
       <div className="fixed bottom-0 left-0 right-0 z-30 p-4 bg-white/80 backdrop-blur-md border-t border-gray-100">
         <div className="max-w-2xl mx-auto">
           <button
@@ -617,7 +518,7 @@ export default function DayEnd() {
         </div>
       </div>
 
-      {/* Confirmation bottom sheet */}
+      {/* Confirmation sheet */}
       <AnimatePresence>
         {showConfirm && (
           <ConfirmModal

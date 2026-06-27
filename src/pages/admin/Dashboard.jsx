@@ -6,6 +6,7 @@ import { Clock, CheckCircle2, TrendingUp, ArrowRight, Bell, BellOff, ChefHat, Su
 import { useAuth } from '../../contexts/AuthContext'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { useRateLimit } from '../../hooks/useRateLimit'
+import { useSessionStart } from '../../hooks/useSessionStart'
 import { supabase } from '../../lib/supabase'
 import SubscriptionBanner from '../../components/SubscriptionBanner'
 import OrderCard from '../../components/OrderCard'
@@ -97,31 +98,22 @@ const QUICK_LINKS = [
 export default function Dashboard() {
   const { restaurant, user } = useAuth()
   const { checkAdminLimit } = useRateLimit()
-  const [settledToday, setSettledToday]   = useState({ count: 0, revenue: 0 })
-  const [isTodayClosed, setIsTodayClosed] = useState(false)
+  const { sessionStart } = useSessionStart(restaurant?.id)
+  const [settledToday, setSettledToday] = useState({ count: 0, revenue: 0 })
 
-  // Check if today's day has been closed
-  useEffect(() => {
-    if (!restaurant?.id) return
-    const today = new Date().toISOString().slice(0, 10)
-    supabase
-      .from('day_closes')
-      .select('id', { count: 'exact', head: true })
-      .eq('restaurant_id', restaurant.id)
-      .eq('close_date', today)
-      .then(({ count }) => setIsTodayClosed((count ?? 0) > 0))
-  }, [restaurant?.id])
+  // Show "just ended" banner for 10 minutes after End Day
+  const justEndedKey = restaurant?.id ? `hungriar_day_ended_${restaurant.id}` : null
+  const justEndedAt  = justEndedKey ? Number(localStorage.getItem(justEndedKey) ?? 0) : 0
+  const isTodayClosed = justEndedAt > 0 && Date.now() - justEndedAt < 10 * 60 * 1000
 
   useEffect(() => {
-    if (!restaurant?.id) return
+    if (!restaurant?.id || !sessionStart) return
     function fetchSettled() {
-      const todayStart = new Date()
-      todayStart.setHours(0, 0, 0, 0)
       supabase
         .from('billing_history')
         .select('orders_json, total_amount')
         .eq('restaurant_id', restaurant.id)
-        .gte('bill_date', todayStart.toISOString())
+        .gte('bill_date', sessionStart)
         .then(({ data }) => {
           const settled = (data || []).reduce(
             (acc, row) => ({
@@ -136,7 +128,7 @@ export default function Dashboard() {
     fetchSettled()
     const timer = setInterval(fetchSettled, 15000)
     return () => clearInterval(timer)
-  }, [restaurant?.id])
+  }, [restaurant?.id, sessionStart])
 
   const handleNewOrder = useCallback((order) => {
     playNotificationSound()
@@ -150,17 +142,17 @@ export default function Dashboard() {
   const { orders, loading, patchOrder, refetch } = useRealtimeOrders({ restaurantId: restaurant?.id, onInsert: handleNewOrder, pollInterval: 3000 })
 
   const stats = useMemo(() => {
-    if (isTodayClosed) return { pending: 0, completedToday: 0, todayRevenue: 0 }
-    const todayKey = new Date().toDateString()
-    const todayOrders = orders.filter((o) => new Date(o.order_time).toDateString() === todayKey)
-    const activeCompletedToday = todayOrders.filter((o) => o.status === 'completed')
+    if (!sessionStart) return { pending: 0, completedToday: 0, todayRevenue: 0 }
+    const sessionDate = new Date(sessionStart)
+    const completedSinceStart = orders.filter(
+      (o) => o.status === 'completed' && new Date(o.order_time) >= sessionDate,
+    )
     return {
       pending: orders.filter((o) => o.status !== 'completed' && o.status !== 'cancelled').length,
-      completedToday: activeCompletedToday.length + settledToday.count,
-      todayRevenue:
-        activeCompletedToday.reduce((sum, o) => sum + Number(o.total_amount), 0) + settledToday.revenue,
+      completedToday: completedSinceStart.length + settledToday.count,
+      todayRevenue: completedSinceStart.reduce((sum, o) => sum + Number(o.total_amount), 0) + settledToday.revenue,
     }
-  }, [orders, settledToday, isTodayClosed])
+  }, [orders, settledToday, sessionStart])
 
   const activeOrders = useMemo(
     () => isTodayClosed ? [] : orders.filter((o) => o.status !== 'completed' && o.status !== 'cancelled').slice(0, 6),
