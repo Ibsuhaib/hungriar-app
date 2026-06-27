@@ -42,32 +42,38 @@ export default function OrderStatus() {
   const currency = restaurant?.currency || '₹'
 
   useEffect(() => {
-    let cancelled = false
+    let isMounted = true
+    const storageKey = `${ORDERS_STORAGE_PREFIX}${restaurantSlug}`
 
     async function loadPastOrders() {
       setPastLoading(true)
       try {
-        const stored = JSON.parse(
-          localStorage.getItem(`${ORDERS_STORAGE_PREFIX}${restaurantSlug}`) || '[]'
-        )
+        const stored = JSON.parse(localStorage.getItem(storageKey) || '[]')
         const otherIds = stored.filter((id) => id !== orderId)
         if (otherIds.length === 0) {
-          if (!cancelled) setPastOrders([])
+          if (isMounted) setPastOrders([])
           return
         }
         const { data, error } = await supabase
           .from('orders')
           .select('*, order_items(*), tables(table_number)')
           .in('id', otherIds)
+          .neq('status', 'cancelled')   // never show cancelled orders to customer
           .order('order_time', { ascending: false })
-        if (!error && !cancelled) setPastOrders(data || [])
+        if (!isMounted) return
+        const rows = error ? [] : (data || [])
+        setPastOrders(rows)
+        // Remove stale IDs (settled/deleted orders) from localStorage
+        const liveIds = new Set(rows.map((o) => o.id))
+        const cleaned = stored.filter((id) => id === orderId || liveIds.has(id))
+        localStorage.setItem(storageKey, JSON.stringify(cleaned))
       } finally {
-        if (!cancelled) setPastLoading(false)
+        if (isMounted) setPastLoading(false)
       }
     }
 
     loadPastOrders()
-    return () => { cancelled = true }
+    return () => { isMounted = false }
   }, [restaurantSlug, orderId])
 
   if (loading) {
