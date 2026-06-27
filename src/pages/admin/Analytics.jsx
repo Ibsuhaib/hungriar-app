@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
@@ -6,26 +6,114 @@ import {
 import {
   TrendingUp, ShoppingBag, DollarSign, Award,
   Banknote, Smartphone, CreditCard, Wallet,
-  Tag, RotateCcw, TrendingDown,
+  Tag, RotateCcw, TrendingDown, HandCoins, X,
 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import toast from 'react-hot-toast'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
 const CHART_COLORS = ['#e76f51', '#2a9d8f', '#f4a261', '#264653', '#e9c46a', '#a8dadc']
 
-// Payment method display config
 const PAYMENT_META = {
-  cash:   { label: 'Cash',   Icon: Banknote,    bg: 'bg-green-50',   icon: 'bg-gradient-to-br from-green-400 to-green-600',   text: 'text-green-700'  },
-  upi:    { label: 'UPI',    Icon: Smartphone,  bg: 'bg-blue-50',    icon: 'bg-gradient-to-br from-blue-400 to-blue-600',     text: 'text-blue-700'   },
-  card:   { label: 'Card',   Icon: CreditCard,  bg: 'bg-violet-50',  icon: 'bg-gradient-to-br from-violet-400 to-violet-600', text: 'text-violet-700' },
-  other:  { label: 'Other',  Icon: Wallet,      bg: 'bg-amber-50',   icon: 'bg-gradient-to-br from-amber-400 to-amber-600',   text: 'text-amber-700'  },
+  cash:  { label: 'Cash',  Icon: Banknote,   bg: 'bg-green-50',   icon: 'bg-gradient-to-br from-green-400 to-green-600',   text: 'text-green-700'  },
+  upi:   { label: 'UPI',   Icon: Smartphone, bg: 'bg-blue-50',    icon: 'bg-gradient-to-br from-blue-400 to-blue-600',     text: 'text-blue-700'   },
+  card:  { label: 'Card',  Icon: CreditCard, bg: 'bg-violet-50',  icon: 'bg-gradient-to-br from-violet-400 to-violet-600', text: 'text-violet-700' },
+  other: { label: 'Other', Icon: Wallet,     bg: 'bg-amber-50',   icon: 'bg-gradient-to-br from-amber-400 to-amber-600',   text: 'text-amber-700'  },
 }
-
-function getPaymentMeta(method) {
+function getMeta(method) {
   const key = (method || 'cash').toLowerCase()
   return PAYMENT_META[key] || { ...PAYMENT_META.other, label: method }
 }
+
+// ─── Collect bottom sheet ─────────────────────────────────────────────────────
+
+function CollectSheet({ method, netAmount, currency, onClose, onSave, saving }) {
+  const meta = getMeta(method)
+  const Icon = meta.Icon
+  const [amount, setAmount] = useState(netAmount > 0 ? String(Math.floor(netAmount)) : '')
+  const [note,   setNote]   = useState(`${meta.label} collection`)
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    const amt = Number(amount)
+    if (!amt || amt <= 0) return
+    onSave({ method, amount: amt, note: note.trim() || `${meta.label} collection` })
+  }
+
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl"
+      >
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 bg-gray-200 rounded-full" />
+        </div>
+
+        <div className="px-5 pb-8 pt-2">
+          <div className="flex items-center gap-3 mb-5">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${meta.icon} shadow-sm flex-shrink-0`}>
+              <Icon className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-base font-bold text-gray-900">Collect {meta.label}</h2>
+              <p className="text-xs text-gray-400">
+                Net available: <span className="font-semibold text-gray-600">{formatCurrency(netAmount, currency)}</span>
+              </p>
+            </div>
+            <button type="button" onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100">
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Amount to Collect</label>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                min="0.01"
+                step="0.01"
+                required
+                autoFocus
+                className="input w-full text-lg font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Note</label>
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                maxLength={120}
+                className="input w-full"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={saving || !amount || Number(amount) <= 0}
+              className="w-full py-3 rounded-2xl bg-primary-600 hover:bg-primary-500 text-white text-sm font-bold transition-colors disabled:opacity-40"
+            >
+              {saving ? 'Recording…' : `Record ${meta.label} Collection`}
+            </button>
+          </form>
+        </div>
+      </motion.div>
+    </>
+  )
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function CustomTooltip({ active, payload, label, currency }) {
   if (!active || !payload?.length) return null
@@ -56,29 +144,51 @@ function StatCard({ icon: Icon, label, value, sub, color }) {
   )
 }
 
+// ─── Main page ────────────────────────────────────────────────────────────────
+
 export default function Analytics() {
   const { restaurant } = useAuth()
   const currency = restaurant?.currency || '₹'
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      const { data: result, error: rpcError } = await supabase.rpc('get_restaurant_analytics', {
-        p_restaurant_id: restaurant.id,
-      })
-      if (!cancelled) {
-        if (rpcError) setError(rpcError.message)
-        else setData(result)
-        setLoading(false)
-      }
-    }
-    load()
-    return () => { cancelled = true }
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
+
+  // Collect sheet state
+  const [collectMethod, setCollectMethod] = useState(null) // method string or null
+  const [saving,        setSaving]        = useState(false)
+
+  const loadAnalytics = useCallback(async () => {
+    const { data: result, error: rpcError } = await supabase.rpc('get_restaurant_analytics', {
+      p_restaurant_id: restaurant.id,
+    })
+    if (rpcError) setError(rpcError.message)
+    else { setData(result); setError(null) }
+    setLoading(false)
   }, [restaurant.id])
+
+  useEffect(() => { loadAnalytics() }, [loadAnalytics])
+
+  const handleCollect = async ({ method, amount, note }) => {
+    setSaving(true)
+    try {
+      const { error: insErr } = await supabase.from('expenses').insert({
+        restaurant_id:  restaurant.id,
+        description:    note,
+        amount,
+        payment_method: method,
+        expense_date:   new Date().toISOString().slice(0, 10),
+      })
+      if (insErr) throw insErr
+      toast.success(`${getMeta(method).label} collection recorded`)
+      setCollectMethod(null)
+      loadAnalytics()
+    } catch (err) {
+      toast.error(err.message || 'Failed to record collection')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -86,9 +196,7 @@ export default function Analytics() {
         <div className="grid grid-cols-2 gap-4">
           {Array.from({ length: 2 }).map((_, i) => <div key={i} className="skeleton h-24 rounded-2xl" />)}
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-20 rounded-2xl" />)}
-        </div>
+        <div className="skeleton h-64 rounded-2xl" />
         {Array.from({ length: 2 }).map((_, i) => <div key={i} className="skeleton h-64 rounded-2xl" />)}
       </div>
     )
@@ -115,54 +223,59 @@ export default function Analytics() {
 
   const pieData = topItemsData.map((item) => ({ name: item.name, value: item.revenue }))
 
-  const paymentBreakdown  = data.payment_breakdown  || []
-  const expenseBreakdown  = data.expense_breakdown  || []
-  const totalDiscount     = Number(data.total_discount  || 0)
-  const totalRoundOff     = Number(data.total_round_off || 0)
-  const discountCount     = Number(data.discount_count  || 0)
-  const totalExpenses     = Number(data.total_expenses  || 0)
+  const paymentBreakdown = data.payment_breakdown || []
+  const expenseBreakdown = data.expense_breakdown || []
+  const totalDiscount    = Number(data.total_discount  || 0)
+  const totalRoundOff    = Number(data.total_round_off || 0)
+  const discountCount    = Number(data.discount_count  || 0)
+  const totalExpenses    = Number(data.total_expenses  || 0)
 
-  // build lookup maps for the payment section
   const collectedByMethod = Object.fromEntries(paymentBreakdown.map((r) => [r.payment_method, r]))
   const expenseByMethod   = Object.fromEntries(expenseBreakdown.map((r) => [r.payment_method, r.total]))
-  const allMethods        = [...new Set([...paymentBreakdown.map((r) => r.payment_method), ...expenseBreakdown.map((r) => r.payment_method)])]
+  const allMethods        = [...new Set([
+    ...paymentBreakdown.map((r) => r.payment_method),
+    ...expenseBreakdown.map((r) => r.payment_method),
+  ])]
+
+  // net available per method (what's physically in register / pending transfer)
+  const netByMethod = Object.fromEntries(
+    allMethods.map((m) => [m, (collectedByMethod[m]?.total ?? 0) - (expenseByMethod[m] ?? 0)])
+  )
 
   return (
     <div className="space-y-6">
 
-      {/* ── Summary cards ─────────────────────────────────────────────────── */}
+      {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard
-          icon={ShoppingBag}
-          label="Total Orders"
-          value={data.total_orders}
+          icon={ShoppingBag} label="Total Orders" value={data.total_orders}
           color={{ bg: 'bg-primary-50', icon: 'bg-gradient-to-br from-primary-400 to-primary-600', text: 'text-primary-700' }}
         />
         <StatCard
-          icon={DollarSign}
-          label="Total Revenue"
-          value={formatCurrency(data.total_revenue, currency)}
+          icon={DollarSign} label="Total Revenue" value={formatCurrency(data.total_revenue, currency)}
           color={{ bg: 'bg-secondary-50', icon: 'bg-gradient-to-br from-secondary-400 to-secondary-600', text: 'text-secondary-700' }}
         />
       </div>
 
-      {/* ── Payment breakdown ─────────────────────────────────────────────── */}
+      {/* Payment breakdown + Collect */}
       {(paymentBreakdown.length > 0 || expenseBreakdown.length > 0) && (
         <div className="card p-0 overflow-hidden">
           <div className="px-4 pt-4 pb-3 border-b border-gray-100">
             <h2 className="text-sm font-bold text-gray-900 font-display">Payment Collection</h2>
             <p className="text-xs text-gray-400 mt-0.5">All-time totals per payment method</p>
           </div>
+
           <div className="divide-y divide-gray-50">
             {allMethods.map((m) => {
-              const meta       = getPaymentMeta(m)
-              const Icon       = meta.Icon
-              const collected  = collectedByMethod[m]  || { count: 0, total: 0 }
-              const expensed   = expenseByMethod[m]    || 0
-              const net        = collected.total - expensed
+              const meta      = getMeta(m)
+              const Icon      = meta.Icon
+              const collected = collectedByMethod[m] || { count: 0, total: 0 }
+              const expensed  = expenseByMethod[m]   || 0
+              const net       = netByMethod[m]
+
               return (
                 <div key={m} className="px-4 py-3">
-                  <div className="flex items-center gap-3 mb-1">
+                  <div className="flex items-center gap-3">
                     <div className={`w-9 h-9 flex-shrink-0 rounded-xl flex items-center justify-center ${meta.icon} shadow-sm`}>
                       <Icon className="w-4 h-4 text-white" />
                     </div>
@@ -170,18 +283,38 @@ export default function Analytics() {
                       <p className="text-sm font-semibold text-gray-800">{meta.label}</p>
                       <p className="text-xs text-gray-400">{collected.count} bill{collected.count !== 1 ? 's' : ''}</p>
                     </div>
-                    <p className="text-base font-bold text-gray-900 tabular-nums">
-                      {formatCurrency(collected.total, currency)}
-                    </p>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <p className="text-base font-bold text-gray-900 tabular-nums">
+                        {formatCurrency(collected.total, currency)}
+                      </p>
+                      {/* Collect button */}
+                      {net > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setCollectMethod(m)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-primary-50 text-primary-600 text-xs font-bold hover:bg-primary-100 transition-colors border border-primary-100"
+                        >
+                          <HandCoins className="w-3 h-3" /> Collect
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {expensed > 0 && (
-                    <div className="ml-12 flex items-center justify-between text-xs">
-                      <span className="text-rose-400 flex items-center gap-1">
-                        <TrendingDown className="w-3 h-3" /> Expenses − {formatCurrency(expensed, currency)}
-                      </span>
-                      <span className={`font-bold tabular-nums ${net >= 0 ? 'text-gray-700' : 'text-red-600'}`}>
-                        Net {formatCurrency(net, currency)}
-                      </span>
+
+                  {(expensed > 0 || net !== collected.total) && (
+                    <div className="ml-12 mt-1.5 space-y-0.5">
+                      {expensed > 0 && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-rose-400 flex items-center gap-1">
+                            <TrendingDown className="w-3 h-3" /> Expenses / Collections − {formatCurrency(expensed, currency)}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-400">Net in hand</span>
+                        <span className={`font-bold tabular-nums ${net >= 0 ? 'text-gray-700' : 'text-red-600'}`}>
+                          {formatCurrency(net, currency)}
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -189,7 +322,7 @@ export default function Analytics() {
             })}
           </div>
 
-          {/* Totals row */}
+          {/* Net total row */}
           <div className="border-t border-gray-100 px-4 py-3 flex items-center justify-between bg-gray-50">
             <div>
               <p className="text-sm font-bold text-gray-800">Net Total</p>
@@ -230,7 +363,7 @@ export default function Analytics() {
         </div>
       )}
 
-      {/* ── Daily orders chart ────────────────────────────────────────────── */}
+      {/* Daily orders chart */}
       <div className="card">
         <div className="flex items-center gap-2 mb-5">
           <TrendingUp className="w-4 h-4 text-primary-500" />
@@ -245,17 +378,14 @@ export default function Analytics() {
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} allowDecimals={false} />
               <Tooltip content={<CustomTooltip />} />
-              <Line
-                type="monotone" dataKey="orders" stroke="#e76f51" strokeWidth={2.5}
-                dot={{ fill: '#e76f51', r: 4, strokeWidth: 0 }}
-                activeDot={{ r: 6, fill: '#d3552f' }}
-              />
+              <Line type="monotone" dataKey="orders" stroke="#e76f51" strokeWidth={2.5}
+                dot={{ fill: '#e76f51', r: 4, strokeWidth: 0 }} activeDot={{ r: 6, fill: '#d3552f' }} />
             </LineChart>
           </ResponsiveContainer>
         )}
       </div>
 
-      {/* ── Top items bar chart ───────────────────────────────────────────── */}
+      {/* Top items bar chart */}
       {topItemsData.length > 0 && (
         <div className="card">
           <div className="flex items-center gap-2 mb-5">
@@ -274,7 +404,7 @@ export default function Analytics() {
         </div>
       )}
 
-      {/* ── Revenue pie chart ─────────────────────────────────────────────── */}
+      {/* Revenue pie chart */}
       {pieData.length > 0 && (
         <div className="card">
           <div className="flex items-center gap-2 mb-5">
@@ -305,7 +435,7 @@ export default function Analytics() {
         </div>
       )}
 
-      {/* ── Item breakdown table ──────────────────────────────────────────── */}
+      {/* Item breakdown table */}
       {topItemsData.length > 0 && (
         <div className="card overflow-hidden p-0">
           <div className="px-4 py-3 border-b border-gray-100">
@@ -331,6 +461,20 @@ export default function Analytics() {
           </table>
         </div>
       )}
+
+      {/* Collect bottom sheet */}
+      <AnimatePresence>
+        {collectMethod && (
+          <CollectSheet
+            method={collectMethod}
+            netAmount={netByMethod[collectMethod] ?? 0}
+            currency={currency}
+            onClose={() => setCollectMethod(null)}
+            onSave={handleCollect}
+            saving={saving}
+          />
+        )}
+      </AnimatePresence>
 
     </div>
   )
