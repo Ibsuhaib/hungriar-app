@@ -56,47 +56,60 @@ export default function OrderCard({ order, onStatusChange, onCancelItem, onCance
       {/* Items list */}
       <div className="px-4 py-3">
         <ul className="space-y-1.5">
-          {items.map((item) => (
-            <li key={item.id} className="text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className={`min-w-0 flex-1 ${item.cancelled ? 'text-gray-300' : 'text-gray-600'}`}>
-                  <span className={`font-medium ${item.cancelled ? 'text-gray-300 line-through' : 'text-gray-800'}`}>
-                    {item.quantity}×
-                  </span>{' '}
-                  <span className={item.cancelled ? 'line-through' : ''}>{item.item_name}</span>
-                  {item.cancelled && (
-                    <span className="ml-1.5 text-[10px] font-semibold text-red-400 uppercase tracking-wide no-underline" style={{ textDecoration: 'none' }}>
-                      cancelled
-                    </span>
-                  )}
+          {isCancelled ? (
+            // Cancelled order: show all items cleanly so the history is readable
+            items.map((item) => (
+              <li key={item.id} className="text-sm flex items-center justify-between gap-3">
+                <span className="text-gray-500 min-w-0 flex-1">
+                  <span className="font-medium text-gray-600">{item.quantity}×</span>{' '}
+                  {item.item_name}
                 </span>
-
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {!item.cancelled && (
-                    <span className="font-semibold text-gray-900 text-xs">
-                      {formatCurrency(item.quantity * item.unit_price, currency)}
+                <span className="text-xs text-gray-400 flex-shrink-0">
+                  {formatCurrency(item.quantity * item.unit_price, currency)}
+                </span>
+              </li>
+            ))
+          ) : (
+            // Active order: only show non-cancelled items
+            <>
+              {items.filter((i) => !i.cancelled).map((item) => (
+                <li key={item.id} className="text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 flex-1 text-gray-600">
+                      <span className="font-medium text-gray-800">{item.quantity}×</span>{' '}
+                      {item.item_name}
                     </span>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="font-semibold text-gray-900 text-xs">
+                        {formatCurrency(item.quantity * item.unit_price, currency)}
+                      </span>
+                      {onCancelItem && !isCompleted && (
+                        <button
+                          type="button"
+                          onClick={() => onCancelItem(order.id, item.id, item.item_name)}
+                          className="text-gray-300 hover:text-red-400 transition-colors p-0.5 rounded"
+                          aria-label={`Cancel ${item.item_name}`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {item.notes && (
+                    <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-1 mt-1 italic">
+                      {item.notes}
+                    </p>
                   )}
-                  {onCancelItem && !item.cancelled && !isCancelled && !isCompleted && (
-                    <button
-                      type="button"
-                      onClick={() => onCancelItem(order.id, item.id, item.item_name)}
-                      className="text-gray-300 hover:text-red-400 transition-colors p-0.5 rounded"
-                      aria-label={`Cancel ${item.item_name}`}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {item.notes && !item.cancelled && (
-                <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-1 mt-1 italic">
-                  {item.notes}
-                </p>
+                </li>
+              ))}
+              {/* Small note if any items were cancelled from this order */}
+              {items.some((i) => i.cancelled) && (
+                <li className="text-[11px] text-red-400 pt-1 border-t border-dashed border-gray-100">
+                  {items.filter((i) => i.cancelled).map((i) => i.item_name).join(', ')} — removed
+                </li>
               )}
-            </li>
-          ))}
+            </>
+          )}
         </ul>
 
         <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
