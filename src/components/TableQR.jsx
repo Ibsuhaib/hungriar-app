@@ -1,33 +1,134 @@
-import { useState, useCallback } from 'react'
-import { QRCodeCanvas } from 'qrcode.react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import QRCodeStyling from 'qr-code-styling'
 import toast from 'react-hot-toast'
+import { Download, Link2, RefreshCw } from 'lucide-react'
 import { invokeEdgeFunction } from '../lib/supabase'
-import { buildQrUrl, downloadQrCanvas, copyToClipboard } from '../utils/qrGenerator'
+import { buildQrUrl, copyToClipboard } from '../utils/qrGenerator'
 import { useRateLimit } from '../hooks/useRateLimit'
 import { useAuth } from '../contexts/AuthContext'
 
 /**
- * Generates and displays a permanent signed QR code for a single table.
- * Token is HMAC-signed (never expires). Regenerate only if a sticker is lost.
+ * Permanent signed QR code (HMAC token, never expires).
+ * Supports 4 visual styles — pick before downloading for print.
  */
+
+const QR_SIZE = 200
+
+const QR_STYLES = [
+  {
+    id: 'classic',
+    label: 'Classic',
+    dot: '#111827',
+    bg: '#ffffff',
+    options: {
+      dotsOptions:          { type: 'square',        color: '#111827' },
+      cornersSquareOptions: { type: 'square',        color: '#111827' },
+      cornersDotOptions:    { type: 'square',        color: '#111827' },
+      backgroundOptions:    { color: '#ffffff' },
+    },
+  },
+  {
+    id: 'branded',
+    label: 'Branded',
+    dot: '#d3552f',
+    bg: '#ffffff',
+    options: {
+      dotsOptions:          { type: 'rounded',       color: '#d3552f' },
+      cornersSquareOptions: { type: 'extra-rounded', color: '#d3552f' },
+      cornersDotOptions:    { type: 'dot',           color: '#d3552f' },
+      backgroundOptions:    { color: '#ffffff' },
+    },
+  },
+  {
+    id: 'dark',
+    label: 'Dark',
+    dot: '#a5b4fc',
+    bg: '#1e1b4b',
+    options: {
+      dotsOptions:          { type: 'dots',          color: '#e0e7ff' },
+      cornersSquareOptions: { type: 'extra-rounded', color: '#a5b4fc' },
+      cornersDotOptions:    { type: 'dot',           color: '#a5b4fc' },
+      backgroundOptions:    { color: '#1e1b4b' },
+    },
+  },
+  {
+    id: 'elegant',
+    label: 'Elegant',
+    dot: '#1a1a2e',
+    bg: '#fffbf5',
+    options: {
+      dotsOptions:          { type: 'classy-rounded', color: '#1a1a2e' },
+      cornersSquareOptions: { type: 'extra-rounded',  color: '#d3552f' },
+      cornersDotOptions:    { type: 'dot',            color: '#d3552f' },
+      backgroundOptions:    { color: '#fffbf5' },
+    },
+  },
+]
+
+// Tiny swatch preview that shows how the style looks
+function StyleSwatch({ style, selected, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={style.label}
+      style={{ background: style.bg }}
+      className={`relative flex-1 h-10 rounded-xl border-2 transition-all duration-150 flex items-center justify-center gap-1.5 overflow-hidden
+        ${selected ? 'border-primary-500 shadow-md scale-105' : 'border-transparent hover:border-gray-300'}`}
+    >
+      {/* Three fake QR dots */}
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          style={{ background: style.dot }}
+          className={`w-2 h-2 ${style.id === 'classic' ? 'rounded-none' : style.id === 'dark' || style.id === 'branded' ? 'rounded-full' : 'rounded-sm'}`}
+        />
+      ))}
+      {selected && (
+        <span className="absolute inset-0 ring-2 ring-primary-500 ring-inset rounded-xl pointer-events-none" />
+      )}
+    </button>
+  )
+}
+
 export default function TableQR({ table, restaurantId }) {
-  const [qrUrl, setQrUrl] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [qrUrl,      setQrUrl]      = useState(null)
+  const [loading,    setLoading]    = useState(false)
+  const [styleId,    setStyleId]    = useState('branded')
+  const containerRef = useRef(null)
+  const qrRef        = useRef(null)   // holds the QRCodeStyling instance
+
   const { checkAdminLimit } = useRateLimit()
   const { user } = useAuth()
 
-  const canvasId = `qr-canvas-${table.id}`
+  const selectedStyle = QR_STYLES.find((s) => s.id === styleId) ?? QR_STYLES[0]
+
+  // Re-render QR whenever URL or style changes
+  useEffect(() => {
+    if (!qrUrl || !containerRef.current) return
+
+    // Tear down previous instance
+    containerRef.current.innerHTML = ''
+
+    qrRef.current = new QRCodeStyling({
+      width:  QR_SIZE,
+      height: QR_SIZE,
+      type:   'canvas',
+      data:   qrUrl,
+      margin: 10,
+      qrOptions: { errorCorrectionLevel: 'M' },
+      ...selectedStyle.options,
+    })
+
+    qrRef.current.append(containerRef.current)
+  }, [qrUrl, styleId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const generate = useCallback(async () => {
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) return
-
     setLoading(true)
     try {
-      const result = await invokeEdgeFunction('generate-table-token', {
-        restaurantId,
-        tableId: table.id,
-      })
+      const result = await invokeEdgeFunction('generate-table-token', { restaurantId, tableId: table.id })
       setQrUrl(buildQrUrl(result.restaurantSlug, result.token))
     } catch (err) {
       toast.error(err.message || 'Failed to generate QR code')
@@ -37,11 +138,8 @@ export default function TableQR({ table, restaurantId }) {
   }, [restaurantId, table.id, checkAdminLimit, user?.id])
 
   const handleDownload = () => {
-    try {
-      downloadQrCanvas(canvasId, `table-${table.table_number}-qr.png`)
-    } catch (err) {
-      toast.error(err.message)
-    }
+    if (!qrRef.current) return
+    qrRef.current.download({ name: `table-${table.table_number}-qr-${styleId}`, extension: 'png' })
   }
 
   const handleCopy = async () => {
@@ -55,29 +153,67 @@ export default function TableQR({ table, restaurantId }) {
   }
 
   return (
-    <div className="card flex flex-col items-center gap-3 text-center">
-      <p className="font-semibold text-gray-900">Table {table.table_number}</p>
+    <div className="card flex flex-col items-center gap-3 text-center p-4">
+      <p className="font-bold text-gray-900 text-sm">Table {table.table_number}</p>
 
       {qrUrl ? (
         <>
-          <div className="rounded-lg border border-gray-200 p-3">
-            <QRCodeCanvas id={canvasId} value={qrUrl} size={160} includeMargin level="M" />
+          {/* QR canvas */}
+          <div
+            className="rounded-xl overflow-hidden shadow-md"
+            style={{ background: selectedStyle.options.backgroundOptions.color, padding: 4 }}
+          >
+            <div ref={containerRef} style={{ width: QR_SIZE, height: QR_SIZE }} />
           </div>
+
+          {/* Style picker */}
+          <div className="w-full">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Style</p>
+            <div className="flex gap-1.5">
+              {QR_STYLES.map((s) => (
+                <StyleSwatch
+                  key={s.id}
+                  style={s}
+                  selected={styleId === s.id}
+                  onClick={() => setStyleId(s.id)}
+                />
+              ))}
+            </div>
+            <div className="flex justify-between mt-1 px-0.5">
+              {QR_STYLES.map((s) => (
+                <span key={s.id} className={`flex-1 text-center text-[9px] font-medium ${styleId === s.id ? 'text-primary-600' : 'text-gray-400'}`}>
+                  {s.label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Action buttons */}
           <div className="flex w-full gap-2">
-            <button type="button" onClick={handleDownload} className="btn-outline flex-1 text-xs">
-              Download PNG
+            <button type="button" onClick={handleDownload}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-primary-600 hover:bg-primary-500 text-white text-xs font-bold transition-colors">
+              <Download className="w-3.5 h-3.5" /> Download
             </button>
-            <button type="button" onClick={handleCopy} className="btn-outline flex-1 text-xs">
-              Copy Link
+            <button type="button" onClick={handleCopy}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-600 text-xs font-semibold transition-colors">
+              <Link2 className="w-3.5 h-3.5" /> Copy Link
             </button>
           </div>
-          <button type="button" onClick={generate} disabled={loading} className="text-xs font-medium text-secondary-600 hover:underline disabled:opacity-50">
-            {loading ? 'Regenerating...' : 'Regenerate QR'}
+
+          <button type="button" onClick={generate} disabled={loading}
+            className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40">
+            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Regenerating…' : 'Regenerate'}
           </button>
         </>
       ) : (
         <button type="button" onClick={generate} disabled={loading} className="btn-primary w-full">
-          {loading ? 'Generating...' : 'Generate QR Code'}
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+              Generating…
+            </span>
+          ) : 'Generate QR Code'}
         </button>
       )}
     </div>
