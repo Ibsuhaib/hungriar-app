@@ -155,10 +155,12 @@ export default function DayEnd() {
 
   const { sessionStart, refresh: refreshSession } = useSessionStart(restaurant?.id)
 
-  const [collections,  setCollections]  = useState([])
-  const [expenses,     setExpenses]     = useState([])
-  const [activeOrders, setActiveOrders] = useState(0)
-  const [loading,      setLoading]      = useState(true)
+  const [collections,   setCollections]   = useState([])
+  const [expenses,      setExpenses]      = useState([])
+  const [activeOrders,  setActiveOrders]  = useState(0)
+  const [totalDiscount, setTotalDiscount] = useState(0)
+  const [totalRoundOff, setTotalRoundOff] = useState(0)
+  const [loading,       setLoading]       = useState(true)
 
   const [desc,   setDesc]   = useState('')
   const [amount, setAmount] = useState('')
@@ -178,7 +180,7 @@ export default function DayEnd() {
       // Collections: all bills settled since session started
       supabase
         .from('billing_history')
-        .select('payment_method, total_amount')
+        .select('payment_method, total_amount, discount_amount, round_off')
         .eq('restaurant_id', restaurant.id)
         .gte('bill_date', sessionStart),
       // Expenses: all expenses added since session started
@@ -198,13 +200,18 @@ export default function DayEnd() {
 
     if (!collRes.error) {
       const map = {}
+      let disc = 0; let roff = 0
       for (const row of collRes.data || []) {
         const m = (row.payment_method || 'cash').toLowerCase()
         if (!map[m]) map[m] = { payment_method: m, count: 0, total: 0 }
         map[m].count++
         map[m].total += Number(row.total_amount)
+        disc += Number(row.discount_amount) || 0
+        roff += Number(row.round_off) || 0
       }
       setCollections(Object.values(map).sort((a, b) => b.total - a.total))
+      setTotalDiscount(disc)
+      setTotalRoundOff(roff)
     }
     if (!expRes.error)    setExpenses(expRes.data || [])
     if (!activeRes.error) setActiveOrders(activeRes.count ?? 0)
@@ -287,6 +294,8 @@ export default function DayEnd() {
           netMap,
           totalCollected,
           totalExpenses,
+          totalDiscount,
+          totalRoundOff,
           netTotal,
           closedAt: new Date().toISOString(),
         })
