@@ -150,17 +150,32 @@ export default function Analytics() {
   const { restaurant } = useAuth()
   const currency = restaurant?.currency || '₹'
 
-  const [data,    setData]    = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState(null)
+  const [data,         setData]         = useState(null)
+  const [loading,      setLoading]      = useState(true)
+  const [error,        setError]        = useState(null)
+  const [periodStart,  setPeriodStart]  = useState(null)  // ISO string or null (all-time)
 
   // Collect sheet state
-  const [collectMethod, setCollectMethod] = useState(null) // method string or null
+  const [collectMethod, setCollectMethod] = useState(null)
   const [saving,        setSaving]        = useState(false)
 
+  // Fetch latest reset + analytics, both scoped to current period
   const loadAnalytics = useCallback(async () => {
+    // 1. find the latest reset for this restaurant
+    const { data: resets } = await supabase
+      .from('collection_resets')
+      .select('reset_at')
+      .eq('restaurant_id', restaurant.id)
+      .order('reset_at', { ascending: false })
+      .limit(1)
+
+    const from = resets?.[0]?.reset_at ?? null
+    setPeriodStart(from)
+
+    // 2. call analytics RPC with optional from-date
     const { data: result, error: rpcError } = await supabase.rpc('get_restaurant_analytics', {
       p_restaurant_id: restaurant.id,
+      p_from:          from,
     })
     if (rpcError) setError(rpcError.message)
     else { setData(result); setError(null) }
@@ -193,17 +208,15 @@ export default function Analytics() {
 
   const handleResetCollections = async () => {
     if (!window.confirm(
-      'Remove all recorded collections?\n\nThis clears collection entries only — expenses like vegetables or wages are kept. This cannot be undone.'
+      'Reset all payment totals to zero?\n\nThis starts a new collection period — all current balances (cash, UPI, card, discounts, round-off) reset to ₹0. No data is deleted; old records are archived.'
     )) return
     const { error } = await supabase
-      .from('expenses')
-      .delete()
-      .eq('restaurant_id', restaurant.id)
-      .eq('category', 'collection')
+      .from('collection_resets')
+      .insert({ restaurant_id: restaurant.id })
     if (error) {
-      toast.error('Failed to reset collections')
+      toast.error('Failed to reset — ' + error.message)
     } else {
-      toast.success('Collections cleared')
+      toast.success('New collection period started — all balances reset to ₹0')
       loadAnalytics()
     }
   }
@@ -276,24 +289,35 @@ export default function Analytics() {
       </div>
 
       {/* Payment breakdown + Collect */}
-      {(paymentBreakdown.length > 0 || expenseBreakdown.length > 0) && (
+      {(paymentBreakdown.length > 0 || expenseBreakdown.length > 0 || periodStart) && (
         <div className="card p-0 overflow-hidden">
           <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex items-start justify-between gap-2">
             <div>
               <h2 className="text-sm font-bold text-gray-900 font-display">Payment Collection</h2>
-              <p className="text-xs text-gray-400 mt-0.5">All-time totals per payment method</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {periodStart
+                  ? <>Since {formatDate(periodStart)}</>
+                  : 'All-time totals per payment method'}
+              </p>
             </div>
             <button
               type="button"
               onClick={handleResetCollections}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-500 text-xs font-medium hover:bg-red-50 hover:border-red-100 hover:text-red-600 transition-colors flex-shrink-0"
-              title="Clear all collection entries"
+              title="Start a new collection period — resets all balances to ₹0"
             >
-              <RefreshCw className="w-3 h-3" /> Reset
+              <RefreshCw className="w-3 h-3" /> Reset All
             </button>
           </div>
 
           <div className="divide-y divide-gray-50">
+            {allMethods.length === 0 && (
+              <div className="px-4 py-8 text-center">
+                <p className="text-2xl mb-2">🎉</p>
+                <p className="text-sm font-medium text-gray-500">New period started</p>
+                <p className="text-xs text-gray-400 mt-0.5">All balances are ₹0 — new bills will appear here.</p>
+              </div>
+            )}
             {allMethods.map((m) => {
               const meta      = getMeta(m)
               const Icon      = meta.Icon
