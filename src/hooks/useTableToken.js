@@ -1,21 +1,22 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { invokeEdgeFunction } from '../lib/supabase'
 
 const SESSION_PREFIX = 'hungriar_table_session_'
 
 /**
- * Resolves a verified { restaurantId, tableId, ... } session for a given
- * restaurant slug.
+ * Resolves a verified { restaurantId, tableId, sessionId, ... } session for a
+ * given restaurant slug.
  *
- * - If the URL contains ?token=..., it is sent to the validate-table-token
- *   edge function (which checks the HMAC signature + 30 day expiry). On
- *   success the session is cached in localStorage and the token is
- *   stripped from the URL.
- * - Otherwise, a previously cached (and still valid) session for this
- *   slug is reused.
- * - If neither is available, `error` is set so the UI can prompt the
- *   customer to rescan the table's QR code.
+ * - If the URL has ?token=..., it is sent to validate-table-token (HMAC check).
+ *   On success the session (including sessionId) is cached in localStorage and
+ *   the token is stripped from the URL.
+ * - Otherwise a previously cached session for this slug is used, but the
+ *   sessionId is re-checked against the server every time the tab regains
+ *   focus — so when the bill is settled and the table's session_id rotates,
+ *   the next focus event clears the stale cache and shows "rescan" instantly.
+ * - If neither is available, `error` is set so the UI can prompt the customer
+ *   to rescan the QR code.
  */
 export function useTableToken(restaurantSlug) {
   const [searchParams] = useSearchParams()
@@ -24,10 +25,42 @@ export function useTableToken(restaurantSlug) {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const sessionRef = useRef(null)
 
-  const validateToken = useCallback(async (token) => {
-    return invokeEdgeFunction('validate-table-token', { token })
-  }, [])
+  // Keep ref in sync so the focus listener always sees the latest session
+  useEffect(() => { sessionRef.current = session }, [session])
+
+  const storageKey = SESSION_PREFIX + restaurantSlug
+
+  const clearSession = useCallback(() => {
+    localStorage.removeItem(storageKey)
+    setSession(null)
+    setError('Your table session has ended. Please rescan the QR code on your table.')
+  }, [storageKey])
+
+  // Re-validates the current session_id against the server.
+  // Called on tab focus. If the session_id has rotated (bill settled), clears cache.
+  const revalidate = useCallback(async () => {
+    const current = sessionRef.current
+    if (!current?.token || !current?.sessionId) return
+    try {
+      const result = await invokeEdgeFunction('validate-table-token', { token: current.token })
+      if (!result.valid) { clearSession(); return }
+      if (result.sessionId !== current.sessionId) {
+        // Bill was settled — session rotated
+        clearSession()
+      }
+    } catch {
+      // Network error — don't clear the session, just silently fail
+    }
+  }, [clearSession])
+
+  // Re-validate every time the tab becomes visible
+  useEffect(() => {
+    const handler = () => { if (document.visibilityState === 'visible') revalidate() }
+    document.addEventListener('visibilitychange', handler)
+    return () => document.removeEventListener('visibilitychange', handler)
+  }, [revalidate])
 
   useEffect(() => {
     if (!restaurantSlug) return
@@ -38,11 +71,10 @@ export function useTableToken(restaurantSlug) {
       setError(null)
 
       const token = searchParams.get('token')
-      const storageKey = `${SESSION_PREFIX}${restaurantSlug}`
 
       if (token) {
         try {
-          const result = await validateToken(token)
+          const result = await invokeEdgeFunction('validate-table-token', { token })
           if (cancelled) return
 
           if (!result.valid) {
@@ -59,14 +91,14 @@ export function useTableToken(restaurantSlug) {
             restaurantName: result.restaurantName,
             tableId: result.tableId,
             tableNumber: result.tableNumber,
-            expiresAt: result.expiresAt,
+            sessionId: result.sessionId,
           }
 
           localStorage.setItem(storageKey, JSON.stringify(sessionData))
           setSession(sessionData)
           setLoading(false)
 
-          // strip ?token= from the URL so it isn't accidentally re-shared
+          // Strip ?token= from URL so it isn't accidentally re-shared
           const nextParams = new URLSearchParams(searchParams)
           nextParams.delete('token')
           navigate({ pathname: location.pathname, search: nextParams.toString() }, { replace: true })
@@ -85,7 +117,7 @@ export function useTableToken(restaurantSlug) {
       if (cached) {
         try {
           const parsed = JSON.parse(cached)
-          if (parsed.restaurantSlug === restaurantSlug && new Date(parsed.expiresAt).getTime() > Date.now()) {
+          if (parsed.restaurantSlug === restaurantSlug) {
             if (!cancelled) {
               setSession(parsed)
               setLoading(false)
@@ -106,13 +138,9 @@ export function useTableToken(restaurantSlug) {
 
     run()
 
-    return () => {
-      cancelled = true
-    }
-    // Intentionally only re-run when the slug changes - the token (if any)
-    // is consumed once on first load.
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantSlug])
 
-  return { session, loading, error }
+  return { session, loading, error, clearSession }
 }

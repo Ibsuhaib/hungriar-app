@@ -68,7 +68,7 @@ export default function Cart() {
     if (items.length === 0 || placing) return
 
     if (!session?.token) {
-      toast.error('Your table session has expired. Please rescan the QR code.')
+      toast.error('Please rescan the QR code on your table to order.')
       return
     }
 
@@ -79,6 +79,7 @@ export default function Cart() {
     try {
       const result = await invokeEdgeFunction('place-order', {
         token: session.token,
+        sessionId: session.sessionId,
         items: items.map((item) => ({ menuItemId: item.id, quantity: item.quantity, notes: item.notes || '' })),
       })
 
@@ -87,7 +88,14 @@ export default function Cart() {
       toast.success('Order placed! The kitchen has been notified.')
       navigate(`/r/${restaurantSlug}/order/${result.orderId}`, { replace: true })
     } catch (err) {
-      toast.error(err.message || 'Failed to place order. Please try again.')
+      const msg = err.message || ''
+      if (msg === 'session_ended' || msg.includes('session_ended') || msg.includes('bill has been settled')) {
+        // Clear stale session — forces customer to rescan QR
+        localStorage.removeItem(`hungriar_table_session_${restaurantSlug}`)
+        toast.error('The bill for this table has been settled. Please rescan the QR code to place a new order.', { duration: 6000 })
+      } else {
+        toast.error(msg || 'Failed to place order. Please try again.')
+      }
     } finally {
       setPlacing(false)
     }

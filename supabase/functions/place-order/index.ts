@@ -54,9 +54,11 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Too many distinct items in order' }, 400)
     }
 
+    const sessionId = typeof body.sessionId === 'string' ? body.sessionId : null
+
     const tokenResult = await verifyTableToken(body.token, TABLE_TOKEN_SECRET)
     if (!tokenResult.valid) {
-      return jsonResponse({ error: 'Invalid or expired table session. Please rescan the QR code.' }, 401)
+      return jsonResponse({ error: 'Invalid QR code. Please rescan the QR code.' }, 401)
     }
 
     const restaurantId = tokenResult.restaurantId!
@@ -74,13 +76,18 @@ Deno.serve(async (req) => {
 
     const { data: table, error: tableError } = await supabaseAdmin
       .from('tables')
-      .select('id, table_number')
+      .select('id, table_number, session_id')
       .eq('id', tableId)
       .eq('restaurant_id', restaurantId)
       .maybeSingle()
 
     if (tableError || !table) {
       return jsonResponse({ error: 'Table not found.' }, 404)
+    }
+
+    // Reject stale sessions — bill was settled and session rotated
+    if (sessionId && table.session_id !== sessionId) {
+      return jsonResponse({ error: 'session_ended', message: 'This table\'s bill has been settled. Please rescan the QR code to start a new order.' }, 401)
     }
 
     // Sanitize + dedupe requested items (sum quantities for duplicate ids)

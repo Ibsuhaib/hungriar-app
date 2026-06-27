@@ -37,11 +37,7 @@ Deno.serve(async (req) => {
 
     const result = await verifyTableToken(body.token, TABLE_TOKEN_SECRET)
     if (!result.valid) {
-      const message =
-        result.reason === 'expired'
-          ? 'This QR code has expired. Please ask staff for a new one.'
-          : 'Invalid QR code. Please ask staff for a new one.'
-      return jsonResponse({ valid: false, error: message })
+      return jsonResponse({ valid: false, error: 'Invalid QR code. Please ask staff for a new one.' })
     }
 
     const { data: restaurant, error: restaurantError } = await supabaseAdmin
@@ -56,7 +52,7 @@ Deno.serve(async (req) => {
 
     const { data: table, error: tableError } = await supabaseAdmin
       .from('tables')
-      .select('id, table_number')
+      .select('id, table_number, session_id')
       .eq('id', result.tableId)
       .eq('restaurant_id', result.restaurantId)
       .maybeSingle()
@@ -65,8 +61,6 @@ Deno.serve(async (req) => {
       return jsonResponse({ valid: false, error: 'Table not found.' })
     }
 
-    const expiresAt = new Date((result.issuedAt! + 30 * 24 * 60 * 60) * 1000).toISOString()
-
     return jsonResponse({
       valid: true,
       restaurantId: restaurant.id,
@@ -74,7 +68,7 @@ Deno.serve(async (req) => {
       restaurantName: restaurant.name,
       tableId: table.id,
       tableNumber: table.table_number,
-      expiresAt,
+      sessionId: table.session_id,
     })
   } catch (err) {
     console.error('validate-table-token error', err)
