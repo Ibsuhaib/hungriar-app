@@ -216,7 +216,7 @@ export default function Dashboard() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-orange-800">Day Closed</p>
-            <p className="text-xs text-orange-600">Today's session ended. Stats reset fresh tomorrow.</p>
+            <p className="text-xs text-orange-600">All orders cleared. Ready for a fresh start — new orders will appear here.</p>
           </div>
         </div>
       )}

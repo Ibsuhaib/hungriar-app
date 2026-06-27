@@ -351,6 +351,14 @@ export default function DayEnd() {
   const handleEndDay = async () => {
     setClosing(true)
     try {
+      // Cancel all remaining active orders first
+      const { error: cancelError } = await supabase
+        .from('orders')
+        .update({ status: 'cancelled' })
+        .eq('restaurant_id', restaurant.id)
+        .in('status', ['pending', 'preparing', 'served'])
+      if (cancelError) throw cancelError
+
       const { error } = await supabase.rpc('close_day', {
         p_restaurant_id:   restaurant.id,
         p_close_date:      today,
@@ -366,7 +374,6 @@ export default function DayEnd() {
       if (error) throw error
       toast.success('Day closed! Dashboard is now fresh.')
       setShowConfirm(false)
-      // Navigate to dashboard immediately — it will show 0 stats + Day Closed banner
       navigate('/admin')
     } catch (err) {
       toast.error(err.message || 'Failed to close day')
