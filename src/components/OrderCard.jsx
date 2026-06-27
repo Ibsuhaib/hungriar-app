@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Clock, ChefHat, Utensils, CheckCircle2, CheckCheck } from 'lucide-react'
+import { Clock, ChefHat, Utensils, CheckCircle2, CheckCheck, XCircle, X } from 'lucide-react'
 import {
   ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
@@ -12,6 +12,7 @@ const STATUS_ICONS = {
   preparing: ChefHat,
   served: Utensils,
   completed: CheckCircle2,
+  cancelled: XCircle,
 }
 
 const STATUS_BG = {
@@ -19,13 +20,15 @@ const STATUS_BG = {
   preparing: 'from-primary-400 to-primary-600',
   served: 'from-secondary-400 to-secondary-600',
   completed: 'from-green-400 to-green-500',
+  cancelled: 'from-gray-300 to-gray-400',
 }
 
-export default function OrderCard({ order, onStatusChange, currency = '₹' }) {
+export default function OrderCard({ order, onStatusChange, onCancelItem, onCancelOrder, currency = '₹' }) {
   const items = order.order_items || []
   const StatusIcon = STATUS_ICONS[order.status] || Clock
   const gradient = STATUS_BG[order.status] || 'from-gray-300 to-gray-400'
   const isCompleted = order.status === 'completed'
+  const isCancelled = order.status === 'cancelled'
 
   return (
     <motion.div
@@ -56,14 +59,38 @@ export default function OrderCard({ order, onStatusChange, currency = '₹' }) {
           {items.map((item) => (
             <li key={item.id} className="text-sm">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-gray-600 min-w-0 truncate">
-                  <span className="font-medium text-gray-800">{item.quantity}×</span> {item.item_name}
+                <span className={`min-w-0 flex-1 ${item.cancelled ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <span className={`font-medium ${item.cancelled ? 'text-gray-300 line-through' : 'text-gray-800'}`}>
+                    {item.quantity}×
+                  </span>{' '}
+                  <span className={item.cancelled ? 'line-through' : ''}>{item.item_name}</span>
+                  {item.cancelled && (
+                    <span className="ml-1.5 text-[10px] font-semibold text-red-400 uppercase tracking-wide no-underline" style={{ textDecoration: 'none' }}>
+                      cancelled
+                    </span>
+                  )}
                 </span>
-                <span className="font-semibold text-gray-900 flex-shrink-0 text-xs">
-                  {formatCurrency(item.quantity * item.unit_price, currency)}
-                </span>
+
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {!item.cancelled && (
+                    <span className="font-semibold text-gray-900 text-xs">
+                      {formatCurrency(item.quantity * item.unit_price, currency)}
+                    </span>
+                  )}
+                  {onCancelItem && !item.cancelled && !isCancelled && !isCompleted && (
+                    <button
+                      type="button"
+                      onClick={() => onCancelItem(order.id, item.id, item.item_name)}
+                      className="text-gray-300 hover:text-red-400 transition-colors p-0.5 rounded"
+                      aria-label={`Cancel ${item.item_name}`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
-              {item.notes && (
+
+              {item.notes && !item.cancelled && (
                 <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-1 mt-1 italic">
                   {item.notes}
                 </p>
@@ -74,7 +101,9 @@ export default function OrderCard({ order, onStatusChange, currency = '₹' }) {
 
         <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
           <span className="text-sm font-semibold text-gray-500">Total</span>
-          <span className="text-base font-bold text-gray-900">{formatCurrency(order.total_amount, currency)}</span>
+          <span className={`text-base font-bold ${isCancelled ? 'text-gray-300 line-through' : 'text-gray-900'}`}>
+            {formatCurrency(order.total_amount, currency)}
+          </span>
         </div>
       </div>
 
@@ -86,17 +115,34 @@ export default function OrderCard({ order, onStatusChange, currency = '₹' }) {
               <CheckCircle2 className="w-3.5 h-3.5" />
               Order completed
             </div>
+          ) : isCancelled ? (
+            <div className="flex items-center gap-2 text-xs text-red-500 justify-center py-2 bg-red-50 rounded-xl">
+              <XCircle className="w-3.5 h-3.5" />
+              Order cancelled
+            </div>
           ) : (
-            <motion.button
-              type="button"
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => onStatusChange(order.id, 'completed')}
-              className="w-full flex items-center justify-center gap-2 btn-primary py-2.5 text-sm bg-gradient-to-r from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 shadow-green-900/20"
-            >
-              <CheckCheck className="w-4 h-4" />
-              Complete Order
-            </motion.button>
+            <>
+              <motion.button
+                type="button"
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => onStatusChange(order.id, 'completed')}
+                className="w-full flex items-center justify-center gap-2 btn-primary py-2.5 text-sm bg-gradient-to-r from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 shadow-green-900/20"
+              >
+                <CheckCheck className="w-4 h-4" />
+                Complete Order
+              </motion.button>
+
+              {onCancelOrder && (
+                <button
+                  type="button"
+                  onClick={() => onCancelOrder(order.id)}
+                  className="mt-2 w-full text-xs text-red-400 hover:text-red-600 py-1.5 text-center transition-colors"
+                >
+                  Cancel entire order
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

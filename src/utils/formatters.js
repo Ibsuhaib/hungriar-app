@@ -35,6 +35,7 @@ export const ORDER_STATUS_LABELS = {
   preparing: 'Preparing',
   served: 'Served',
   completed: 'Completed',
+  cancelled: 'Cancelled',
 }
 
 export const ORDER_STATUS_COLORS = {
@@ -42,6 +43,7 @@ export const ORDER_STATUS_COLORS = {
   preparing: 'bg-blue-100 text-blue-800',
   served: 'bg-secondary-100 text-secondary-800',
   completed: 'bg-gray-100 text-gray-600',
+  cancelled: 'bg-red-100 text-red-700',
 }
 
 export const ORDER_STATUS_FLOW = ['pending', 'preparing', 'served', 'completed']

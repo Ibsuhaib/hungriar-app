@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Clock, CheckCircle2, Bell, BellOff } from 'lucide-react'
+import { Clock, CheckCircle2, Bell, BellOff, XCircle } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -96,7 +96,7 @@ export default function Orders() {
   const { restaurant, user } = useAuth()
   const { checkAdminLimit } = useRateLimit()
   const handleNewOrder = useCallback(() => { playBell() }, [])
-  const { orders, loading, patchOrder } = useRealtimeOrders({ restaurantId: restaurant?.id, pollInterval: 3000, onInsert: handleNewOrder })
+  const { orders, loading, patchOrder, refetch } = useRealtimeOrders({ restaurantId: restaurant?.id, pollInterval: 3000, onInsert: handleNewOrder })
   const [settledTodayCount, setSettledTodayCount] = useState(0)
 
   // Create AudioContext on mount (suspended) and resume on any user click.
@@ -135,8 +135,15 @@ export default function Orders() {
 
   const pendingOrders = useMemo(
     () => orders
-      .filter((o) => o.status !== 'completed')
+      .filter((o) => o.status !== 'completed' && o.status !== 'cancelled')
       .sort((a, b) => new Date(a.order_time) - new Date(b.order_time)),
+    [orders],
+  )
+
+  const cancelledOrders = useMemo(
+    () => orders
+      .filter((o) => o.status === 'cancelled')
+      .sort((a, b) => new Date(b.order_time) - new Date(a.order_time)),
     [orders],
   )
 
@@ -157,6 +164,32 @@ export default function Orders() {
     if (error) {
       toast.error('Failed to update order status')
       if (prevStatus) patchOrder(orderId, { status: prevStatus })
+    }
+  }
+
+  const handleCancelItem = async (orderId, itemId, itemName) => {
+    if (!window.confirm(`Cancel "${itemName}" from this order?`)) return
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    const { error } = await supabase.rpc('cancel_order_item', { p_item_id: itemId })
+    if (error) {
+      toast.error('Failed to cancel item')
+    } else {
+      toast.success(`${itemName} cancelled`)
+      refetch({ silent: true })
+    }
+  }
+
+  const handleCancelOrder = async (orderId) => {
+    if (!window.confirm('Cancel this entire order? This cannot be undone.')) return
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    const { error } = await supabase.rpc('cancel_order', { p_order_id: orderId })
+    if (error) {
+      toast.error('Failed to cancel order')
+    } else {
+      toast.success('Order cancelled')
+      refetch({ silent: true })
     }
   }
 
@@ -194,7 +227,7 @@ export default function Orders() {
         </div>
       </div>
 
-      {/* Orders grid */}
+      {/* Active orders grid */}
       {loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -219,11 +252,35 @@ export default function Orders() {
                 key={order.id}
                 order={order}
                 onStatusChange={handleStatusChange}
+                onCancelItem={handleCancelItem}
+                onCancelOrder={handleCancelOrder}
                 currency={restaurant?.currency}
               />
             ))}
           </motion.div>
         </AnimatePresence>
+      )}
+
+      {/* Cancelled orders section */}
+      {cancelledOrders.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 pt-2">
+            <XCircle className="w-4 h-4 text-red-300" />
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              Cancelled ({cancelledOrders.length})
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 opacity-60">
+            {cancelledOrders.map((order) => (
+              <OrderCard
+                key={order.id}
+                order={order}
+                onStatusChange={handleStatusChange}
+                currency={restaurant?.currency}
+              />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )
