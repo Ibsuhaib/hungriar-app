@@ -445,23 +445,31 @@ export default function Billing() {
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Round Off</p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const afterDiscount = total - discountAmt
-                          const rounded = Math.floor(afterDiscount) // Bug 3: always round DOWN
-                          const ro = rounded - afterDiscount
-                          patchAdj(table.id, { roundOff: ro === 0 ? '' : ro.toFixed(2) })
-                        }}
-                        className="text-[10px] text-primary-500 font-semibold hover:underline"
-                      >
-                        Auto
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {/* Preview: show what the rounded total will be */}
+                        {(total - discountAmt) % 1 !== 0 && (
+                          <span className="text-[10px] text-gray-400">
+                            → {cur}{Math.floor(total - discountAmt)}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const afterDiscount = total - discountAmt
+                            const rounded = Math.floor(afterDiscount)
+                            const ro = rounded - afterDiscount
+                            patchAdj(table.id, { roundOff: ro === 0 ? '' : ro.toFixed(2) })
+                          }}
+                          className="text-[10px] text-primary-500 font-semibold hover:underline"
+                        >
+                          Auto
+                        </button>
+                      </div>
                     </div>
                     <input
                       type="number"
                       step="0.01"
-                      placeholder="e.g. -1.00  (negative deducts)"
+                      placeholder="e.g. -0.50  (negative removes paise)"
                       value={adj.roundOff}
                       onChange={(e) => patchAdj(table.id, { roundOff: e.target.value })}
                       className="input text-sm py-1.5 w-full"
