@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
-import { Clock, CheckCircle2, TrendingUp, ArrowRight, Bell, BellOff, ChefHat, Sunset } from 'lucide-react'
+import { Clock, CheckCircle2, TrendingUp, ArrowRight, Bell, BellOff, ChefHat, Sunset, Download } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -12,6 +12,7 @@ import SubscriptionBanner from '../../components/SubscriptionBanner'
 import OrderCard from '../../components/OrderCard'
 import { formatCurrency } from '../../utils/formatters'
 import { usePushNotifications, showNotification } from '../../hooks/usePushNotifications'
+import { usePwaInstall } from '../../hooks/usePwaInstall'
 
 function playNotificationSound() {
   try {
@@ -99,6 +100,7 @@ export default function Dashboard() {
   const { restaurant, user } = useAuth()
   const { checkAdminLimit } = useRateLimit()
   const { sessionStart } = useSessionStart(restaurant?.id)
+  const { canInstall, install } = usePwaInstall()
   const [settledToday, setSettledToday] = useState({ count: 0, revenue: 0 })
 
   // Show "just ended" banner for 10 minutes after End Day
@@ -213,7 +215,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Notification + Chef mode row */}
+      {/* Notification + Chef mode + Install row */}
       <div className="flex items-center gap-3 flex-wrap">
         <NotificationButton restaurantId={restaurant?.id} />
         <Link
@@ -222,6 +224,15 @@ export default function Dashboard() {
         >
           <ChefHat className="w-3 h-3" /> Open Chef View
         </Link>
+        {canInstall && (
+          <button
+            type="button"
+            onClick={install}
+            className="flex items-center gap-1.5 text-xs text-white bg-gradient-to-r from-orange-500 to-rose-500 rounded-full px-3 py-1 font-medium hover:opacity-90 transition-opacity shadow-sm"
+          >
+            <Download className="w-3 h-3" /> Install App
+          </button>
+        )}
       </div>
 
       {/* Stat cards */}
