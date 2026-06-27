@@ -6,7 +6,7 @@ import {
 import {
   TrendingUp, ShoppingBag, DollarSign, Award,
   Banknote, Smartphone, CreditCard, Wallet,
-  Tag, RotateCcw,
+  Tag, RotateCcw, TrendingDown,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -115,10 +115,17 @@ export default function Analytics() {
 
   const pieData = topItemsData.map((item) => ({ name: item.name, value: item.revenue }))
 
-  const paymentBreakdown = data.payment_breakdown || []
-  const totalDiscount  = Number(data.total_discount  || 0)
-  const totalRoundOff  = Number(data.total_round_off || 0)
-  const discountCount  = Number(data.discount_count  || 0)
+  const paymentBreakdown  = data.payment_breakdown  || []
+  const expenseBreakdown  = data.expense_breakdown  || []
+  const totalDiscount     = Number(data.total_discount  || 0)
+  const totalRoundOff     = Number(data.total_round_off || 0)
+  const discountCount     = Number(data.discount_count  || 0)
+  const totalExpenses     = Number(data.total_expenses  || 0)
+
+  // build lookup maps for the payment section
+  const collectedByMethod = Object.fromEntries(paymentBreakdown.map((r) => [r.payment_method, r]))
+  const expenseByMethod   = Object.fromEntries(expenseBreakdown.map((r) => [r.payment_method, r.total]))
+  const allMethods        = [...new Set([...paymentBreakdown.map((r) => r.payment_method), ...expenseBreakdown.map((r) => r.payment_method)])]
 
   return (
     <div className="space-y-6">
@@ -140,47 +147,71 @@ export default function Analytics() {
       </div>
 
       {/* ── Payment breakdown ─────────────────────────────────────────────── */}
-      {paymentBreakdown.length > 0 && (
+      {(paymentBreakdown.length > 0 || expenseBreakdown.length > 0) && (
         <div className="card p-0 overflow-hidden">
           <div className="px-4 pt-4 pb-3 border-b border-gray-100">
             <h2 className="text-sm font-bold text-gray-900 font-display">Payment Collection</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Total received per payment method</p>
+            <p className="text-xs text-gray-400 mt-0.5">All-time totals per payment method</p>
           </div>
           <div className="divide-y divide-gray-50">
-            {paymentBreakdown.map((row) => {
-              const meta = getPaymentMeta(row.payment_method)
-              const Icon = meta.Icon
+            {allMethods.map((m) => {
+              const meta       = getPaymentMeta(m)
+              const Icon       = meta.Icon
+              const collected  = collectedByMethod[m]  || { count: 0, total: 0 }
+              const expensed   = expenseByMethod[m]    || 0
+              const net        = collected.total - expensed
               return (
-                <div key={row.payment_method} className="flex items-center gap-4 px-4 py-3">
-                  <div className={`w-9 h-9 flex-shrink-0 rounded-xl flex items-center justify-center ${meta.icon} shadow-sm`}>
-                    <Icon className="w-4 h-4 text-white" />
+                <div key={m} className="px-4 py-3">
+                  <div className="flex items-center gap-3 mb-1">
+                    <div className={`w-9 h-9 flex-shrink-0 rounded-xl flex items-center justify-center ${meta.icon} shadow-sm`}>
+                      <Icon className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800">{meta.label}</p>
+                      <p className="text-xs text-gray-400">{collected.count} bill{collected.count !== 1 ? 's' : ''}</p>
+                    </div>
+                    <p className="text-base font-bold text-gray-900 tabular-nums">
+                      {formatCurrency(collected.total, currency)}
+                    </p>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-800">{meta.label}</p>
-                    <p className="text-xs text-gray-400">{row.count} bill{row.count !== 1 ? 's' : ''}</p>
-                  </div>
-                  <p className="text-base font-bold text-gray-900 tabular-nums">
-                    {formatCurrency(row.total, currency)}
-                  </p>
+                  {expensed > 0 && (
+                    <div className="ml-12 flex items-center justify-between text-xs">
+                      <span className="text-rose-400 flex items-center gap-1">
+                        <TrendingDown className="w-3 h-3" /> Expenses − {formatCurrency(expensed, currency)}
+                      </span>
+                      <span className={`font-bold tabular-nums ${net >= 0 ? 'text-gray-700' : 'text-red-600'}`}>
+                        Net {formatCurrency(net, currency)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )
             })}
           </div>
 
-          {/* Discount + Round-off summary row */}
+          {/* Totals row */}
+          <div className="border-t border-gray-100 px-4 py-3 flex items-center justify-between bg-gray-50">
+            <div>
+              <p className="text-sm font-bold text-gray-800">Net Total</p>
+              {totalExpenses > 0 && (
+                <p className="text-xs text-gray-400">after {formatCurrency(totalExpenses, currency)} in expenses</p>
+              )}
+            </div>
+            <p className="text-base font-bold text-gray-900 tabular-nums">
+              {formatCurrency(Number(data.total_revenue) - totalExpenses, currency)}
+            </p>
+          </div>
+
+          {/* Discount + Round-off */}
           <div className="border-t border-gray-100 grid grid-cols-2 divide-x divide-gray-100">
             <div className="px-4 py-3 flex items-center gap-3">
               <div className="w-8 h-8 flex-shrink-0 rounded-xl flex items-center justify-center bg-gradient-to-br from-rose-400 to-rose-600 shadow-sm">
                 <Tag className="w-3.5 h-3.5 text-white" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-gray-500">Total Discount Given</p>
-                <p className="text-sm font-bold text-rose-600 tabular-nums">
-                  − {formatCurrency(totalDiscount, currency)}
-                </p>
-                {discountCount > 0 && (
-                  <p className="text-[11px] text-gray-400">{discountCount} bill{discountCount !== 1 ? 's' : ''}</p>
-                )}
+                <p className="text-xs text-gray-500">Total Discount</p>
+                <p className="text-sm font-bold text-rose-600 tabular-nums">− {formatCurrency(totalDiscount, currency)}</p>
+                {discountCount > 0 && <p className="text-[11px] text-gray-400">{discountCount} bills</p>}
               </div>
             </div>
             <div className="px-4 py-3 flex items-center gap-3">
@@ -188,13 +219,11 @@ export default function Analytics() {
                 <RotateCcw className="w-3.5 h-3.5 text-white" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-gray-500">Total Round-Off</p>
+                <p className="text-xs text-gray-500">Round-Off</p>
                 <p className="text-sm font-bold text-amber-600 tabular-nums">
                   {totalRoundOff >= 0 ? '' : '− '}{formatCurrency(Math.abs(totalRoundOff), currency)}
                 </p>
-                <p className="text-[11px] text-gray-400">
-                  {totalRoundOff <= 0 ? 'saved for customers' : 'added to bills'}
-                </p>
+                <p className="text-[11px] text-gray-400">{totalRoundOff <= 0 ? 'saved for customers' : 'added'}</p>
               </div>
             </div>
           </div>

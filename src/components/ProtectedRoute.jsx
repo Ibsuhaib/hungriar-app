@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { LayoutDashboard, ClipboardList, Receipt, History, UtensilsCrossed, Tag, QrCode, BarChart2, Settings, ConciergeBell } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Receipt, History, UtensilsCrossed, Tag, QrCode, BarChart2, Settings, ConciergeBell, Sunset } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useSubscriptionStatus } from '../hooks/useSubscriptionStatus'
 import Layout from './Layout'
@@ -15,7 +15,8 @@ const NAV_ITEMS = [
   { to: '/admin/categories', label: 'Categories', icon: Tag },
   { to: '/admin/tables', label: 'Tables & QR', icon: QrCode },
   { to: '/admin/analytics', label: 'Analytics', icon: BarChart2 },
-  { to: '/admin/settings', label: 'Settings', icon: Settings },
+  { to: '/admin/day-end',   label: 'Day End',   icon: Sunset },
+  { to: '/admin/settings',  label: 'Settings',  icon: Settings },
 ]
 
 const PAGE_TITLES = {
@@ -28,6 +29,7 @@ const PAGE_TITLES = {
   '/admin/categories': 'Categories',
   '/admin/tables': 'Tables & QR Codes',
   '/admin/analytics': 'Analytics',
+  '/admin/day-end': 'Day End',
   '/admin/settings': 'Settings',
 }
 

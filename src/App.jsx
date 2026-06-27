@@ -30,6 +30,7 @@ import Billing from './pages/admin/Billing'
 import History from './pages/admin/History'
 import Analytics from './pages/admin/Analytics'
 import TakeOrder from './pages/admin/TakeOrder'
+import DayEnd from './pages/admin/DayEnd'
 
 import SuperAdminLogin from './pages/superadmin/Login'
 import Restaurants from './pages/superadmin/Restaurants'
@@ -84,6 +85,7 @@ export default function App() {
             <Route path="analytics" element={<Analytics />} />
             <Route path="settings" element={<Settings />} />
             <Route path="take-order" element={<TakeOrder />} />
+            <Route path="day-end" element={<DayEnd />} />
           </Route>
 
           <Route path="/superadmin/login" element={<SuperAdminLogin />} />
