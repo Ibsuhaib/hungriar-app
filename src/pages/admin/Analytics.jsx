@@ -6,7 +6,7 @@ import {
 import {
   TrendingUp, ShoppingBag, DollarSign, Award,
   Banknote, Smartphone, CreditCard, Wallet,
-  Tag, RotateCcw, TrendingDown, HandCoins, X,
+  Tag, RotateCcw, TrendingDown, HandCoins, X, AlertTriangle, RefreshCw,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -178,15 +178,33 @@ export default function Analytics() {
         amount,
         payment_method: method,
         expense_date:   new Date().toISOString().slice(0, 10),
+        category:       'collection',
       })
       if (insErr) throw insErr
       toast.success(`${getMeta(method).label} collection recorded`)
       setCollectMethod(null)
-      loadAnalytics()
+      await loadAnalytics()
     } catch (err) {
       toast.error(err.message || 'Failed to record collection')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleResetCollections = async () => {
+    if (!window.confirm(
+      'Remove all recorded collections?\n\nThis clears collection entries only — expenses like vegetables or wages are kept. This cannot be undone.'
+    )) return
+    const { error } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('restaurant_id', restaurant.id)
+      .eq('category', 'collection')
+    if (error) {
+      toast.error('Failed to reset collections')
+    } else {
+      toast.success('Collections cleared')
+      loadAnalytics()
     }
   }
 
@@ -260,9 +278,19 @@ export default function Analytics() {
       {/* Payment breakdown + Collect */}
       {(paymentBreakdown.length > 0 || expenseBreakdown.length > 0) && (
         <div className="card p-0 overflow-hidden">
-          <div className="px-4 pt-4 pb-3 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900 font-display">Payment Collection</h2>
-            <p className="text-xs text-gray-400 mt-0.5">All-time totals per payment method</p>
+          <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900 font-display">Payment Collection</h2>
+              <p className="text-xs text-gray-400 mt-0.5">All-time totals per payment method</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleResetCollections}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-500 text-xs font-medium hover:bg-red-50 hover:border-red-100 hover:text-red-600 transition-colors flex-shrink-0"
+              title="Clear all collection entries"
+            >
+              <RefreshCw className="w-3 h-3" /> Reset
+            </button>
           </div>
 
           <div className="divide-y divide-gray-50">
@@ -300,21 +328,30 @@ export default function Analytics() {
                     </div>
                   </div>
 
-                  {(expensed > 0 || net !== collected.total) && (
-                    <div className="ml-12 mt-1.5 space-y-0.5">
-                      {expensed > 0 && (
+                  {expensed > 0 && (
+                    <div className="ml-12 mt-1.5 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-rose-400 flex items-center gap-1">
+                          <TrendingDown className="w-3 h-3" />
+                          Expenses &amp; Collections
+                        </span>
+                        <span className="text-rose-400 font-medium tabular-nums">
+                          − {formatCurrency(expensed, currency)}
+                        </span>
+                      </div>
+                      {net < 0 ? (
+                        <div className="flex items-center gap-1.5 bg-red-50 rounded-lg px-2 py-1 text-xs text-red-600">
+                          <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                          Overspent by {formatCurrency(Math.abs(net), currency)} — check your entries
+                        </div>
+                      ) : (
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-rose-400 flex items-center gap-1">
-                            <TrendingDown className="w-3 h-3" /> Expenses / Collections − {formatCurrency(expensed, currency)}
+                          <span className="text-gray-400">Net in hand</span>
+                          <span className="font-bold text-gray-700 tabular-nums">
+                            {formatCurrency(net, currency)}
                           </span>
                         </div>
                       )}
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-400">Net in hand</span>
-                        <span className={`font-bold tabular-nums ${net >= 0 ? 'text-gray-700' : 'text-red-600'}`}>
-                          {formatCurrency(net, currency)}
-                        </span>
-                      </div>
                     </div>
                   )}
                 </div>
