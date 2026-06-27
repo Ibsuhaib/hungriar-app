@@ -6,10 +6,10 @@ import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
 
-// ─── Cart helpers ────────────────────────────────────────────────────────────
+// ─── Cart hook ────────────────────────────────────────────────────────────────
 
 function useCart() {
-  const [cart, setCart] = useState({}) // { [menuItemId]: { item, quantity, notes } }
+  const [cart, setCart] = useState({})
 
   const add = (item) =>
     setCart((prev) => ({
@@ -36,18 +36,18 @@ function useCart() {
   return { cart, entries, totalQty, subtotal, add, remove, setNote, clear }
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// ─── Item card ────────────────────────────────────────────────────────────────
 
 function ItemCard({ item, qty, onAdd, onRemove, currency }) {
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="card p-0 overflow-hidden flex flex-col"
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col overflow-hidden hover:shadow-md transition-shadow"
     >
       <div className="flex-1 px-3 pt-3 pb-2">
-        <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2">{item.name}</p>
+        <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2 min-h-[2.5rem]">{item.name}</p>
         <p className="text-sm font-bold text-primary-600 mt-1">{formatCurrency(item.price, currency)}</p>
       </div>
       <div className="px-3 pb-3">
@@ -55,25 +55,19 @@ function ItemCard({ item, qty, onAdd, onRemove, currency }) {
           <button
             type="button"
             onClick={() => onAdd(item)}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-primary-50 text-primary-600 text-xs font-bold hover:bg-primary-100 transition-colors border border-primary-100"
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-primary-50 text-primary-600 text-xs font-bold hover:bg-primary-100 active:bg-primary-200 transition-colors border border-primary-100"
           >
             <Plus className="w-3.5 h-3.5" /> Add
           </button>
         ) : (
           <div className="flex items-center justify-between bg-primary-600 rounded-xl px-1 py-0.5">
-            <button
-              type="button"
-              onClick={() => onRemove(item.id)}
-              className="w-7 h-7 flex items-center justify-center text-white hover:bg-white/20 rounded-lg transition-colors"
-            >
+            <button type="button" onClick={() => onRemove(item.id)}
+              className="w-7 h-7 flex items-center justify-center text-white hover:bg-white/20 active:bg-white/30 rounded-lg transition-colors">
               <Minus className="w-3.5 h-3.5" />
             </button>
             <span className="text-white text-sm font-bold tabular-nums">{qty}</span>
-            <button
-              type="button"
-              onClick={() => onAdd(item)}
-              className="w-7 h-7 flex items-center justify-center text-white hover:bg-white/20 rounded-lg transition-colors"
-            >
+            <button type="button" onClick={() => onAdd(item)}
+              className="w-7 h-7 flex items-center justify-center text-white hover:bg-white/20 active:bg-white/30 rounded-lg transition-colors">
               <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -83,6 +77,8 @@ function ItemCard({ item, qty, onAdd, onRemove, currency }) {
   )
 }
 
+// ─── Cart sheet ───────────────────────────────────────────────────────────────
+
 function CartSheet({ entries, subtotal, taxPercentage, currency, onRemove, onAdd, onSetNote, onClose, onPlace, placing, selectedTable }) {
   const tax = Math.round(subtotal * taxPercentage) / 100
   const total = subtotal + tax
@@ -90,35 +86,26 @@ function CartSheet({ entries, subtotal, taxPercentage, currency, onRemove, onAdd
   return (
     <>
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
       <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
+        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
         className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col"
       >
-        {/* Handle */}
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
           <div className="w-10 h-1 bg-gray-200 rounded-full" />
         </div>
-
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 flex-shrink-0">
-          <h2 className="text-base font-bold text-gray-900 font-display">Order Summary</h2>
-          {selectedTable && (
-            <span className="badge bg-primary-100 text-primary-700">Table {selectedTable}</span>
-          )}
+          <h2 className="text-base font-bold text-gray-900">Order Summary</h2>
+          {selectedTable && <span className="text-xs font-bold bg-primary-100 text-primary-700 px-3 py-1 rounded-full">Table {selectedTable}</span>}
           <button type="button" onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100">
             <X className="w-4 h-4 text-gray-500" />
           </button>
         </div>
 
-        {/* Items */}
         <div className="overflow-y-auto flex-1 px-5 py-3 space-y-3">
           {entries.map(({ item, quantity, notes }) => (
             <div key={item.id} className="space-y-1.5">
@@ -145,18 +132,15 @@ function CartSheet({ entries, subtotal, taxPercentage, currency, onRemove, onAdd
                 </div>
               </div>
               <input
-                type="text"
-                value={notes}
+                type="text" value={notes}
                 onChange={(e) => onSetNote(item.id, e.target.value)}
-                placeholder="Note (e.g. no onions)…"
-                maxLength={200}
+                placeholder="Note (e.g. no onions)…" maxLength={200}
                 className="w-full text-xs border border-gray-200 bg-gray-50 rounded-lg px-3 py-1.5 text-gray-600 placeholder-gray-300 focus:outline-none focus:border-primary-300 transition-colors"
               />
             </div>
           ))}
         </div>
 
-        {/* Totals + Place button */}
         <div className="border-t border-gray-100 px-5 py-4 space-y-3 flex-shrink-0">
           <div className="space-y-1">
             <div className="flex justify-between text-sm text-gray-500">
@@ -171,18 +155,15 @@ function CartSheet({ entries, subtotal, taxPercentage, currency, onRemove, onAdd
               <span>Total</span><span>{formatCurrency(total, currency)}</span>
             </div>
           </div>
-
           {!selectedTable && (
             <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 text-center">
               Select a table before placing the order
             </p>
           )}
-
           <button
-            type="button"
-            onClick={onPlace}
+            type="button" onClick={onPlace}
             disabled={placing || !selectedTable || entries.length === 0}
-            className="w-full btn-secondary py-3 text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full bg-primary-600 hover:bg-primary-500 text-white py-3 rounded-2xl text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {placing ? 'Placing order…' : `Place Order · ${formatCurrency(total, currency)}`}
           </button>
@@ -227,6 +208,7 @@ export default function TakeOrder() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // Items filtered by category + search
   const visibleItems = useMemo(() => {
     let list = menuItems
     if (selectedCatId !== 'all') list = list.filter((i) => i.category_id === selectedCatId)
@@ -236,6 +218,17 @@ export default function TakeOrder() {
     }
     return list
   }, [menuItems, selectedCatId, search])
+
+  // When "All" selected: group items by category for section headers
+  const groupedItems = useMemo(() => {
+    if (selectedCatId !== 'all' || search.trim()) return null
+    const map = new Map()
+    for (const cat of categories) map.set(cat.id, { cat, items: [] })
+    for (const item of menuItems) {
+      if (map.has(item.category_id)) map.get(item.category_id).items.push(item)
+    }
+    return [...map.values()].filter((g) => g.items.length > 0)
+  }, [selectedCatId, search, categories, menuItems])
 
   const selectedTableNumber = tables.find((t) => t.id === selectedTableId)?.table_number
 
@@ -248,7 +241,7 @@ export default function TakeOrder() {
         quantity,
         notes: notes || '',
       }))
-      const { data, error } = await supabase.rpc('admin_place_order', {
+      const { error } = await supabase.rpc('admin_place_order', {
         p_restaurant_id: restaurant.id,
         p_table_id:      selectedTableId,
         p_items:         items,
@@ -266,22 +259,24 @@ export default function TakeOrder() {
 
   if (dataLoading) {
     return (
-      <div className="space-y-4">
-        <div className="skeleton h-12 rounded-xl w-64" />
-        <div className="flex gap-2">
-          {Array.from({ length: 5 }).map((_, i) => <div key={i} className="skeleton h-8 w-24 rounded-full" />)}
+      <div className="flex gap-4 h-[calc(100vh-10rem)]">
+        <div className="w-40 flex-shrink-0 space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-11 rounded-xl" />)}
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton h-28 rounded-2xl" />)}
+        <div className="flex-1 space-y-4">
+          <div className="skeleton h-10 rounded-xl w-full" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton h-28 rounded-2xl" />)}
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4 pb-28">
-      {/* Table selector + search */}
-      <div className="flex flex-wrap gap-3 items-center">
+    <div className="pb-28">
+      {/* Top bar: table selector + search */}
+      <div className="flex flex-wrap gap-3 items-center mb-4">
         <div className="relative">
           <select
             value={selectedTableId}
@@ -299,8 +294,7 @@ export default function TakeOrder() {
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <input
-            type="search"
-            value={search}
+            type="search" value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search items…"
             className="input pl-9 w-full"
@@ -308,55 +302,92 @@ export default function TakeOrder() {
         </div>
       </div>
 
-      {/* Category tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        <button
-          type="button"
-          onClick={() => setSelectedCatId('all')}
-          className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold border transition-all
-            ${selectedCatId === 'all'
-              ? 'bg-primary-600 text-white border-primary-600'
-              : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-            }`}
-        >
-          All
-        </button>
-        {categories.map((cat) => (
-          <button
-            key={cat.id}
-            type="button"
-            onClick={() => setSelectedCatId(cat.id)}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold border transition-all
-              ${selectedCatId === cat.id
-                ? 'bg-primary-600 text-white border-primary-600'
-                : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-              }`}
-          >
-            {cat.name}
-          </button>
-        ))}
-      </div>
+      {/* Main layout: category sidebar + items panel */}
+      <div className="flex gap-4">
+        {/* Category sidebar */}
+        <div className="w-36 sm:w-44 flex-shrink-0">
+          <div className="flex flex-col gap-1.5 sticky top-4">
+            <button
+              type="button"
+              onClick={() => { setSelectedCatId('all'); setSearch('') }}
+              className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-semibold transition-all
+                ${selectedCatId === 'all'
+                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-200'
+                  : 'bg-white text-gray-600 border border-gray-100 hover:border-primary-200 hover:text-primary-600'
+                }`}
+            >
+              All Items
+            </button>
+            {categories.map((cat) => {
+              const count = menuItems.filter((i) => i.category_id === cat.id).length
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => { setSelectedCatId(cat.id); setSearch('') }}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-semibold transition-all
+                    ${selectedCatId === cat.id
+                      ? 'bg-primary-600 text-white shadow-sm shadow-primary-200'
+                      : 'bg-white text-gray-600 border border-gray-100 hover:border-primary-200 hover:text-primary-600'
+                    }`}
+                >
+                  <span className="block truncate">{cat.name}</span>
+                  <span className={`text-[11px] font-normal ${selectedCatId === cat.id ? 'text-white/70' : 'text-gray-400'}`}>
+                    {count} item{count !== 1 ? 's' : ''}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
 
-      {/* Items grid */}
-      {visibleItems.length === 0 ? (
-        <div className="card py-14 text-center bg-gray-50">
-          <ConciergeBell className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-sm font-medium text-gray-500">No items found.</p>
+        {/* Items panel */}
+        <div className="flex-1 min-w-0">
+          {/* Grouped by category when "All" is selected */}
+          {groupedItems ? (
+            <div className="space-y-6">
+              {groupedItems.map(({ cat, items }) => (
+                <div key={cat.id}>
+                  <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>{cat.name}</span>
+                    <span className="text-xs font-normal text-gray-300 normal-case tracking-normal">({items.length})</span>
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
+                    {items.map((item) => (
+                      <ItemCard
+                        key={item.id}
+                        item={item}
+                        qty={cart[item.id]?.quantity ?? 0}
+                        onAdd={add}
+                        onRemove={remove}
+                        currency={currency}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : visibleItems.length === 0 ? (
+            <div className="bg-gray-50 border border-gray-100 rounded-2xl py-16 text-center">
+              <ConciergeBell className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+              <p className="text-sm font-medium text-gray-400">No items found.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
+              {visibleItems.map((item) => (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  qty={cart[item.id]?.quantity ?? 0}
+                  onAdd={add}
+                  onRemove={remove}
+                  currency={currency}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {visibleItems.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              qty={cart[item.id]?.quantity ?? 0}
-              onAdd={add}
-              onRemove={remove}
-              currency={currency}
-            />
-          ))}
-        </div>
-      )}
+      </div>
 
       {/* Floating cart bar */}
       <AnimatePresence>
@@ -366,7 +397,7 @@ export default function TakeOrder() {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
             transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-            className="fixed bottom-4 left-4 right-4 z-30 max-w-2xl mx-auto"
+            className="fixed bottom-4 left-4 right-4 z-30 max-w-3xl mx-auto"
           >
             <button
               type="button"
@@ -383,7 +414,9 @@ export default function TakeOrder() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold">{formatCurrency(subtotal + Math.round(subtotal * taxPercentage) / 100, currency)}</span>
+                <span className="text-sm font-bold">
+                  {formatCurrency(subtotal + Math.round(subtotal * taxPercentage) / 100, currency)}
+                </span>
                 <span className="text-xs bg-white/20 rounded-lg px-2 py-0.5 font-semibold">Review →</span>
               </div>
             </button>
