@@ -1,14 +1,31 @@
 import { useEffect, useState } from 'react'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
+  Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts'
-import { TrendingUp, ShoppingBag, DollarSign, Award } from 'lucide-react'
+import {
+  TrendingUp, ShoppingBag, DollarSign, Award,
+  Banknote, Smartphone, CreditCard, Wallet,
+  Tag, RotateCcw,
+} from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
 const CHART_COLORS = ['#e76f51', '#2a9d8f', '#f4a261', '#264653', '#e9c46a', '#a8dadc']
+
+// Payment method display config
+const PAYMENT_META = {
+  cash:   { label: 'Cash',   Icon: Banknote,    bg: 'bg-green-50',   icon: 'bg-gradient-to-br from-green-400 to-green-600',   text: 'text-green-700'  },
+  upi:    { label: 'UPI',    Icon: Smartphone,  bg: 'bg-blue-50',    icon: 'bg-gradient-to-br from-blue-400 to-blue-600',     text: 'text-blue-700'   },
+  card:   { label: 'Card',   Icon: CreditCard,  bg: 'bg-violet-50',  icon: 'bg-gradient-to-br from-violet-400 to-violet-600', text: 'text-violet-700' },
+  other:  { label: 'Other',  Icon: Wallet,      bg: 'bg-amber-50',   icon: 'bg-gradient-to-br from-amber-400 to-amber-600',   text: 'text-amber-700'  },
+}
+
+function getPaymentMeta(method) {
+  const key = (method || 'cash').toLowerCase()
+  return PAYMENT_META[key] || { ...PAYMENT_META.other, label: method }
+}
 
 function CustomTooltip({ active, payload, label, currency }) {
   if (!active || !payload?.length) return null
@@ -24,15 +41,16 @@ function CustomTooltip({ active, payload, label, currency }) {
   )
 }
 
-function StatCard({ icon: Icon, label, value, color }) {
+function StatCard({ icon: Icon, label, value, sub, color }) {
   return (
     <div className={`card flex items-center gap-4 ${color.bg}`}>
-      <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${color.icon} shadow-sm`}>
+      <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl ${color.icon} shadow-sm`}>
         <Icon className="w-5 h-5 text-white" />
       </div>
-      <div>
+      <div className="min-w-0">
         <p className={`text-sm font-medium opacity-70 ${color.text}`}>{label}</p>
-        <p className={`text-2xl font-bold leading-none mt-0.5 font-display ${color.text}`}>{value}</p>
+        <p className={`text-xl font-bold leading-none mt-0.5 font-display truncate ${color.text}`}>{value}</p>
+        {sub && <p className={`text-xs mt-0.5 opacity-60 ${color.text}`}>{sub}</p>}
       </div>
     </div>
   )
@@ -40,6 +58,7 @@ function StatCard({ icon: Icon, label, value, color }) {
 
 export default function Analytics() {
   const { restaurant } = useAuth()
+  const currency = restaurant?.currency || '₹'
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -67,6 +86,9 @@ export default function Analytics() {
         <div className="grid grid-cols-2 gap-4">
           {Array.from({ length: 2 }).map((_, i) => <div key={i} className="skeleton h-24 rounded-2xl" />)}
         </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-20 rounded-2xl" />)}
+        </div>
         {Array.from({ length: 2 }).map((_, i) => <div key={i} className="skeleton h-64 rounded-2xl" />)}
       </div>
     )
@@ -93,11 +115,15 @@ export default function Analytics() {
 
   const pieData = topItemsData.map((item) => ({ name: item.name, value: item.revenue }))
 
-  const currency = restaurant?.currency || '₹'
+  const paymentBreakdown = data.payment_breakdown || []
+  const totalDiscount  = Number(data.total_discount  || 0)
+  const totalRoundOff  = Number(data.total_round_off || 0)
+  const discountCount  = Number(data.discount_count  || 0)
 
   return (
     <div className="space-y-6">
-      {/* Summary cards */}
+
+      {/* ── Summary cards ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard
           icon={ShoppingBag}
@@ -113,7 +139,69 @@ export default function Analytics() {
         />
       </div>
 
-      {/* Daily orders line chart */}
+      {/* ── Payment breakdown ─────────────────────────────────────────────── */}
+      {paymentBreakdown.length > 0 && (
+        <div className="card p-0 overflow-hidden">
+          <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+            <h2 className="text-sm font-bold text-gray-900 font-display">Payment Collection</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Total received per payment method</p>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {paymentBreakdown.map((row) => {
+              const meta = getPaymentMeta(row.payment_method)
+              const Icon = meta.Icon
+              return (
+                <div key={row.payment_method} className="flex items-center gap-4 px-4 py-3">
+                  <div className={`w-9 h-9 flex-shrink-0 rounded-xl flex items-center justify-center ${meta.icon} shadow-sm`}>
+                    <Icon className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800">{meta.label}</p>
+                    <p className="text-xs text-gray-400">{row.count} bill{row.count !== 1 ? 's' : ''}</p>
+                  </div>
+                  <p className="text-base font-bold text-gray-900 tabular-nums">
+                    {formatCurrency(row.total, currency)}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Discount + Round-off summary row */}
+          <div className="border-t border-gray-100 grid grid-cols-2 divide-x divide-gray-100">
+            <div className="px-4 py-3 flex items-center gap-3">
+              <div className="w-8 h-8 flex-shrink-0 rounded-xl flex items-center justify-center bg-gradient-to-br from-rose-400 to-rose-600 shadow-sm">
+                <Tag className="w-3.5 h-3.5 text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500">Total Discount Given</p>
+                <p className="text-sm font-bold text-rose-600 tabular-nums">
+                  − {formatCurrency(totalDiscount, currency)}
+                </p>
+                {discountCount > 0 && (
+                  <p className="text-[11px] text-gray-400">{discountCount} bill{discountCount !== 1 ? 's' : ''}</p>
+                )}
+              </div>
+            </div>
+            <div className="px-4 py-3 flex items-center gap-3">
+              <div className="w-8 h-8 flex-shrink-0 rounded-xl flex items-center justify-center bg-gradient-to-br from-amber-400 to-amber-600 shadow-sm">
+                <RotateCcw className="w-3.5 h-3.5 text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500">Total Round-Off</p>
+                <p className="text-sm font-bold text-amber-600 tabular-nums">
+                  {totalRoundOff >= 0 ? '' : '− '}{formatCurrency(Math.abs(totalRoundOff), currency)}
+                </p>
+                <p className="text-[11px] text-gray-400">
+                  {totalRoundOff <= 0 ? 'saved for customers' : 'added to bills'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Daily orders chart ────────────────────────────────────────────── */}
       <div className="card">
         <div className="flex items-center gap-2 mb-5">
           <TrendingUp className="w-4 h-4 text-primary-500" />
@@ -129,10 +217,7 @@ export default function Analytics() {
               <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} allowDecimals={false} />
               <Tooltip content={<CustomTooltip />} />
               <Line
-                type="monotone"
-                dataKey="orders"
-                stroke="#e76f51"
-                strokeWidth={2.5}
+                type="monotone" dataKey="orders" stroke="#e76f51" strokeWidth={2.5}
                 dot={{ fill: '#e76f51', r: 4, strokeWidth: 0 }}
                 activeDot={{ r: 6, fill: '#d3552f' }}
               />
@@ -141,7 +226,7 @@ export default function Analytics() {
         )}
       </div>
 
-      {/* Top items bar chart */}
+      {/* ── Top items bar chart ───────────────────────────────────────────── */}
       {topItemsData.length > 0 && (
         <div className="card">
           <div className="flex items-center gap-2 mb-5">
@@ -160,7 +245,7 @@ export default function Analytics() {
         </div>
       )}
 
-      {/* Revenue pie chart */}
+      {/* ── Revenue pie chart ─────────────────────────────────────────────── */}
       {pieData.length > 0 && (
         <div className="card">
           <div className="flex items-center gap-2 mb-5">
@@ -170,15 +255,7 @@ export default function Analytics() {
           <div className="flex flex-col sm:flex-row items-center gap-4">
             <ResponsiveContainer width={200} height={200}>
               <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={80}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={3} dataKey="value">
                   {pieData.map((_, index) => (
                     <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                   ))}
@@ -199,7 +276,7 @@ export default function Analytics() {
         </div>
       )}
 
-      {/* Detailed top items table */}
+      {/* ── Item breakdown table ──────────────────────────────────────────── */}
       {topItemsData.length > 0 && (
         <div className="card overflow-hidden p-0">
           <div className="px-4 py-3 border-b border-gray-100">
@@ -225,6 +302,7 @@ export default function Analytics() {
           </table>
         </div>
       )}
+
     </div>
   )
 }
