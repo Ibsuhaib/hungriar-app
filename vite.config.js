@@ -32,11 +32,10 @@ export default defineConfig({
         scope: '/',
         orientation: 'portrait',
         icons: [
-          { src: '/icon-72.png',  sizes: '72x72',   type: 'image/png' },
-          { src: '/icon-96.png',  sizes: '96x96',   type: 'image/png' },
-          { src: '/icon-128.png', sizes: '128x128', type: 'image/png' },
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'pwa-64x64.png',             sizes: '64x64',   type: 'image/png' },
+          { src: 'pwa-192x192.png',           sizes: '192x192', type: 'image/png' },
+          { src: 'pwa-512x512.png',           sizes: '512x512', type: 'image/png' },
+          { src: 'maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
 
