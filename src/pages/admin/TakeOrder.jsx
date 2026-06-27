@@ -40,12 +40,7 @@ function useCart() {
 
 function ItemCard({ item, qty, onAdd, onRemove, currency }) {
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.96 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col overflow-hidden hover:shadow-md transition-shadow"
-    >
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">
       <div className="flex-1 px-3 pt-3 pb-2">
         <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2 min-h-[2.5rem]">{item.name}</p>
         <p className="text-sm font-bold text-primary-600 mt-1">{formatCurrency(item.price, currency)}</p>
@@ -55,25 +50,25 @@ function ItemCard({ item, qty, onAdd, onRemove, currency }) {
           <button
             type="button"
             onClick={() => onAdd(item)}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-primary-50 text-primary-600 text-xs font-bold hover:bg-primary-100 active:bg-primary-200 transition-colors border border-primary-100"
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-primary-50 text-primary-600 text-xs font-bold hover:bg-primary-100 transition-colors border border-primary-100"
           >
             <Plus className="w-3.5 h-3.5" /> Add
           </button>
         ) : (
           <div className="flex items-center justify-between bg-primary-600 rounded-xl px-1 py-0.5">
             <button type="button" onClick={() => onRemove(item.id)}
-              className="w-7 h-7 flex items-center justify-center text-white hover:bg-white/20 active:bg-white/30 rounded-lg transition-colors">
+              className="w-7 h-7 flex items-center justify-center text-white hover:bg-white/20 rounded-lg transition-colors">
               <Minus className="w-3.5 h-3.5" />
             </button>
             <span className="text-white text-sm font-bold tabular-nums">{qty}</span>
             <button type="button" onClick={() => onAdd(item)}
-              className="w-7 h-7 flex items-center justify-center text-white hover:bg-white/20 active:bg-white/30 rounded-lg transition-colors">
+              className="w-7 h-7 flex items-center justify-center text-white hover:bg-white/20 rounded-lg transition-colors">
               <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -98,9 +93,14 @@ function CartSheet({ entries, subtotal, taxPercentage, currency, onRemove, onAdd
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
           <div className="w-10 h-1 bg-gray-200 rounded-full" />
         </div>
+
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 flex-shrink-0">
           <h2 className="text-base font-bold text-gray-900">Order Summary</h2>
-          {selectedTable && <span className="text-xs font-bold bg-primary-100 text-primary-700 px-3 py-1 rounded-full">Table {selectedTable}</span>}
+          {selectedTable && (
+            <span className="text-xs font-bold bg-primary-100 text-primary-700 px-3 py-1 rounded-full">
+              Table {selectedTable}
+            </span>
+          )}
           <button type="button" onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100">
             <X className="w-4 h-4 text-gray-500" />
           </button>
@@ -180,16 +180,16 @@ export default function TakeOrder() {
   const currency = restaurant?.currency || '₹'
   const taxPercentage = Number(restaurant?.tax_percentage) || 0
 
-  const [tables, setTables] = useState([])
+  const [tables, setTables]       = useState([])
   const [categories, setCategories] = useState([])
   const [menuItems, setMenuItems] = useState([])
   const [dataLoading, setDataLoading] = useState(true)
 
   const [selectedTableId, setSelectedTableId] = useState('')
-  const [selectedCatId, setSelectedCatId] = useState('all')
-  const [search, setSearch] = useState('')
-  const [cartOpen, setCartOpen] = useState(false)
-  const [placing, setPlacing] = useState(false)
+  const [selectedCatId, setSelectedCatId]     = useState('all')
+  const [search, setSearch]                   = useState('')
+  const [cartOpen, setCartOpen]               = useState(false)
+  const [placing, setPlacing]                 = useState(false)
 
   const { cart, entries, totalQty, subtotal, add, remove, setNote, clear } = useCart()
 
@@ -201,34 +201,22 @@ export default function TakeOrder() {
       supabase.from('menu_items').select('id, name, price, category_id, available').eq('restaurant_id', restaurant.id).eq('available', true).order('name'),
     ])
     if (!tablesRes.error) setTables(tablesRes.data || [])
-    if (!catsRes.error) setCategories(catsRes.data || [])
-    if (!itemsRes.error) setMenuItems(itemsRes.data || [])
+    if (!catsRes.error)   setCategories(catsRes.data || [])
+    if (!itemsRes.error)  setMenuItems(itemsRes.data || [])
     setDataLoading(false)
   }, [restaurant.id])
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Items filtered by category + search
-  const visibleItems = useMemo(() => {
-    let list = menuItems
-    if (selectedCatId !== 'all') list = list.filter((i) => i.category_id === selectedCatId)
+  // Items for the selected category + search
+  const filteredItems = useMemo(() => {
+    let list = selectedCatId === 'all' ? menuItems : menuItems.filter((i) => i.category_id === selectedCatId)
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter((i) => i.name.toLowerCase().includes(q))
     }
     return list
   }, [menuItems, selectedCatId, search])
-
-  // When "All" selected: group items by category for section headers
-  const groupedItems = useMemo(() => {
-    if (selectedCatId !== 'all' || search.trim()) return null
-    const map = new Map()
-    for (const cat of categories) map.set(cat.id, { cat, items: [] })
-    for (const item of menuItems) {
-      if (map.has(item.category_id)) map.get(item.category_id).items.push(item)
-    }
-    return [...map.values()].filter((g) => g.items.length > 0)
-  }, [selectedCatId, search, categories, menuItems])
 
   const selectedTableNumber = tables.find((t) => t.id === selectedTableId)?.table_number
 
@@ -259,24 +247,25 @@ export default function TakeOrder() {
 
   if (dataLoading) {
     return (
-      <div className="flex gap-4 h-[calc(100vh-10rem)]">
-        <div className="w-40 flex-shrink-0 space-y-2">
-          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-11 rounded-xl" />)}
+      <div className="space-y-4">
+        <div className="flex gap-3">
+          <div className="skeleton h-10 rounded-xl w-44" />
+          <div className="skeleton h-10 rounded-xl flex-1" />
         </div>
-        <div className="flex-1 space-y-4">
-          <div className="skeleton h-10 rounded-xl w-full" />
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton h-28 rounded-2xl" />)}
-          </div>
+        <div className="flex gap-2">
+          {Array.from({ length: 5 }).map((_, i) => <div key={i} className="skeleton h-9 w-24 rounded-full" />)}
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton h-28 rounded-2xl" />)}
         </div>
       </div>
     )
   }
 
   return (
-    <div className="pb-28">
-      {/* Top bar: table selector + search */}
-      <div className="flex flex-wrap gap-3 items-center mb-4">
+    <div className="space-y-4 pb-28">
+      {/* Table selector + search */}
+      <div className="flex flex-wrap gap-3 items-center">
         <div className="relative">
           <select
             value={selectedTableId}
@@ -295,99 +284,51 @@ export default function TakeOrder() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <input
             type="search" value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setSelectedCatId('all') }}
             placeholder="Search items…"
             className="input pl-9 w-full"
           />
         </div>
       </div>
 
-      {/* Main layout: category sidebar + items panel */}
-      <div className="flex gap-4">
-        {/* Category sidebar */}
-        <div className="w-36 sm:w-44 flex-shrink-0">
-          <div className="flex flex-col gap-1.5 sticky top-4">
-            <button
-              type="button"
-              onClick={() => { setSelectedCatId('all'); setSearch('') }}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-semibold transition-all
-                ${selectedCatId === 'all'
-                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-200'
-                  : 'bg-white text-gray-600 border border-gray-100 hover:border-primary-200 hover:text-primary-600'
-                }`}
-            >
-              All Items
-            </button>
-            {categories.map((cat) => {
-              const count = menuItems.filter((i) => i.category_id === cat.id).length
-              return (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => { setSelectedCatId(cat.id); setSearch('') }}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-semibold transition-all
-                    ${selectedCatId === cat.id
-                      ? 'bg-primary-600 text-white shadow-sm shadow-primary-200'
-                      : 'bg-white text-gray-600 border border-gray-100 hover:border-primary-200 hover:text-primary-600'
-                    }`}
-                >
-                  <span className="block truncate">{cat.name}</span>
-                  <span className={`text-[11px] font-normal ${selectedCatId === cat.id ? 'text-white/70' : 'text-gray-400'}`}>
-                    {count} item{count !== 1 ? 's' : ''}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Items panel */}
-        <div className="flex-1 min-w-0">
-          {/* Grouped by category when "All" is selected */}
-          {groupedItems ? (
-            <div className="space-y-6">
-              {groupedItems.map(({ cat, items }) => (
-                <div key={cat.id}>
-                  <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                    <span>{cat.name}</span>
-                    <span className="text-xs font-normal text-gray-300 normal-case tracking-normal">({items.length})</span>
-                  </h3>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-                    {items.map((item) => (
-                      <ItemCard
-                        key={item.id}
-                        item={item}
-                        qty={cart[item.id]?.quantity ?? 0}
-                        onAdd={add}
-                        onRemove={remove}
-                        currency={currency}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : visibleItems.length === 0 ? (
-            <div className="bg-gray-50 border border-gray-100 rounded-2xl py-16 text-center">
-              <ConciergeBell className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-              <p className="text-sm font-medium text-gray-400">No items found.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-              {visibleItems.map((item) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  qty={cart[item.id]?.quantity ?? 0}
-                  onAdd={add}
-                  onRemove={remove}
-                  currency={currency}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Category tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {[{ id: 'all', name: 'All' }, ...categories].map((cat) => (
+          <button
+            key={cat.id}
+            type="button"
+            onClick={() => { setSelectedCatId(cat.id); setSearch('') }}
+            className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold border transition-all
+              ${selectedCatId === cat.id
+                ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
+                : 'bg-white text-gray-500 border-gray-200 hover:border-primary-300 hover:text-primary-600'
+              }`}
+          >
+            {cat.name}
+          </button>
+        ))}
       </div>
+
+      {/* Items grid */}
+      {filteredItems.length === 0 ? (
+        <div className="bg-gray-50 border border-gray-100 rounded-2xl py-16 text-center">
+          <ConciergeBell className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+          <p className="text-sm font-medium text-gray-400">No items found.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {filteredItems.map((item) => (
+            <ItemCard
+              key={item.id}
+              item={item}
+              qty={cart[item.id]?.quantity ?? 0}
+              onAdd={add}
+              onRemove={remove}
+              currency={currency}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Floating cart bar */}
       <AnimatePresence>
