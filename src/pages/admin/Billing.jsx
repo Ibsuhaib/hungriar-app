@@ -26,9 +26,9 @@ const PM_LABELS = { cash: 'Cash', upi: 'UPI', card: 'Card', other: 'Other' }
 const EMPTY_ADJ = { discountType: 'amount', discountValue: '', roundOff: '' }
 
 function computeFinals(total, adj) {
-  const dv = Number(adj.discountValue) || 0
+  const dv = Math.max(0, Number(adj.discountValue) || 0)  // Bug 2: clamp negative inputs to 0
   const discountAmt = adj.discountType === 'percent'
-    ? Math.min(total, Math.round(total * dv / 100 * 100) / 100)
+    ? Math.min(total, Math.round(total * dv) / 100)        // total × dv% rounded to 2dp
     : Math.min(total, dv)
   const afterDiscount = total - discountAmt
   const roundOffAmt = Number(adj.roundOff) || 0
@@ -238,8 +238,12 @@ export default function Billing() {
   )
 
   const getAdj = (tableId) => adjustments[tableId] || EMPTY_ADJ
+  // Bug 1 fix: read from `prev` inside the functional update, not from the outer `adjustments` closure
   const patchAdj = (tableId, patch) =>
-    setAdjustments((prev) => ({ ...prev, [tableId]: { ...getAdj(tableId), ...patch } }))
+    setAdjustments((prev) => {
+      const current = prev[tableId] || EMPTY_ADJ
+      return { ...prev, [tableId]: { ...current, ...patch } }
+    })
 
   const selectPayment = (tableId, methodId) =>
     setSelectedPayments((prev) => ({ ...prev, [tableId]: methodId }))
@@ -445,7 +449,7 @@ export default function Billing() {
                         type="button"
                         onClick={() => {
                           const afterDiscount = total - discountAmt
-                          const rounded = Math.round(afterDiscount)
+                          const rounded = Math.floor(afterDiscount) // Bug 3: always round DOWN
                           const ro = rounded - afterDiscount
                           patchAdj(table.id, { roundOff: ro === 0 ? '' : ro.toFixed(2) })
                         }}
