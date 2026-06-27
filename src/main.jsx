@@ -2,8 +2,37 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
+import toast from 'react-hot-toast'
+import { registerSW } from 'virtual:pwa-register'
 import App from './App.jsx'
 import './index.css'
+
+// Register the service worker. When a new version is ready, show a toast
+// so the user can refresh to get the latest update.
+registerSW({
+  onNeedRefresh() {
+    toast(
+      (t) => (
+        <span className="flex items-center gap-3">
+          <span>App updated — reload for the latest version.</span>
+          <button
+            onClick={() => {
+              toast.dismiss(t.id)
+              window.location.reload()
+            }}
+            className="flex-shrink-0 px-3 py-1 rounded-lg bg-primary-600 text-white text-xs font-bold"
+          >
+            Reload
+          </button>
+        </span>
+      ),
+      { duration: Infinity, id: 'sw-update' },
+    )
+  },
+  onOfflineReady() {
+    toast.success('App ready for offline use', { id: 'sw-offline-ready', duration: 3000 })
+  },
+})
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
