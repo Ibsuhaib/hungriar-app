@@ -159,8 +159,9 @@ function ConfirmDialog({ table, activeCount, onConfirm, onCancel, loading }) {
           </p>
           <div className="flex gap-3 mt-5">
             <button type="button" onClick={onCancel} className="btn-outline flex-1">Cancel</button>
-            <button type="button" onClick={onConfirm} disabled={loading} className="btn-secondary flex-1">
-              {loading ? 'Settling…' : 'Settle Bill'}
+            <button type="button" onClick={onConfirm} disabled={loading} className="btn-secondary flex-1 gap-1.5">
+              <Printer className="w-4 h-4" />
+              {loading ? 'Settling…' : 'Print & Settle'}
             </button>
           </div>
         </div>
@@ -229,6 +230,19 @@ export default function Billing() {
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) { setConfirmTable(null); return }
 
+    // Print the receipt first (non-destructive), then settle
+    const billData = bills.find((b) => b.table.id === confirmTable.id)
+    if (billData) {
+      printReceipt({
+        tableOrders: billData.orders,
+        table:        confirmTable,
+        total:        billData.total,
+        taxPercentage,
+        paymentMethod: selectedPayments[confirmTable.id] || 'other',
+        restaurant,
+      })
+    }
+
     setSettlingTableId(confirmTable.id)
     try {
       const { data, error } = await supabase.rpc('reset_table_billing', {
@@ -238,7 +252,7 @@ export default function Billing() {
       })
       if (error) throw error
       if (!data) { toast.error('No completed orders to settle for this table'); return }
-      toast.success('Bill settled and archived to history')
+      toast.success('Bill printed and settled')
       setSelectedPayments((prev) => { const next = { ...prev }; delete next[confirmTable.id]; return next })
       await fetchData()
     } catch (err) {
@@ -354,9 +368,8 @@ export default function Billing() {
                     <button
                       type="button"
                       onClick={() => printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod: chosen, restaurant })}
-                      disabled={!chosen}
-                      title={!chosen ? 'Select a payment method first' : 'Print receipt'}
-                      className="btn-outline flex-1 gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Print receipt without settling"
+                      className="btn-outline gap-1.5 text-sm px-3"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       Print
@@ -365,10 +378,11 @@ export default function Billing() {
                       type="button"
                       onClick={() => handleClickSettle(table)}
                       disabled={settlingTableId === table.id || !chosen}
-                      title={!chosen ? 'Select a payment method first' : ''}
-                      className="btn-secondary flex-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={!chosen ? 'Select a payment method first' : 'Print receipt and settle the bill'}
+                      className="btn-secondary flex-1 gap-1.5 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      {settlingTableId === table.id ? 'Settling…' : 'Settle Bill'}
+                      <Printer className="w-3.5 h-3.5" />
+                      {settlingTableId === table.id ? 'Settling…' : 'Print & Settle'}
                     </button>
                   </div>
                 </div>
