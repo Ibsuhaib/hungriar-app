@@ -197,7 +197,7 @@ export default function TakeOrder() {
     setDataLoading(true)
     const [tablesRes, catsRes, itemsRes] = await Promise.all([
       supabase.from('tables').select('id, table_number').eq('restaurant_id', restaurant.id).order('table_number'),
-      supabase.from('categories').select('id, name, sort_order').eq('restaurant_id', restaurant.id).order('sort_order'),
+      supabase.from('categories').select('id, name, display_order').eq('restaurant_id', restaurant.id).order('display_order'),
       supabase.from('menu_items').select('id, name, price, category_id, available').eq('restaurant_id', restaurant.id).eq('available', true).order('name'),
     ])
     if (!tablesRes.error) setTables(tablesRes.data || [])
