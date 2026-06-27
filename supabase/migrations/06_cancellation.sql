@@ -1,6 +1,7 @@
 -- =============================================================================
 -- 06_cancellation.sql
 -- Run in Supabase SQL Editor: Dashboard → SQL Editor → New Query
+-- Safe to re-run — all statements use CREATE OR REPLACE / IF NOT EXISTS.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -20,12 +21,36 @@ alter table public.order_items
   add column if not exists cancelled boolean not null default false;
 
 -- -----------------------------------------------------------------------------
--- 3. RPC: cancel a single order item and recalculate the order total
+-- 3. UPDATE RLS policy for order_items so restaurant admins can cancel items
+--    (order_items previously only had SELECT — no UPDATE policy existed)
+-- -----------------------------------------------------------------------------
+drop policy if exists order_items_update on public.order_items;
+create policy order_items_update on public.order_items
+  for update to authenticated
+  using (
+    exists (
+      select 1 from public.orders o
+      where o.id = order_items.order_id
+        and (public.is_restaurant_admin(o.restaurant_id) or public.is_super_admin())
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.orders o
+      where o.id = order_items.order_id
+        and (public.is_restaurant_admin(o.restaurant_id) or public.is_super_admin())
+    )
+  );
+
+-- -----------------------------------------------------------------------------
+-- 4. RPC: cancel a single order item and recalculate the order total
+--    security definer: runs as function owner (bypasses RLS); the manual
+--    is_restaurant_admin check inside ensures only admins can call it.
 -- -----------------------------------------------------------------------------
 create or replace function public.cancel_order_item(p_item_id uuid)
 returns void
 language plpgsql
-security invoker
+security definer
 set search_path = public
 as $$
 declare
@@ -79,12 +104,12 @@ $$;
 grant execute on function public.cancel_order_item(uuid) to authenticated;
 
 -- -----------------------------------------------------------------------------
--- 4. RPC: cancel an entire order at once
+-- 5. RPC: cancel an entire order at once
 -- -----------------------------------------------------------------------------
 create or replace function public.cancel_order(p_order_id uuid)
 returns void
 language plpgsql
-security invoker
+security definer
 set search_path = public
 as $$
 declare
