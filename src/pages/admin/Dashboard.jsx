@@ -134,14 +134,14 @@ export default function Dashboard() {
     )
   }, [])
 
-  const { orders, loading, patchOrder } = useRealtimeOrders({ restaurantId: restaurant?.id, onInsert: handleNewOrder, pollInterval: 3000 })
+  const { orders, loading, patchOrder, refetch } = useRealtimeOrders({ restaurantId: restaurant?.id, onInsert: handleNewOrder, pollInterval: 3000 })
 
   const stats = useMemo(() => {
     const todayKey = new Date().toDateString()
     const todayOrders = orders.filter((o) => new Date(o.order_time).toDateString() === todayKey)
     const activeCompletedToday = todayOrders.filter((o) => o.status === 'completed')
     return {
-      pending: orders.filter((o) => o.status !== 'completed').length,
+      pending: orders.filter((o) => o.status !== 'completed' && o.status !== 'cancelled').length,
       completedToday: activeCompletedToday.length + settledToday.count,
       todayRevenue:
         activeCompletedToday.reduce((sum, o) => sum + Number(o.total_amount), 0) + settledToday.revenue,
@@ -149,7 +149,7 @@ export default function Dashboard() {
   }, [orders, settledToday])
 
   const activeOrders = useMemo(
-    () => orders.filter((o) => o.status !== 'completed').slice(0, 6),
+    () => orders.filter((o) => o.status !== 'completed' && o.status !== 'cancelled').slice(0, 6),
     [orders],
   )
 
@@ -162,6 +162,31 @@ export default function Dashboard() {
     if (error) {
       toast.error('Failed to update order status')
       if (prevStatus) patchOrder(orderId, { status: prevStatus })
+    }
+  }
+
+  const handleCancelItem = async (orderId, itemId, itemName) => {
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    const { error } = await supabase.rpc('cancel_order_item', { p_item_id: itemId })
+    if (error) {
+      toast.error('Failed to cancel item')
+    } else {
+      toast.success(`${itemName} cancelled`)
+      refetch({ silent: true })
+    }
+  }
+
+  const handleCancelOrder = async (orderId) => {
+    if (!window.confirm('Cancel this entire order? This cannot be undone.')) return
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    const { error } = await supabase.rpc('cancel_order', { p_order_id: orderId })
+    if (error) {
+      toast.error('Failed to cancel order')
+    } else {
+      toast.success('Order cancelled')
+      refetch({ silent: true })
     }
   }
 
@@ -255,6 +280,8 @@ export default function Dashboard() {
                 key={order.id}
                 order={order}
                 onStatusChange={handleStatusChange}
+                onCancelItem={handleCancelItem}
+                onCancelOrder={handleCancelOrder}
                 currency={restaurant?.currency}
               />
             ))}

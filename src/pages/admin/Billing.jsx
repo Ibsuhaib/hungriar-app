@@ -103,6 +103,7 @@ export default function Billing() {
       .eq('restaurant_id', restaurant.id)
       .eq('table_id', table.id)
       .neq('status', 'completed')
+      .neq('status', 'cancelled')
     setActiveOrdersCount(count ?? 0)
     setConfirmTable(table)
   }
@@ -180,7 +181,7 @@ export default function Billing() {
                         <span className="font-semibold text-gray-800">{formatCurrency(order.total_amount, restaurant?.currency)}</span>
                       </div>
                       <ul className="mt-1 pl-3 space-y-0.5">
-                        {(order.order_items || []).map((item) => (
+                        {(order.order_items || []).filter((item) => !item.cancelled).map((item) => (
                           <li key={item.id} className="flex items-center gap-1.5 text-xs text-gray-400">
                             <span className="font-medium text-gray-500">{item.quantity}×</span>
                             {item.item_name}
