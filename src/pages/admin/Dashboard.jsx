@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
-import { Clock, CheckCircle2, TrendingUp, ArrowRight, Bell, BellOff, ChefHat } from 'lucide-react'
+import { Clock, CheckCircle2, TrendingUp, ArrowRight, Bell, BellOff, ChefHat, Sunset } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -97,7 +97,20 @@ const QUICK_LINKS = [
 export default function Dashboard() {
   const { restaurant, user } = useAuth()
   const { checkAdminLimit } = useRateLimit()
-  const [settledToday, setSettledToday] = useState({ count: 0, revenue: 0 })
+  const [settledToday, setSettledToday]   = useState({ count: 0, revenue: 0 })
+  const [isTodayClosed, setIsTodayClosed] = useState(false)
+
+  // Check if today's day has been closed
+  useEffect(() => {
+    if (!restaurant?.id) return
+    const today = new Date().toISOString().slice(0, 10)
+    supabase
+      .from('day_closes')
+      .select('id', { count: 'exact', head: true })
+      .eq('restaurant_id', restaurant.id)
+      .eq('close_date', today)
+      .then(({ count }) => setIsTodayClosed((count ?? 0) > 0))
+  }, [restaurant?.id])
 
   useEffect(() => {
     if (!restaurant?.id) return
@@ -137,6 +150,7 @@ export default function Dashboard() {
   const { orders, loading, patchOrder, refetch } = useRealtimeOrders({ restaurantId: restaurant?.id, onInsert: handleNewOrder, pollInterval: 3000 })
 
   const stats = useMemo(() => {
+    if (isTodayClosed) return { pending: 0, completedToday: 0, todayRevenue: 0 }
     const todayKey = new Date().toDateString()
     const todayOrders = orders.filter((o) => new Date(o.order_time).toDateString() === todayKey)
     const activeCompletedToday = todayOrders.filter((o) => o.status === 'completed')
@@ -146,11 +160,11 @@ export default function Dashboard() {
       todayRevenue:
         activeCompletedToday.reduce((sum, o) => sum + Number(o.total_amount), 0) + settledToday.revenue,
     }
-  }, [orders, settledToday])
+  }, [orders, settledToday, isTodayClosed])
 
   const activeOrders = useMemo(
-    () => orders.filter((o) => o.status !== 'completed' && o.status !== 'cancelled').slice(0, 6),
-    [orders],
+    () => isTodayClosed ? [] : orders.filter((o) => o.status !== 'completed' && o.status !== 'cancelled').slice(0, 6),
+    [orders, isTodayClosed],
   )
 
   const handleStatusChange = async (orderId, newStatus) => {
@@ -193,6 +207,19 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <SubscriptionBanner restaurant={restaurant} />
+
+      {/* Day Closed banner */}
+      {isTodayClosed && (
+        <div className="flex items-center gap-3 bg-gradient-to-r from-orange-50 to-rose-50 border border-orange-100 rounded-2xl px-4 py-3">
+          <div className="w-9 h-9 flex-shrink-0 rounded-xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center shadow-sm">
+            <Sunset className="w-4 h-4 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-orange-800">Day Closed</p>
+            <p className="text-xs text-orange-600">Today's session ended. Stats reset fresh tomorrow.</p>
+          </div>
+        </div>
+      )}
 
       {/* Notification + Chef mode row */}
       <div className="flex items-center gap-3 flex-wrap">

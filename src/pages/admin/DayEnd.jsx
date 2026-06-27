@@ -364,9 +364,10 @@ export default function DayEnd() {
         },
       })
       if (error) throw error
-      toast.success('Day closed successfully!')
+      toast.success('Day closed! Dashboard is now fresh.')
       setShowConfirm(false)
-      load()
+      // Navigate to dashboard immediately — it will show 0 stats + Day Closed banner
+      navigate('/admin')
     } catch (err) {
       toast.error(err.message || 'Failed to close day')
     } finally {
@@ -400,19 +401,27 @@ export default function DayEnd() {
 
   if (closeRecord) {
     return (
-      <ClosedScreen
-        closeRecord={closeRecord}
-        currency={currency}
-        onGoToDashboard={() => navigate('/admin')}
-        onPrint={handlePrint}
-        collections={collections}
-        expenses={expenses}
-        netMap={netMap}
-        totalCollected={totalCollected}
-        totalExpenses={totalExpenses}
-        restaurantName={restaurant.name || 'Restaurant'}
-        today={today}
-      />
+      <div className="max-w-2xl space-y-4">
+        <ClosedScreen
+          closeRecord={closeRecord}
+          currency={currency}
+          onGoToDashboard={() => navigate('/admin')}
+          onPrint={handlePrint}
+          collections={collections}
+          expenses={expenses}
+          netMap={netMap}
+          totalCollected={totalCollected}
+          totalExpenses={totalExpenses}
+          restaurantName={restaurant.name || 'Restaurant'}
+          today={today}
+        />
+        <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3">
+          <CheckCircle2 className="w-4 h-4 text-blue-500 flex-shrink-0" />
+          <p className="text-xs text-blue-700 font-medium">
+            Expense panel resets fresh tomorrow. Come back then to start a new day.
+          </p>
+        </div>
+      </div>
     )
   }
 
