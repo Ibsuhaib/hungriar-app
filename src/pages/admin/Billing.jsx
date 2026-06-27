@@ -5,13 +5,13 @@ import { Receipt, CheckCircle2, Printer, AlertCircle, TriangleAlert, Banknote, C
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
-import { formatCurrency, formatTime } from '../../utils/formatters'
+import { formatTime } from '../../utils/formatters'
 
 const PAYMENT_METHODS = [
-  { id: 'cash',  label: 'Cash',  icon: Banknote,    active: 'border-green-500 bg-green-50 text-green-700' },
-  { id: 'upi',   label: 'UPI',   icon: Smartphone,  active: 'border-purple-500 bg-purple-50 text-purple-700' },
-  { id: 'card',  label: 'Card',  icon: CreditCard,  active: 'border-blue-500 bg-blue-50 text-blue-700' },
-  { id: 'other', label: 'Other', icon: Wallet,      active: 'border-gray-400 bg-gray-50 text-gray-700' },
+  { id: 'cash',  label: 'Cash',  icon: Banknote,   active: 'border-green-500 bg-green-50 text-green-700' },
+  { id: 'upi',   label: 'UPI',   icon: Smartphone, active: 'border-purple-500 bg-purple-50 text-purple-700' },
+  { id: 'card',  label: 'Card',  icon: CreditCard, active: 'border-blue-500 bg-blue-50 text-blue-700' },
+  { id: 'other', label: 'Other', icon: Wallet,     active: 'border-gray-400 bg-gray-50 text-gray-700' },
 ]
 
 export const PAYMENT_BADGE = {
@@ -19,6 +19,103 @@ export const PAYMENT_BADGE = {
   upi:   { label: 'UPI',   classes: 'bg-purple-100 text-purple-700' },
   card:  { label: 'Card',  classes: 'bg-blue-100 text-blue-700' },
   other: { label: 'Other', classes: 'bg-gray-100 text-gray-600' },
+}
+
+const PM_LABELS = { cash: 'Cash', upi: 'UPI', card: 'Card', other: 'Other' }
+
+function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod, restaurant }) {
+  const cur = restaurant?.currency || '₹'
+  const fmt = (v) => `${cur}${Number(v).toFixed(2)}`
+  const name = restaurant?.name || 'Restaurant'
+  const now = new Date()
+  const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+  const pm = PM_LABELS[paymentMethod] || paymentMethod || '—'
+
+  const subtotal = taxPercentage > 0 ? total / (1 + taxPercentage / 100) : total
+  const taxAmt = total - subtotal
+
+  const orderRows = tableOrders.map((order, idx) => {
+    const activeItems = (order.order_items || []).filter((i) => !i.cancelled)
+    if (activeItems.length === 0) return ''
+    const oTime = new Date(order.order_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    const itemRows = activeItems.map((item) => `
+      <tr>
+        <td>${item.quantity}&times; ${item.item_name}</td>
+        <td class="r">${fmt(item.quantity * item.unit_price)}</td>
+      </tr>`).join('')
+    return `
+      ${idx > 0 ? '<tr><td colspan="2"><div class="dash"></div></td></tr>' : ''}
+      <tr class="order-hdr"><td colspan="2">Order ${idx + 1} &bull; ${oTime}</td></tr>
+      ${itemRows}`
+  }).join('')
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <title>Bill &mdash; Table ${table.table_number}</title>
+  <style>
+    @page { size: 80mm auto; margin: 4mm 4mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Courier New', Courier, monospace; font-size: 11.5px; color: #000; width: 72mm; }
+    .c  { text-align: center; }
+    .r  { text-align: right; }
+    .b  { font-weight: bold; }
+    .sm { font-size: 10px; color: #444; }
+    .dash { border-top: 1px dashed #000; margin: 5px 0; }
+    .solid { border-top: 1px solid #000; margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td { padding: 2px 0; vertical-align: top; }
+    td:last-child { white-space: nowrap; padding-left: 6px; }
+    .order-hdr td { font-size: 10px; color: #555; padding-top: 5px; }
+    .total-row td { font-size: 13px; font-weight: bold; padding-top: 3px; }
+    .sub-row td { font-size: 10px; color: #444; }
+  </style>
+</head>
+<body>
+  <div class="c b" style="font-size:15px">${name}</div>
+  <div class="c sm" style="margin-top:2px">Powered by HungriAR</div>
+
+  <div class="dash" style="margin-top:7px"></div>
+
+  <div style="display:flex;justify-content:space-between">
+    <span>Table: <strong>${table.table_number}</strong></span>
+    <span>${dateStr}</span>
+  </div>
+  <div class="sm">${timeStr}</div>
+
+  <div class="dash"></div>
+
+  <table>${orderRows}</table>
+
+  <div class="solid"></div>
+
+  <table>
+    ${taxPercentage > 0 ? `
+    <tr class="sub-row"><td>Subtotal</td><td class="r">${fmt(subtotal)}</td></tr>
+    <tr class="sub-row"><td>Tax (${taxPercentage}%)</td><td class="r">${fmt(taxAmt)}</td></tr>
+    <tr><td colspan="2"><div class="dash" style="margin:3px 0"></div></td></tr>
+    ` : ''}
+    <tr class="total-row"><td>TOTAL</td><td class="r">${fmt(total)}</td></tr>
+  </table>
+
+  <div class="dash"></div>
+
+  <div>Payment: <strong>${pm}</strong></div>
+
+  <div class="solid" style="margin-top:10px"></div>
+  <div class="c sm" style="margin-top:6px">Thank you for dining with us!</div>
+  <div class="c sm">Please visit again &hearts;</div>
+</body>
+</html>`
+
+  const win = window.open('', '_blank', 'width=340,height=600')
+  if (!win) { toast.error('Allow pop-ups to print the bill'); return }
+  win.document.write(html)
+  win.document.close()
+  win.focus()
+  setTimeout(() => { win.print(); win.close() }, 400)
 }
 
 function ConfirmDialog({ table, activeCount, onConfirm, onCancel, loading }) {
@@ -48,7 +145,6 @@ function ConfirmDialog({ table, activeCount, onConfirm, onCancel, loading }) {
           <h3 className="text-base font-bold text-gray-900 font-display">
             Settle bill for Table {table.table_number}?
           </h3>
-
           {activeCount > 0 && (
             <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
               <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
@@ -58,7 +154,6 @@ function ConfirmDialog({ table, activeCount, onConfirm, onCancel, loading }) {
               </p>
             </div>
           )}
-
           <p className="text-sm text-gray-500 mt-3 leading-relaxed">
             Completed orders will be archived to History. This cannot be undone.
           </p>
@@ -85,7 +180,6 @@ export default function Billing() {
   const [settlingTableId, setSettlingTableId] = useState(null)
   const [confirmTable, setConfirmTable] = useState(null)
   const [activeOrdersCount, setActiveOrdersCount] = useState(0)
-  // payment method selected per table: { [tableId]: 'cash' | 'upi' | 'card' | 'other' }
   const [selectedPayments, setSelectedPayments] = useState({})
 
   const fetchData = useCallback(async () => {
@@ -160,7 +254,7 @@ export default function Billing() {
       <div className="flex items-start gap-3 rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
         <AlertCircle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
         <p className="text-sm text-blue-700 leading-relaxed">
-          Tables with completed but unsettled orders appear below. Select a payment method, then settle to archive and clear the table.
+          Select a payment method on each table, then print the receipt or settle to archive and clear the table.
         </p>
       </div>
 
@@ -183,10 +277,10 @@ export default function Billing() {
                 key={table.id}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="card overflow-hidden p-0 print:shadow-none"
+                className="card overflow-hidden p-0"
               >
-                {/* Invoice header */}
-                <div className="flex items-center justify-between gap-3 bg-gray-50 border-b border-gray-100 px-5 py-4 no-print">
+                {/* Header */}
+                <div className="flex items-center justify-between gap-3 bg-gray-50 border-b border-gray-100 px-5 py-4">
                   <div className="flex items-center gap-2">
                     <Receipt className="w-4 h-4 text-gray-400" />
                     <h2 className="text-base font-bold text-gray-900 font-display">Table {table.table_number}</h2>
@@ -196,14 +290,16 @@ export default function Billing() {
                   </span>
                 </div>
 
-                {/* Orders list */}
+                {/* Orders */}
                 <div className="px-5 py-4">
-                  <ul className="divide-y divide-gray-50 space-y-0">
+                  <ul className="divide-y divide-gray-50">
                     {tableOrders.map((order) => (
                       <li key={order.id} className="py-2.5 first:pt-0 last:pb-0">
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-500">Order at {formatTime(order.order_time)}</span>
-                          <span className="font-semibold text-gray-800">{formatCurrency(order.total_amount, restaurant?.currency)}</span>
+                          <span className="font-semibold text-gray-800">
+                            {restaurant?.currency || '₹'}{Number(order.total_amount).toFixed(2)}
+                          </span>
                         </div>
                         <ul className="mt-1 pl-3 space-y-0.5">
                           {(order.order_items || []).filter((item) => !item.cancelled).map((item) => (
@@ -223,7 +319,9 @@ export default function Billing() {
                 <div className="border-t border-gray-100 px-5 py-4 space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-gray-600">Total Due</span>
-                    <span className="text-xl font-bold text-gray-900 font-display">{formatCurrency(total, restaurant?.currency)}</span>
+                    <span className="text-xl font-bold text-gray-900 font-display">
+                      {restaurant?.currency || '₹'}{total.toFixed(2)}
+                    </span>
                   </div>
                   {taxPercentage > 0 && (
                     <p className="text-xs text-gray-400 -mt-3">Includes {taxPercentage}% tax</p>
@@ -251,11 +349,14 @@ export default function Billing() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2 no-print">
+                  {/* Actions */}
+                  <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => window.print()}
-                      className="btn-outline flex-1 gap-2 text-sm"
+                      onClick={() => printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod: chosen, restaurant })}
+                      disabled={!chosen}
+                      title={!chosen ? 'Select a payment method first' : 'Print receipt'}
+                      className="btn-outline flex-1 gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       Print
