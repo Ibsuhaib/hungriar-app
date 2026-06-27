@@ -1,13 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Receipt, CheckCircle2, Printer, AlertCircle, TriangleAlert } from 'lucide-react'
+import { Receipt, CheckCircle2, Printer, AlertCircle, TriangleAlert, Banknote, CreditCard, Smartphone, Wallet } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency, formatTime } from '../../utils/formatters'
 
+const PAYMENT_METHODS = [
+  { id: 'cash', label: 'Cash', icon: Banknote, active: 'border-green-500 bg-green-50 text-green-700', dot: 'bg-green-500' },
+  { id: 'upi', label: 'UPI', icon: Smartphone, active: 'border-purple-500 bg-purple-50 text-purple-700', dot: 'bg-purple-500' },
+  { id: 'card', label: 'Card', icon: CreditCard, active: 'border-blue-500 bg-blue-50 text-blue-700', dot: 'bg-blue-500' },
+  { id: 'other', label: 'Other', icon: Wallet, active: 'border-gray-400 bg-gray-50 text-gray-700', dot: 'bg-gray-400' },
+]
+
+const PAYMENT_BADGE = {
+  cash:  'bg-green-100 text-green-700',
+  upi:   'bg-purple-100 text-purple-700',
+  card:  'bg-blue-100 text-blue-700',
+  other: 'bg-gray-100 text-gray-600',
+}
+
 function ConfirmDialog({ table, activeCount, onConfirm, onCancel, loading }) {
+  const [paymentMethod, setPaymentMethod] = useState(null)
+
   return (
     <AnimatePresence>
       <motion.div
@@ -24,17 +40,21 @@ function ConfirmDialog({ table, activeCount, onConfirm, onCancel, loading }) {
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
         style={{ pointerEvents: 'none' }}
       >
-        <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full" style={{ pointerEvents: 'auto' }}>
-          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl mb-4 ${activeCount > 0 ? 'bg-amber-50' : 'bg-secondary-50'}`}>
+        <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full space-y-4" style={{ pointerEvents: 'auto' }}>
+          {/* Title */}
+          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${activeCount > 0 ? 'bg-amber-50' : 'bg-secondary-50'}`}>
             {activeCount > 0
               ? <TriangleAlert className="w-5 h-5 text-amber-500" />
               : <CheckCircle2 className="w-5 h-5 text-secondary-500" />
             }
           </div>
-          <h3 className="text-base font-bold text-gray-900 font-display">Settle bill for Table {table.table_number}?</h3>
+          <h3 className="text-base font-bold text-gray-900 font-display">
+            Settle bill for Table {table.table_number}?
+          </h3>
 
+          {/* Active orders warning */}
           {activeCount > 0 && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
+            <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
               <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-amber-700 leading-relaxed">
                 <span className="font-semibold">{activeCount} order{activeCount !== 1 ? 's' : ''} still in the kitchen.</span>{' '}
@@ -43,12 +63,44 @@ function ConfirmDialog({ table, activeCount, onConfirm, onCancel, loading }) {
             </div>
           )}
 
-          <p className="text-sm text-gray-500 mt-3 leading-relaxed">
+          {/* Payment method selector */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Payment method
+            </p>
+            <div className="grid grid-cols-4 gap-2">
+              {PAYMENT_METHODS.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setPaymentMethod(m.id)}
+                  className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all text-xs font-semibold
+                    ${paymentMethod === m.id
+                      ? m.active
+                      : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    }`}
+                >
+                  <m.icon className="w-5 h-5" />
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-sm text-gray-500 leading-relaxed">
             Completed orders will be archived to History. This cannot be undone.
           </p>
-          <div className="flex gap-3 mt-5">
-            <button type="button" onClick={onCancel} className="btn-outline flex-1">Cancel</button>
-            <button type="button" onClick={onConfirm} disabled={loading} className="btn-secondary flex-1">
+
+          <div className="flex gap-3">
+            <button type="button" onClick={onCancel} className="btn-outline flex-1">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => onConfirm(paymentMethod)}
+              disabled={loading || !paymentMethod}
+              className="btn-secondary flex-1 disabled:opacity-40"
+            >
               {loading ? 'Settling…' : 'Settle Bill'}
             </button>
           </div>
@@ -108,7 +160,7 @@ export default function Billing() {
     setConfirmTable(table)
   }
 
-  const handleSettle = async () => {
+  const handleSettle = async (paymentMethod) => {
     if (!confirmTable || settlingTableId) return
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) { setConfirmTable(null); return }
@@ -116,8 +168,9 @@ export default function Billing() {
     setSettlingTableId(confirmTable.id)
     try {
       const { data, error } = await supabase.rpc('reset_table_billing', {
-        p_restaurant_id: restaurant.id,
-        p_table_id: confirmTable.id,
+        p_restaurant_id:  restaurant.id,
+        p_table_id:       confirmTable.id,
+        p_payment_method: paymentMethod,
       })
       if (error) throw error
       if (!data) { toast.error('No completed orders to settle for this table'); return }
@@ -240,3 +293,5 @@ export default function Billing() {
     </div>
   )
 }
+
+export { PAYMENT_BADGE, PAYMENT_METHODS }
