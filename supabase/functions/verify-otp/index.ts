@@ -28,9 +28,8 @@ Deno.serve(async (req) => {
   if (phone_number.length > 20) return jsonResponse({ error: 'Invalid phone number' }, 400)
   if (!/^\d{6}$/.test(code)) return jsonResponse({ error: 'Code must be 6 digits' }, 400)
 
-  // Atomic update: marks the OTP used in a single SQL statement.
-  // If two concurrent requests arrive with the same code, only one UPDATE
-  // will match (used=false), eliminating the TOCTOU replay window.
+  // Atomic update: single SQL UPDATE ... WHERE ... RETURNING eliminates the
+  // TOCTOU replay window without needing ORDER/LIMIT (unsupported on UPDATE).
   const { data: updated, error: updateError } = await adminClient
     .from('otp_codes')
     .update({ used: true })
@@ -38,8 +37,6 @@ Deno.serve(async (req) => {
     .eq('code', code)
     .eq('used', false)
     .gt('expires_at', new Date().toISOString())
-    .order('created_at', { ascending: false })
-    .limit(1)
     .select('id')
 
   if (updateError || !updated?.length) {
