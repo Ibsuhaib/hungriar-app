@@ -1,36 +1,45 @@
 import { useState, useEffect } from 'react'
 
-/**
- * Captures the browser's beforeinstallprompt event so we can trigger
- * the native "Add to Home Screen" dialog from our own button.
- */
 export function usePwaInstall() {
   const [prompt, setPrompt] = useState(null)
-  const [installed, setInstalled] = useState(false)
+  const [installed, setInstalled] = useState(
+    () => window.matchMedia('(display-mode: standalone)').matches,
+  )
 
   useEffect(() => {
-    // Already running as installed PWA
-    if (window.matchMedia('(display-mode: standalone)').matches) {
+    if (installed) return
+
+    // Event may have already fired before React mounted — read it from window
+    if (window.__pwaInstallPrompt) {
+      setPrompt(window.__pwaInstallPrompt)
+    }
+
+    // Also handle the case where it fires after mount
+    const onReady = () => {
+      if (window.__pwaInstallPrompt) setPrompt(window.__pwaInstallPrompt)
+    }
+    const onInstalled = () => {
       setInstalled(true)
-      return
+      setPrompt(null)
+      window.__pwaInstallPrompt = null
     }
 
-    const handler = (e) => {
-      e.preventDefault()
-      setPrompt(e)
+    window.addEventListener('pwa-install-ready', onReady)
+    window.addEventListener('appinstalled', onInstalled)
+    return () => {
+      window.removeEventListener('pwa-install-ready', onReady)
+      window.removeEventListener('appinstalled', onInstalled)
     }
-
-    window.addEventListener('beforeinstallprompt', handler)
-    window.addEventListener('appinstalled', () => { setInstalled(true); setPrompt(null) })
-
-    return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
+  }, [installed])
 
   const install = async () => {
     if (!prompt) return
     prompt.prompt()
     const { outcome } = await prompt.userChoice
-    if (outcome === 'accepted') setInstalled(true)
+    if (outcome === 'accepted') {
+      setInstalled(true)
+      window.__pwaInstallPrompt = null
+    }
     setPrompt(null)
   }
 

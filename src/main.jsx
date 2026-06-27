@@ -1,3 +1,10 @@
+// Capture install prompt BEFORE React renders — the event fires early
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  window.__pwaInstallPrompt = e
+  window.dispatchEvent(new CustomEvent('pwa-install-ready'))
+})
+
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
