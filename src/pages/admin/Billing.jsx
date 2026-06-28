@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Receipt, CheckCircle2, Printer, AlertCircle, TriangleAlert, Banknote, CreditCard, Smartphone, Wallet, WifiOff, RefreshCw } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
+import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { supabase } from '../../lib/supabase'
 import { formatTime } from '../../utils/formatters'
 import { enqueueBill, getQueuedBills, removeQueuedBill, getQueuedOrders, removeQueuedOrder } from '../../utils/offlineQueue'
@@ -222,13 +223,23 @@ export default function Billing() {
   const { restaurant, user } = useAuth()
   const { checkAdminLimit } = useRateLimit()
 
-  const billCacheKey = `billing-${restaurant?.id}`
-  const billCache    = pageCache.get(billCacheKey) || {}
+  const tablesCacheKey = `billing-tables-${restaurant?.id}`
+  const tablesCache    = pageCache.get(tablesCacheKey) || {}
 
-  const [tables, setTables]           = useState(() => billCache.tables || [])
-  const [orders, setOrders]           = useState(() => billCache.orders || [])
-  const [taxPercentage, setTaxPercentage] = useState(() => billCache.taxPercentage || 0)
-  const [loading, setLoading]         = useState(!billCache.tables)
+  const [tables, setTables]               = useState(() => tablesCache.tables || [])
+  const [taxPercentage, setTaxPercentage] = useState(() => tablesCache.tax || 0)
+  const [tablesLoading, setTablesLoading] = useState(!tablesCache.tables)
+
+  // Shared realtime orders — updates instantly when chef marks orders completed
+  const { orders: allOrders, loading: ordersLoading, patchOrder } = useRealtimeOrders({
+    restaurantId: restaurant?.id,
+    pollInterval: 8000,
+  })
+  const completedOrders = useMemo(
+    () => allOrders.filter((o) => o.status === 'completed'),
+    [allOrders]
+  )
+  const loading = tablesLoading || ordersLoading
   const [settlingTableId, setSettlingTableId] = useState(null)
   const [confirmTable, setConfirmTable] = useState(null)
   const [activeOrdersCount, setActiveOrdersCount] = useState(0)
@@ -254,53 +265,22 @@ export default function Billing() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
   }, [loadOfflineOrders])
 
-  const fetchData = useCallback(async () => {
-    if (!pageCache.has(billCacheKey)) setLoading(true)
-    const [tablesRes, ordersRes, restaurantRes] = await Promise.all([
+  const fetchTables = useCallback(async () => {
+    if (!restaurant?.id) return
+    if (!pageCache.has(tablesCacheKey)) setTablesLoading(true)
+    const [tablesRes, restaurantRes] = await Promise.all([
       supabase.from('tables').select('*').eq('restaurant_id', restaurant.id).order('table_number'),
-      supabase.from('orders').select('*, order_items(*)').eq('restaurant_id', restaurant.id).eq('status', 'completed').order('order_time'),
       supabase.from('restaurants').select('tax_percentage').eq('id', restaurant.id).maybeSingle(),
     ])
-    const t  = tablesRes.data    || []
-    const o  = ordersRes.data    || []
+    const t  = tablesRes.data || []
     const tp = Number(restaurantRes.data?.tax_percentage) || 0
-    if (!tablesRes.error)    setTables(t)
-    if (!ordersRes.error)    setOrders(o)
+    if (!tablesRes.error)     setTables(t)
     if (!restaurantRes.error) setTaxPercentage(tp)
-    pageCache.set(billCacheKey, { tables: t, orders: o, taxPercentage: tp })
-    setLoading(false)
-  }, [restaurant.id, billCacheKey])
+    pageCache.set(tablesCacheKey, { tables: t, tax: tp })
+    setTablesLoading(false)
+  }, [restaurant?.id, tablesCacheKey])
 
-  useEffect(() => { fetchData() }, [fetchData])
-
-  // Realtime: orders becoming completed appear instantly; settled/deleted orders vanish
-  useEffect(() => {
-    if (!restaurant?.id) return
-    const channel = supabase
-      .channel(`billing-orders-${restaurant.id}`)
-      .on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurant.id}` },
-        async (payload) => {
-          if (payload.new.status === 'completed') {
-            const { data } = await supabase
-              .from('orders').select('*, order_items(*)').eq('id', payload.new.id).maybeSingle()
-            if (data) setOrders((prev) =>
-              prev.find((o) => o.id === data.id)
-                ? prev.map((o) => (o.id === data.id ? data : o))
-                : [...prev, data]
-            )
-          } else {
-            setOrders((prev) => prev.filter((o) => o.id !== payload.new.id))
-          }
-        }
-      )
-      .on('postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurant.id}` },
-        (payload) => { setOrders((prev) => prev.filter((o) => o.id !== payload.old.id)) }
-      )
-      .subscribe()
-    return () => supabase.removeChannel(channel)
-  }, [restaurant?.id])
+  useEffect(() => { fetchTables() }, [fetchTables])
 
   // Load pending bill count + sync on reconnect
   const syncBills = useCallback(async () => {
@@ -343,12 +323,12 @@ export default function Billing() {
     }
     if (synced > 0) {
       toast.success(`${synced} offline bill${synced > 1 ? 's' : ''} synced!`)
-      fetchData()
+      fetchTables()
     }
     const remaining = await getQueuedBills()
     setPendingBills(remaining.filter((b) => b.restaurantId === restaurant.id).length)
     setSyncing(false)
-  }, [restaurant?.id, fetchData])
+  }, [restaurant?.id, fetchTables])
 
   useEffect(() => {
     syncBills()
@@ -357,10 +337,10 @@ export default function Billing() {
   }, [syncBills])
 
   const bills = useMemo(() => {
-    // Online bills from Supabase
+    // Online bills — derived from the shared realtime orders (completedOrders)
     const onlineBills = tables
       .map((table) => {
-        const tableOrders = orders.filter((o) => o.table_id === table.id)
+        const tableOrders = completedOrders.filter((o) => o.table_id === table.id)
         const total = tableOrders.reduce((s, o) => s + Number(o.total_amount), 0)
         return { table, orders: tableOrders, total, isOffline: false }
       })
@@ -385,7 +365,7 @@ export default function Billing() {
       })
 
     return [...onlineBills, ...offlineBills]
-  }, [tables, orders, offlineOrders, taxPercentage, restaurant?.id])
+  }, [tables, completedOrders, offlineOrders, taxPercentage, restaurant?.id])
 
   const getAdj = (tableId) => adjustments[tableId] || EMPTY_ADJ
   // Bug 1 fix: read from `prev` inside the functional update, not from the outer `adjustments` closure
@@ -462,10 +442,14 @@ export default function Billing() {
       return
     }
 
-    // ── Online path: optimistic removal so card vanishes immediately ─────────
+    // ── Online path: optimistic vanish before RPC ─────────────────────────────
     const tableId = confirmTable.id
+    // Snapshot order IDs before closing dialog
+    const tableOrderIds = completedOrders.filter((o) => o.table_id === tableId).map((o) => o.id)
+
     setConfirmTable(null)
-    setOrders((prev) => prev.filter((o) => o.table_id !== tableId))
+    // Remove from completedOrders instantly — status '_settling' is filtered out of completedOrders
+    tableOrderIds.forEach((id) => patchOrder(id, { status: '_settling' }))
     setSelectedPayments((prev) => { const n = { ...prev }; delete n[tableId]; return n })
     setAdjustments((prev) => { const n = { ...prev }; delete n[tableId]; return n })
 
@@ -479,12 +463,13 @@ export default function Billing() {
         p_round_off:      roundOffAmt,
       })
       if (error) throw error
-      if (!data) { toast.error('No completed orders to settle'); fetchData(); return }
+      if (!data) { toast.error('No completed orders to settle'); return }
       toast.success('Bill settled!')
-      fetchData()
+      // Realtime DELETE events from the RPC will remove the orders from allOrders automatically
     } catch (err) {
+      // Rollback optimistic patch
+      tableOrderIds.forEach((id) => patchOrder(id, { status: 'completed' }))
       toast.error(err.message || 'Failed to settle bill')
-      fetchData()
     } finally {
       setSettlingTableId(null)
     }
@@ -542,8 +527,8 @@ export default function Billing() {
           <p className="text-xs text-gray-400 mt-1">All tables are clear.</p>
         </div>
       ) : (
-        <AnimatePresence mode="popLayout">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <AnimatePresence mode="popLayout">
           {bills.map(({ table, orders: tableOrders, total, isOffline: isBillOffline }) => {
             const chosen = selectedPayments[table.id] || null
             const adj = getAdj(table.id)
@@ -770,8 +755,8 @@ export default function Billing() {
               </motion.div>
             )
           })}
+          </AnimatePresence>
         </div>
-        </AnimatePresence>
       )}
 
       {confirmTable && (
