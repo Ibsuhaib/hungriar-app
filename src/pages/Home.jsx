@@ -281,24 +281,6 @@ const PLANS = [
   },
 ]
 
-const CMP_COLS = ['Starter', 'Standard', 'AR Premium', 'Petpooja Basic*', 'Petpooja Std*']
-const CMP_ROWS = [
-  { label: 'Price / year (excl. GST)',    vals: ['₹8,400', '₹18,000', '₹30,000', '~₹10,000', '~₹20,000'] },
-  { label: 'Table ordering / POS',         vals: [true, true, true, true, true] },
-  { label: 'KOT + Kitchen display',        vals: [true, true, true, true, true] },
-  { label: 'Billing & analytics',          vals: [true, true, true, true, true] },
-  { label: 'Daily owner report',           vals: [true, true, true, false, false] },
-  { label: 'QR customer menu',             vals: [false, true, true, false, true] },
-  { label: 'Customer self-ordering',       vals: [false, true, true, 'Add-on', 'Add-on'] },
-  { label: 'AR / 3D dish viewer',          vals: [false, false, true, false, false] },
-  { label: 'No per-order charges',         vals: [true, true, true, false, false] },
-]
-
-function CmpCell({ value, ours }) {
-  if (value === true)  return <Check className={`w-4 h-4 mx-auto ${ours ? 'text-green-400' : 'text-green-500'}`} />
-  if (value === false) return <X className="w-4 h-4 mx-auto text-white/20" />
-  return <span className={`text-xs font-medium ${ours ? 'text-primary-400' : 'text-white/40'}`}>{value}</span>
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Home() {
@@ -321,7 +303,6 @@ export default function Home() {
           <nav className="hidden sm:flex items-center gap-6 text-sm text-white/50">
             <a href="#features" className="hover:text-white transition-colors">Features</a>
             <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
-            <a href="#compare" className="hover:text-white transition-colors">Compare</a>
           </nav>
           <div className="flex items-center gap-2">
             <Link to="/admin/login" className="text-sm text-white/50 hover:text-white transition-colors hidden sm:block px-3 py-1.5">
@@ -663,61 +644,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Comparison Table ──────────────────────────────────────────────── */}
-      <section id="compare" className="py-24 bg-navy-800 border-t border-white/5">
-        <div className="mx-auto max-w-6xl px-4">
-          <FadeUp className="text-center mb-12">
-            <p className="text-primary-400 text-xs font-bold tracking-widest uppercase mb-3">Comparison</p>
-            <h2 className="font-display text-3xl sm:text-4xl font-bold">How we compare</h2>
-            <p className="mt-3 text-white/40 text-sm">Same price. More features. The only AR menu in the market.</p>
-          </FadeUp>
-
-          <FadeUp>
-            <div className="overflow-x-auto rounded-2xl border border-white/8">
-              <table className="w-full text-sm min-w-[640px]">
-                <thead>
-                  <tr className="border-b border-white/5">
-                    <th className="text-left px-5 py-4 text-xs font-semibold text-white/30 w-44">Feature</th>
-                    {CMP_COLS.map((col, i) => (
-                      <th
-                        key={col}
-                        className={`text-center px-3 py-4 text-xs font-bold ${
-                          i < 3 ? 'text-primary-400 bg-primary-900/20' : 'text-white/25'
-                        }`}
-                      >
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {CMP_ROWS.map((row, ri) => (
-                    <motion.tr
-                      key={row.label}
-                      initial={{ opacity: 0 }}
-                      whileInView={{ opacity: 1 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: ri * 0.04 }}
-                      className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
-                    >
-                      <td className="px-5 py-3.5 text-white/40 text-xs font-medium">{row.label}</td>
-                      {row.vals.map((val, vi) => (
-                        <td key={vi} className={`text-center px-3 py-3.5 ${vi < 3 ? 'bg-primary-900/10' : ''}`}>
-                          <CmpCell value={val} ours={vi < 3} />
-                        </td>
-                      ))}
-                    </motion.tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="mt-3 text-[11px] text-white/20 text-center">
-              * Petpooja prices are approximate based on publicly available information and may vary by plan and region.
-            </p>
-          </FadeUp>
-        </div>
-      </section>
-
       {/* ── CTA ───────────────────────────────────────────────────────────── */}
       <section className="py-24 bg-navy-900 border-t border-white/5 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
@@ -766,7 +692,7 @@ export default function Home() {
             <div>
               <p className="text-xs font-bold text-white/50 uppercase tracking-widest mb-4">Product</p>
               <ul className="space-y-2.5">
-                {[['Features', '#features'], ['Pricing', '#pricing'], ['Compare', '#compare']].map(([t, h]) => (
+                {[['Features', '#features'], ['Pricing', '#pricing']].map(([t, h]) => (
                   <li key={t}><a href={h} className="text-xs text-white/30 hover:text-white/70 transition-colors">{t}</a></li>
                 ))}
               </ul>
