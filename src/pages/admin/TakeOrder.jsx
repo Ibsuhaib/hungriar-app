@@ -282,8 +282,18 @@ export default function TakeOrder() {
     const tax = Math.round(subtotal * taxPercentage) / 100
     const totalAmount = subtotal + tax
 
+    // items for Supabase RPC
     const items = entries.map(({ item, quantity, notes }) => ({
       menu_item_id: item.id,
+      quantity,
+      notes: notes || '',
+    }))
+
+    // richItems includes name + price for offline display in Billing page
+    const richItems = entries.map(({ item, quantity, notes }) => ({
+      menu_item_id: item.id,
+      item_name:    item.name,
+      unit_price:   item.price,
       quantity,
       notes: notes || '',
     }))
@@ -294,12 +304,7 @@ export default function TakeOrder() {
       order_time: new Date().toISOString(),
       total_amount: totalAmount,
       tables: { table_number: selectedTableNumber },
-      order_items: entries.map(({ item, quantity, notes }) => ({
-        item_name: item.name,
-        quantity,
-        notes: notes || '',
-        cancelled: false,
-      })),
+      order_items: richItems.map((i) => ({ ...i, cancelled: false })),
     }
 
     if (!navigator.onLine) {
@@ -308,7 +313,8 @@ export default function TakeOrder() {
           restaurantId:  restaurant.id,
           tableId:       selectedTableId,
           tableNumber:   selectedTableNumber,
-          items,
+          items,        // for Supabase sync
+          richItems,    // for offline billing display
           totalAmount,
         })
         setPendingCount((c) => c + 1)

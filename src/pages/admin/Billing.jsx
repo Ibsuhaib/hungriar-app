@@ -8,6 +8,25 @@ import { supabase } from '../../lib/supabase'
 import { formatTime } from '../../utils/formatters'
 import { enqueueBill, getQueuedBills, removeQueuedBill, getQueuedOrders, removeQueuedOrder } from '../../utils/offlineQueue'
 
+// Build a fake order list from offline queued orders for a table
+function buildOfflineBill(queuedOrders, table, taxPercentage) {
+  const tableOrders = queuedOrders.map((o, idx) => ({
+    id:           `offline-${o.id}`,
+    order_time:   o.queuedAt,
+    total_amount: o.totalAmount,
+    order_items:  (o.richItems || o.items || []).map((item) => ({
+      id:         `item-${o.id}-${idx}`,
+      item_name:  item.item_name || '(item)',
+      quantity:   item.quantity,
+      unit_price: item.unit_price || 0,
+      notes:      item.notes || '',
+      cancelled:  false,
+    })),
+  }))
+  const total = tableOrders.reduce((s, o) => s + Number(o.total_amount), 0)
+  return { table, orders: tableOrders, total, isOffline: true, queuedOrders }
+}
+
 const PAYMENT_METHODS = [
   { id: 'cash',  label: 'Cash',  icon: Banknote,   active: 'border-green-500 bg-green-50 text-green-700' },
   { id: 'upi',   label: 'UPI',   icon: Smartphone, active: 'border-purple-500 bg-purple-50 text-purple-700' },
@@ -214,14 +233,22 @@ export default function Billing() {
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [pendingBills, setPendingBills] = useState(0)
   const [syncing, setSyncing] = useState(false)
+  const [offlineOrders, setOfflineOrders] = useState([])
+
+  const loadOfflineOrders = useCallback(async () => {
+    if (!restaurant?.id) return
+    const queued = await getQueuedOrders()
+    setOfflineOrders(queued.filter((o) => o.restaurantId === restaurant.id))
+  }, [restaurant?.id])
 
   useEffect(() => {
-    const on  = () => setIsOnline(true)
-    const off = () => setIsOnline(false)
+    const on  = () => { setIsOnline(true);  loadOfflineOrders() }
+    const off = () => { setIsOnline(false); loadOfflineOrders() }
     window.addEventListener('online',  on)
     window.addEventListener('offline', off)
+    loadOfflineOrders()
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
-  }, [])
+  }, [loadOfflineOrders])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -292,16 +319,36 @@ export default function Billing() {
     return () => window.removeEventListener('online', syncBills)
   }, [syncBills])
 
-  const bills = useMemo(() =>
-    tables
+  const bills = useMemo(() => {
+    // Online bills from Supabase
+    const onlineBills = tables
       .map((table) => {
         const tableOrders = orders.filter((o) => o.table_id === table.id)
         const total = tableOrders.reduce((s, o) => s + Number(o.total_amount), 0)
-        return { table, orders: tableOrders, total }
+        return { table, orders: tableOrders, total, isOffline: false }
       })
-      .filter((b) => b.orders.length > 0),
-    [tables, orders],
-  )
+      .filter((b) => b.orders.length > 0)
+
+    // Offline bills from IndexedDB — grouped by tableId
+    const offlineByTable = {}
+    for (const o of offlineOrders) {
+      if (!offlineByTable[o.tableId]) offlineByTable[o.tableId] = []
+      offlineByTable[o.tableId].push(o)
+    }
+
+    const offlineBills = Object.entries(offlineByTable)
+      .filter(([tableId]) => !onlineBills.find((b) => b.table.id === tableId))
+      .map(([tableId, queuedOrders]) => {
+        const fakeTable = {
+          id:           tableId,
+          table_number: queuedOrders[0].tableNumber,
+          restaurant_id: restaurant?.id,
+        }
+        return buildOfflineBill(queuedOrders, fakeTable, taxPercentage)
+      })
+
+    return [...onlineBills, ...offlineBills]
+  }, [tables, orders, offlineOrders, taxPercentage, restaurant?.id])
 
   const getAdj = (tableId) => adjustments[tableId] || EMPTY_ADJ
   // Bug 1 fix: read from `prev` inside the functional update, not from the outer `adjustments` closure
@@ -366,6 +413,11 @@ export default function Billing() {
         toast.success(`Bill saved offline for Table ${confirmTable.table_number} — will sync when online`, { duration: 5000 })
         setSelectedPayments((prev) => { const n = { ...prev }; delete n[confirmTable.id]; return n })
         setAdjustments((prev) => { const n = { ...prev }; delete n[confirmTable.id]; return n })
+        // Remove offline orders for this table since they're now billed
+        for (const o of offlineOrders.filter((o) => o.tableId === confirmTable.id)) {
+          await removeQueuedOrder(o.id)
+        }
+        await loadOfflineOrders()
       } catch {
         toast.error('Failed to save bill offline')
       }
@@ -450,7 +502,7 @@ export default function Billing() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {bills.map(({ table, orders: tableOrders, total }) => {
+          {bills.map(({ table, orders: tableOrders, total, isOffline: isBillOffline }) => {
             const chosen = selectedPayments[table.id] || null
             const adj = getAdj(table.id)
             const { discountAmt, roundOffAmt, finalTotal } = computeFinals(total, adj)
@@ -469,9 +521,16 @@ export default function Billing() {
                     <Receipt className="w-4 h-4 text-gray-400" />
                     <h2 className="text-base font-bold text-gray-900 font-display">Table {table.table_number}</h2>
                   </div>
-                  <span className="badge bg-amber-100 text-amber-700">
-                    {tableOrders.length} order{tableOrders.length !== 1 ? 's' : ''}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {isBillOffline && (
+                      <span className="badge bg-orange-100 text-orange-700 flex items-center gap-1">
+                        <WifiOff className="w-2.5 h-2.5" /> Offline
+                      </span>
+                    )}
+                    <span className="badge bg-amber-100 text-amber-700">
+                      {tableOrders.length} order{tableOrders.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Orders */}
