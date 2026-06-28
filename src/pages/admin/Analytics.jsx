@@ -254,24 +254,32 @@ export default function Analytics() {
 
   const pieData = topItemsData.map((item) => ({ name: item.name, value: item.revenue }))
 
-  const paymentBreakdown = data.payment_breakdown || []
-  const expenseBreakdown = data.expense_breakdown || []
-  const totalDiscount    = Number(data.total_discount  || 0)
-  const totalRoundOff    = Number(data.total_round_off || 0)
-  const discountCount    = Number(data.discount_count  || 0)
-  const totalExpenses    = Number(data.total_expenses  || 0)
+  const paymentBreakdown    = data.payment_breakdown    || []
+  const expenseBreakdown    = data.expense_breakdown    || []
+  const collectionBreakdown = data.collection_breakdown || []
+  const totalDiscount       = Number(data.total_discount    || 0)
+  const totalRoundOff       = Number(data.total_round_off   || 0)
+  const discountCount       = Number(data.discount_count    || 0)
+  const totalExpenses       = Number(data.total_expenses    || 0)
+  const totalCollections    = Number(data.total_collections || 0)
 
-  const collectedByMethod = Object.fromEntries(paymentBreakdown.map((r) => [r.payment_method, r]))
-  const expenseByMethod   = Object.fromEntries(expenseBreakdown.map((r) => [r.payment_method, r.total]))
-  const allMethods        = [...new Set([
+  const collectedByMethod  = Object.fromEntries(paymentBreakdown.map((r) => [r.payment_method, r]))
+  const expenseByMethod    = Object.fromEntries(expenseBreakdown.map((r) => [r.payment_method, r.total]))
+  const collectionByMethod = Object.fromEntries(collectionBreakdown.map((r) => [r.payment_method, r.total]))
+  const allMethods         = [...new Set([
     ...paymentBreakdown.map((r) => r.payment_method),
     ...expenseBreakdown.map((r) => r.payment_method),
+    ...collectionBreakdown.map((r) => r.payment_method),
   ])]
 
-  // net available per method (what's physically in register / pending transfer)
+  // what's physically in the restaurant right now per payment method
   const netByMethod = Object.fromEntries(
-    allMethods.map((m) => [m, (collectedByMethod[m]?.total ?? 0) - (expenseByMethod[m] ?? 0)])
+    allMethods.map((m) => [
+      m,
+      (collectedByMethod[m]?.total ?? 0) - (expenseByMethod[m] ?? 0) - (collectionByMethod[m] ?? 0),
+    ])
   )
+  const totalInRestaurant = Number(data.total_revenue) - totalExpenses - totalCollections
 
   return (
     <div className="space-y-6">
@@ -289,7 +297,7 @@ export default function Analytics() {
       </div>
 
       {/* Payment breakdown + Collect */}
-      {(paymentBreakdown.length > 0 || expenseBreakdown.length > 0 || periodStart) && (
+      {(paymentBreakdown.length > 0 || expenseBreakdown.length > 0 || collectionBreakdown.length > 0 || periodStart) && (
         <div className="card p-0 overflow-hidden">
           <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex items-start justify-between gap-2">
             <div>
@@ -319,81 +327,94 @@ export default function Analytics() {
               </div>
             )}
             {allMethods.map((m) => {
-              const meta      = getMeta(m)
-              const Icon      = meta.Icon
-              const collected = collectedByMethod[m] || { count: 0, total: 0 }
-              const expensed  = expenseByMethod[m]   || 0
-              const net       = netByMethod[m]
+              const meta         = getMeta(m)
+              const Icon         = meta.Icon
+              const collected    = collectedByMethod[m] || { count: 0, total: 0 }
+              const expensed     = expenseByMethod[m]    || 0
+              const collectedOut = collectionByMethod[m] || 0
+              const net          = netByMethod[m]
 
               return (
                 <div key={m} className="px-4 py-3">
+                  {/* Method + total revenue from bills */}
                   <div className="flex items-center gap-3">
                     <div className={`w-9 h-9 flex-shrink-0 rounded-xl flex items-center justify-center ${meta.icon} shadow-sm`}>
                       <Icon className="w-4 h-4 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-800">{meta.label}</p>
-                      <p className="text-xs text-gray-400">{collected.count} bill{collected.count !== 1 ? 's' : ''}</p>
+                      <p className="text-xs text-gray-400">{collected.count} bill{collected.count !== 1 ? 's' : ''} collected</p>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <p className="text-base font-bold text-gray-900 tabular-nums">
-                        {formatCurrency(collected.total, currency)}
-                      </p>
-                      {/* Collect button */}
-                      {net > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setCollectMethod(m)}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-primary-50 text-primary-600 text-xs font-bold hover:bg-primary-100 transition-colors border border-primary-100"
-                        >
-                          <HandCoins className="w-3 h-3" /> Collect
-                        </button>
-                      )}
-                    </div>
+                    <p className="text-base font-bold text-gray-900 tabular-nums">
+                      {formatCurrency(collected.total, currency)}
+                    </p>
                   </div>
 
-                  {expensed > 0 && (
-                    <div className="ml-12 mt-1.5 space-y-1">
+                  {/* Deductions + in-restaurant amount */}
+                  <div className="ml-12 mt-2 space-y-1.5">
+                    {expensed > 0 && (
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-rose-400 flex items-center gap-1">
-                          <TrendingDown className="w-3 h-3" />
-                          Expenses &amp; Collections
+                          <TrendingDown className="w-3 h-3" /> Business expenses
                         </span>
-                        <span className="text-rose-400 font-medium tabular-nums">
-                          − {formatCurrency(expensed, currency)}
-                        </span>
+                        <span className="text-rose-400 font-medium tabular-nums">− {formatCurrency(expensed, currency)}</span>
                       </div>
-                      {net < 0 ? (
-                        <div className="flex items-center gap-1.5 bg-red-50 rounded-lg px-2 py-1 text-xs text-red-600">
-                          <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-                          Overspent by {formatCurrency(Math.abs(net), currency)} — check your entries
+                    )}
+                    {collectedOut > 0 && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-amber-500 flex items-center gap-1">
+                          <HandCoins className="w-3 h-3" /> Already collected by you
+                        </span>
+                        <span className="text-amber-500 font-medium tabular-nums">− {formatCurrency(collectedOut, currency)}</span>
+                      </div>
+                    )}
+
+                    {net > 0 ? (
+                      <div className="flex items-center justify-between bg-green-50 border border-green-100 rounded-xl px-3 py-2">
+                        <span className="text-xs font-semibold text-green-700">In restaurant right now</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-green-700 tabular-nums">{formatCurrency(net, currency)}</span>
+                          <button
+                            type="button"
+                            onClick={() => setCollectMethod(m)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-500 transition-colors"
+                          >
+                            <HandCoins className="w-3 h-3" /> Collect
+                          </button>
                         </div>
-                      ) : (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-400">Net in hand</span>
-                          <span className="font-bold text-gray-700 tabular-nums">
-                            {formatCurrency(net, currency)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    ) : net < 0 ? (
+                      <div className="flex items-center gap-1.5 bg-red-50 rounded-xl px-3 py-2 text-xs text-red-600">
+                        <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                        Overspent by {formatCurrency(Math.abs(net), currency)} — check your entries
+                      </div>
+                    ) : (collected.total > 0 || expensed > 0 || collectedOut > 0) ? (
+                      <div className="flex items-center justify-between text-xs text-gray-400 bg-gray-50 rounded-xl px-3 py-2">
+                        <span>All collected — nothing left in restaurant</span>
+                        <span className="font-semibold">₹0</span>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               )
             })}
           </div>
 
-          {/* Net total row */}
-          <div className="border-t border-gray-100 px-4 py-3 flex items-center justify-between bg-gray-50">
-            <div>
-              <p className="text-sm font-bold text-gray-800">Net Total</p>
-              {totalExpenses > 0 && (
-                <p className="text-xs text-gray-400">after {formatCurrency(totalExpenses, currency)} in expenses</p>
-              )}
+          {/* What's in the restaurant total */}
+          <div className="border-t border-gray-200 px-4 py-3 bg-green-50">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-gray-900">Total in restaurant right now</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Revenue {formatCurrency(Number(data.total_revenue), currency)}
+                  {totalExpenses > 0 && <> − expenses {formatCurrency(totalExpenses, currency)}</>}
+                  {totalCollections > 0 && <> − collected {formatCurrency(totalCollections, currency)}</>}
+                </p>
+              </div>
+              <p className="text-lg font-bold text-green-700 tabular-nums">
+                {formatCurrency(totalInRestaurant, currency)}
+              </p>
             </div>
-            <p className="text-base font-bold text-gray-900 tabular-nums">
-              {formatCurrency(Number(data.total_revenue) - totalExpenses, currency)}
-            </p>
           </div>
 
           {/* Discount + Round-off */}
