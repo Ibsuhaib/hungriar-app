@@ -273,6 +273,35 @@ export default function Billing() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // Realtime: orders becoming completed appear instantly; settled/deleted orders vanish
+  useEffect(() => {
+    if (!restaurant?.id) return
+    const channel = supabase
+      .channel(`billing-orders-${restaurant.id}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurant.id}` },
+        async (payload) => {
+          if (payload.new.status === 'completed') {
+            const { data } = await supabase
+              .from('orders').select('*, order_items(*)').eq('id', payload.new.id).maybeSingle()
+            if (data) setOrders((prev) =>
+              prev.find((o) => o.id === data.id)
+                ? prev.map((o) => (o.id === data.id ? data : o))
+                : [...prev, data]
+            )
+          } else {
+            setOrders((prev) => prev.filter((o) => o.id !== payload.new.id))
+          }
+        }
+      )
+      .on('postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurant.id}` },
+        (payload) => { setOrders((prev) => prev.filter((o) => o.id !== payload.old.id)) }
+      )
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [restaurant?.id])
+
   // Load pending bill count + sync on reconnect
   const syncBills = useCallback(async () => {
     if (!restaurant?.id) return
@@ -433,27 +462,31 @@ export default function Billing() {
       return
     }
 
-    // ── Online path ───────────────────────────────────────────────────────────
-    setSettlingTableId(confirmTable.id)
+    // ── Online path: optimistic removal so card vanishes immediately ─────────
+    const tableId = confirmTable.id
+    setConfirmTable(null)
+    setOrders((prev) => prev.filter((o) => o.table_id !== tableId))
+    setSelectedPayments((prev) => { const n = { ...prev }; delete n[tableId]; return n })
+    setAdjustments((prev) => { const n = { ...prev }; delete n[tableId]; return n })
+
+    setSettlingTableId(tableId)
     try {
       const { data, error } = await supabase.rpc('reset_table_billing', {
         p_restaurant_id:  restaurant.id,
-        p_table_id:       confirmTable.id,
+        p_table_id:       tableId,
         p_payment_method: paymentMethod,
         p_discount:       discountAmt,
         p_round_off:      roundOffAmt,
       })
       if (error) throw error
-      if (!data) { toast.error('No completed orders to settle for this table'); return }
-      toast.success('Bill printed and settled')
-      setSelectedPayments((prev) => { const next = { ...prev }; delete next[confirmTable.id]; return next })
-      setAdjustments((prev) => { const next = { ...prev }; delete next[confirmTable.id]; return next })
-      await fetchData()
+      if (!data) { toast.error('No completed orders to settle'); fetchData(); return }
+      toast.success('Bill settled!')
+      fetchData()
     } catch (err) {
       toast.error(err.message || 'Failed to settle bill')
+      fetchData()
     } finally {
       setSettlingTableId(null)
-      setConfirmTable(null)
     }
   }
 
@@ -509,6 +542,7 @@ export default function Billing() {
           <p className="text-xs text-gray-400 mt-1">All tables are clear.</p>
         </div>
       ) : (
+        <AnimatePresence mode="popLayout">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {bills.map(({ table, orders: tableOrders, total, isOffline: isBillOffline }) => {
             const chosen = selectedPayments[table.id] || null
@@ -519,8 +553,10 @@ export default function Billing() {
             return (
               <motion.div
                 key={table.id}
+                layout
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.15 } }}
                 className="card overflow-hidden p-0"
               >
                 {/* Header */}
@@ -735,6 +771,7 @@ export default function Billing() {
             )
           })}
         </div>
+        </AnimatePresence>
       )}
 
       {confirmTable && (
