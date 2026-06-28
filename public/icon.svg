@@ -1,4 +1,63 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#d3552f"/>
-  <text x="256" y="340" font-family="system-ui,sans-serif" font-size="280" font-weight="800" text-anchor="middle" fill="white">H</text>
+  <defs>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#F0D4A0"/>
+      <stop offset="50%"  stop-color="#D4A373"/>
+      <stop offset="100%" stop-color="#8C5E2A"/>
+    </linearGradient>
+    <clipPath id="rightHalf">
+      <polygon points="256,41 471,256 256,471"/>
+    </clipPath>
+    <clipPath id="leftHalf">
+      <polygon points="41,256 256,41 256,471"/>
+    </clipPath>
+  </defs>
+
+  <!-- App icon background -->
+  <rect width="512" height="512" rx="102" fill="#0C1428"/>
+
+  <!-- Left half: navy -->
+  <polygon points="41,256 256,41 256,471" fill="#1A2B44"/>
+
+  <!-- Right half: gold -->
+  <polygon points="256,41 471,256 256,471" fill="url(#goldGrad)"/>
+
+  <!-- Grid in right half -->
+  <g clip-path="url(#rightHalf)" fill="none" stroke="#FFF5E0" stroke-linecap="round" stroke-width="3.5" opacity="0.7">
+    <!-- Radial lines -->
+    <line x1="471" y1="256" x2="256" y2="87"/>
+    <line x1="471" y1="256" x2="256" y2="128"/>
+    <line x1="471" y1="256" x2="256" y2="169"/>
+    <line x1="471" y1="256" x2="256" y2="210"/>
+    <line x1="471" y1="256" x2="256" y2="302"/>
+    <line x1="471" y1="256" x2="256" y2="343"/>
+    <line x1="471" y1="256" x2="256" y2="384"/>
+    <line x1="471" y1="256" x2="256" y2="425"/>
+    <!-- Cross lines: upper edge x=y+215, lower edge x=727-y -->
+    <line x1="256" y1="87"  x2="302" y2="87"/>
+    <line x1="256" y1="128" x2="343" y2="128"/>
+    <line x1="256" y1="169" x2="384" y2="169"/>
+    <line x1="256" y1="210" x2="425" y2="210"/>
+    <line x1="256" y1="302" x2="425" y2="302"/>
+    <line x1="256" y1="343" x2="384" y2="343"/>
+    <line x1="256" y1="384" x2="343" y2="384"/>
+    <line x1="256" y1="425" x2="302" y2="425"/>
+  </g>
+
+  <!-- Fork in left half -->
+  <g clip-path="url(#leftHalf)" fill="white">
+    <!-- 3 tines -->
+    <rect x="153" y="148" width="15" height="72" rx="7.5"/>
+    <rect x="181" y="148" width="15" height="72" rx="7.5"/>
+    <rect x="209" y="148" width="15" height="72" rx="7.5"/>
+    <!-- Neck curves -->
+    <path d="M153,220 L153,240 Q153,272 181,272" stroke="white" stroke-width="15" fill="none" stroke-linecap="round"/>
+    <path d="M224,220 L224,240 Q224,272 196,272" stroke="white" stroke-width="15" fill="none" stroke-linecap="round"/>
+    <!-- Handle -->
+    <rect x="184" y="272" width="15" height="97" rx="7.5"/>
+  </g>
+
+  <!-- Diamond border -->
+  <polygon points="41,256 256,41 471,256 256,471" fill="none" stroke="#D4A373" stroke-width="6" opacity="0.5"/>
+  <line x1="256" y1="41" x2="256" y2="471" stroke="#000" stroke-width="2.5" opacity="0.2"/>
 </svg>

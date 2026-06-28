@@ -313,7 +313,7 @@ export default function Home() {
       <header className="sticky top-0 z-50 border-b border-white/5" style={{ background: 'rgba(15,23,42,0.90)', backdropFilter: 'blur(16px)' }}>
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5">
           <div className="flex items-center gap-2.5">
-            <img src="/pwa-64x64.png" alt="hungriAR" className="w-8 h-8 rounded-xl" />
+            <img src="/logo.svg" alt="hungriAR" className="w-8 h-8 rounded-xl" />
             <span className="text-lg font-bold tracking-tight">
               hungri<span className="text-primary-400">AR</span>
             </span>
@@ -359,7 +359,7 @@ export default function Home() {
             className="flex justify-center mb-8"
           >
             <div className="relative">
-              <img src="/pwa-512x512.png" alt="hungriAR" className="w-28 h-28 rounded-3xl shadow-2xl" />
+              <img src="/logo.svg" alt="hungriAR" className="w-28 h-28 rounded-3xl shadow-2xl" />
               <div className="absolute inset-0 rounded-3xl shadow-2xl" style={{ boxShadow: '0 0 60px rgba(212,163,115,0.40)' }} />
             </div>
           </motion.div>
@@ -754,7 +754,7 @@ export default function Home() {
             {/* Brand */}
             <div className="col-span-2 sm:col-span-1">
               <div className="flex items-center gap-2 mb-3">
-                <img src="/pwa-64x64.png" alt="hungriAR" className="w-7 h-7 rounded-lg" />
+                <img src="/logo.svg" alt="hungriAR" className="w-7 h-7 rounded-lg" />
                 <span className="font-bold text-white">hungri<span className="text-primary-400">AR</span></span>
               </div>
               <p className="text-xs text-white/30 leading-relaxed">

@@ -50,7 +50,7 @@ export default function Layout({ title, navItems, signOutPath = '/admin/login', 
               <div className="flex items-center justify-between px-5 py-4 border-b border-navy-700">
                 <div className="flex items-center gap-3">
                   <img
-                    src="/pwa-64x64.png"
+                    src="/logo.svg"
                     alt="hungriAR"
                     className="w-8 h-8 rounded-xl"
                   />
@@ -139,7 +139,7 @@ export default function Layout({ title, navItems, signOutPath = '/admin/login', 
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">
-            <img src="/pwa-64x64.png" alt="hungriAR" className="w-6 h-6 rounded-lg" />
+            <img src="/logo.svg" alt="hungriAR" className="w-6 h-6 rounded-lg" />
             <h1 className="text-base font-semibold text-gray-900 font-display">{title}</h1>
           </div>
         </header>
