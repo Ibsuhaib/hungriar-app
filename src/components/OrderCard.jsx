@@ -34,8 +34,9 @@ export default function OrderCard({ order, onStatusChange, onCancelItem, onCance
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.12 }}
       className="card overflow-hidden p-0"
     >
       {/* Coloured header strip */}

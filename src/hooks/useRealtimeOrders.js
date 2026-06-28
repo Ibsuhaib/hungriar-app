@@ -1,9 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { pageCache } from '../utils/pageCache'
 
 export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterval = 5000 } = {}) {
-  const [orders, setOrders] = useState([])
-  const [loading, setLoading] = useState(true)
+  const cacheKey = `orders-${restaurantId || orderId}`
+  const cached   = pageCache.get(cacheKey)
+
+  const [orders, setOrders] = useState(() => cached || [])
+  const [loading, setLoading] = useState(!cached)
   const onInsertRef = useRef(onInsert)
   onInsertRef.current = onInsert
 
@@ -13,7 +17,7 @@ export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterva
       setLoading(false)
       return
     }
-    if (!silent) setLoading(true)
+    if (!silent) setLoading((prev) => prev && !pageCache.has(cacheKey))
 
     let query = supabase
       .from('orders')
@@ -24,9 +28,12 @@ export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterva
     if (orderId) query = query.eq('id', orderId)
 
     const { data, error } = await query
-    if (!error) setOrders(data || [])
+    if (!error) {
+      pageCache.set(cacheKey, data || [])
+      setOrders(data || [])
+    }
     setLoading(false)
-  }, [restaurantId, orderId])
+  }, [restaurantId, orderId, cacheKey])
 
   // Optimistic patch — instant UI feedback before DB confirms
   const patchOrder = useCallback((id, patch) => {

@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
 import { printKOT } from '../../utils/kotPrint'
 import { enqueueOrder, getQueuedOrders, removeQueuedOrder } from '../../utils/offlineQueue'
+import { pageCache } from '../../utils/pageCache'
 
 // ─── Cart hook ────────────────────────────────────────────────────────────────
 
@@ -187,10 +188,13 @@ export default function TakeOrder() {
   const currency = restaurant?.currency || '₹'
   const taxPercentage = Number(restaurant?.tax_percentage) || 0
 
-  const [tables, setTables]       = useState([])
-  const [categories, setCategories] = useState([])
-  const [menuItems, setMenuItems] = useState([])
-  const [dataLoading, setDataLoading] = useState(true)
+  const toCacheKey = `takeorder-${restaurant?.id}`
+  const toCache    = pageCache.get(toCacheKey) || {}
+
+  const [tables, setTables]           = useState(() => toCache.tables || [])
+  const [categories, setCategories]   = useState(() => toCache.categories || [])
+  const [menuItems, setMenuItems]     = useState(() => toCache.menuItems || [])
+  const [dataLoading, setDataLoading] = useState(!toCache.tables)
 
   const [selectedTableId, setSelectedTableId] = useState('')
   const [selectedCatId, setSelectedCatId]     = useState('all')
@@ -211,9 +215,13 @@ export default function TakeOrder() {
       supabase.from('categories').select('id, name, display_order').eq('restaurant_id', restaurant.id).order('display_order'),
       supabase.from('menu_items').select('id, name, price, category_id, available').eq('restaurant_id', restaurant.id).eq('available', true).order('name'),
     ])
-    if (!tablesRes.error) setTables(tablesRes.data || [])
-    if (!catsRes.error)   setCategories(catsRes.data || [])
-    if (!itemsRes.error)  setMenuItems(itemsRes.data || [])
+    const t = tablesRes.data   || []
+    const c = catsRes.data     || []
+    const m = itemsRes.data    || []
+    if (!tablesRes.error) setTables(t)
+    if (!catsRes.error)   setCategories(c)
+    if (!itemsRes.error)  setMenuItems(m)
+    pageCache.set(toCacheKey, { tables: t, categories: c, menuItems: m })
     setDataLoading(false)
   }, [restaurant.id])
 

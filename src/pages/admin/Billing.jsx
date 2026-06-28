@@ -7,6 +7,7 @@ import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
 import { formatTime } from '../../utils/formatters'
 import { enqueueBill, getQueuedBills, removeQueuedBill, getQueuedOrders, removeQueuedOrder } from '../../utils/offlineQueue'
+import { pageCache } from '../../utils/pageCache'
 
 // Build a fake order list from offline queued orders for a table
 function buildOfflineBill(queuedOrders, table, taxPercentage) {
@@ -221,10 +222,13 @@ export default function Billing() {
   const { restaurant, user } = useAuth()
   const { checkAdminLimit } = useRateLimit()
 
-  const [tables, setTables] = useState([])
-  const [orders, setOrders] = useState([])
-  const [taxPercentage, setTaxPercentage] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const billCacheKey = `billing-${restaurant?.id}`
+  const billCache    = pageCache.get(billCacheKey) || {}
+
+  const [tables, setTables]           = useState(() => billCache.tables || [])
+  const [orders, setOrders]           = useState(() => billCache.orders || [])
+  const [taxPercentage, setTaxPercentage] = useState(() => billCache.taxPercentage || 0)
+  const [loading, setLoading]         = useState(!billCache.tables)
   const [settlingTableId, setSettlingTableId] = useState(null)
   const [confirmTable, setConfirmTable] = useState(null)
   const [activeOrdersCount, setActiveOrdersCount] = useState(0)
@@ -257,9 +261,13 @@ export default function Billing() {
       supabase.from('orders').select('*, order_items(*)').eq('restaurant_id', restaurant.id).eq('status', 'completed').order('order_time'),
       supabase.from('restaurants').select('tax_percentage').eq('id', restaurant.id).maybeSingle(),
     ])
-    if (!tablesRes.error) setTables(tablesRes.data || [])
-    if (!ordersRes.error) setOrders(ordersRes.data || [])
-    if (!restaurantRes.error) setTaxPercentage(Number(restaurantRes.data?.tax_percentage) || 0)
+    const t  = tablesRes.data    || []
+    const o  = ordersRes.data    || []
+    const tp = Number(restaurantRes.data?.tax_percentage) || 0
+    if (!tablesRes.error)    setTables(t)
+    if (!ordersRes.error)    setOrders(o)
+    if (!restaurantRes.error) setTaxPercentage(tp)
+    pageCache.set(billCacheKey, { tables: t, orders: o, taxPercentage: tp })
     setLoading(false)
   }, [restaurant.id])
 

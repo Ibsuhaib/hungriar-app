@@ -14,6 +14,7 @@ import { formatCurrency } from '../../utils/formatters'
 import { usePushNotifications, showNotification } from '../../hooks/usePushNotifications'
 import { usePwaInstall } from '../../hooks/usePwaInstall'
 import { getQueuedOrders, getQueuedBills } from '../../utils/offlineQueue'
+import { pageCache } from '../../utils/pageCache'
 
 function playNotificationSound() {
   try {
@@ -105,7 +106,7 @@ function StatCard({ config, value, index }) {
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.07, duration: 0.25 }}
+      transition={{ delay: index * 0.03, duration: 0.12 }}
       className={`card flex items-center gap-4 ${config.bg}`}
     >
       <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${config.gradient} shadow-sm`}>
@@ -131,7 +132,9 @@ export default function Dashboard() {
   const { checkAdminLimit } = useRateLimit()
   const { sessionStart } = useSessionStart(restaurant?.id)
   const { canInstall, install } = usePwaInstall()
-  const [settledToday, setSettledToday]   = useState({ count: 0, revenue: 0 })
+  const [settledToday, setSettledToday]   = useState(
+    () => pageCache.get(`settled-${restaurant?.id}`) || { count: 0, revenue: 0 }
+  )
   const [offlinePending, setOfflinePending] = useState(0)
 
   useEffect(() => {
@@ -166,6 +169,7 @@ export default function Dashboard() {
             }),
             { count: 0, revenue: 0 },
           )
+          pageCache.set(`settled-${restaurant?.id}`, settled)
           setSettledToday(settled)
         })
     }
@@ -304,7 +308,7 @@ export default function Dashboard() {
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.25 }}
+        transition={{ delay: 0.1, duration: 0.12 }}
         className="card flex items-center justify-between gap-4"
       >
         <div>

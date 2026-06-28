@@ -17,6 +17,16 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* GPU-accelerate all animated elements for smoother transitions */
+.card, button, a, [role="button"] {
+  will-change: auto;
+}
+
+/* Instant button active feedback */
+button:active, [role="button"]:active {
+  transform: scale(0.97);
+}
+
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
