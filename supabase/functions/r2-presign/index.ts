@@ -1,6 +1,4 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import { S3Client, PutObjectCommand } from 'https://esm.sh/@aws-sdk/client-s3@3.490.0?target=deno'
-import { getSignedUrl } from 'https://esm.sh/@aws-sdk/s3-request-presigner@3.490.0?target=deno'
 import { corsHeaders } from '../_shared/cors.ts'
 import { jsonResponse, checkRateLimit } from '../_shared/utils.ts'
 
@@ -26,6 +24,87 @@ const ALLOWED_TYPES = new Set([
 ])
 const ALLOWED_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'glb', 'usdz'])
 
+const enc = new TextEncoder()
+
+function hex(buf: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function hmac(keyBytes: Uint8Array, data: string): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  return new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(data)))
+}
+
+async function sha256Hex(data: string): Promise<string> {
+  return hex(await crypto.subtle.digest('SHA-256', enc.encode(data)))
+}
+
+async function createPresignedPutUrl(
+  accountId: string,
+  accessKeyId: string,
+  secretAccessKey: string,
+  bucket: string,
+  key: string,
+  contentType: string,
+  expiresIn = 300,
+): Promise<string> {
+  const now = new Date()
+  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
+  const timeStr = now.toISOString().replace(/[:\-]/g, '').replace(/\.\d{3}Z$/, 'Z')
+
+  const region = 'auto'
+  const service = 's3'
+  const host = `${accountId}.r2.cloudflarestorage.com`
+  const credentialScope = `${dateStr}/${region}/${service}/aws4_request`
+  const credential = `${accessKeyId}/${credentialScope}`
+
+  const encodedKey = key.split('/').map(encodeURIComponent).join('/')
+  const canonicalUri = `/${bucket}/${encodedKey}`
+
+  const params: Record<string, string> = {
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': credential,
+    'X-Amz-Date': timeStr,
+    'X-Amz-Expires': String(expiresIn),
+    'X-Amz-SignedHeaders': 'host',
+  }
+
+  const canonicalQuery = Object.keys(params)
+    .sort()
+    .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+    .join('&')
+
+  const canonicalRequest = [
+    'PUT',
+    canonicalUri,
+    canonicalQuery,
+    `host:${host}\n`,
+    'host',
+    'UNSIGNED-PAYLOAD',
+  ].join('\n')
+
+  const reqHash = await sha256Hex(canonicalRequest)
+  const stringToSign = ['AWS4-HMAC-SHA256', timeStr, credentialScope, reqHash].join('\n')
+
+  const signingKey = await hmac(
+    await hmac(
+      await hmac(
+        await hmac(enc.encode(`AWS4${secretAccessKey}`), dateStr),
+        region,
+      ),
+      service,
+    ),
+    'aws4_request',
+  )
+
+  const sigKey = await crypto.subtle.importKey(
+    'raw', signingKey, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  )
+  const signature = hex(await crypto.subtle.sign('HMAC', sigKey, enc.encode(stringToSign)))
+
+  return `https://${host}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`
+}
+
 function sanitizeFileName(name: string): string {
   const lastDot = name.lastIndexOf('.')
   const rawExt = lastDot >= 0 ? name.slice(lastDot + 1).toLowerCase() : ''
@@ -34,14 +113,6 @@ function sanitizeFileName(name: string): string {
   return `file.${ext}`
 }
 
-/**
- * POST { restaurantId, folder ('images'|'models'|'qr-codes'), fileName, fileType }
- * Auth: restaurant admin (for that restaurant) or super admin.
- *
- * Returns a short-lived presigned PUT URL for Cloudflare R2 so the browser
- * can upload directly without R2 credentials ever touching the client.
- * Only used when VITE_USE_CLOUDFLARE_R2=true (see src/lib/storage.js).
- */
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
@@ -102,22 +173,15 @@ Deno.serve(async (req) => {
 
     const key = `${restaurantId}/${folder}/${crypto.randomUUID()}-${sanitizeFileName(fileName)}`
 
-    const s3 = new S3Client({
-      region: 'auto',
-      endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: R2_ACCESS_KEY_ID,
-        secretAccessKey: R2_SECRET_ACCESS_KEY,
-      },
-    })
+    const uploadUrl = await createPresignedPutUrl(
+      R2_ACCOUNT_ID,
+      R2_ACCESS_KEY_ID,
+      R2_SECRET_ACCESS_KEY,
+      R2_BUCKET_NAME,
+      key,
+      fileType,
+    )
 
-    const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: key,
-      ContentType: fileType,
-    })
-
-    const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 })
     const publicUrl = `${R2_PUBLIC_URL.replace(/\/+$/, '')}/${key}`
 
     return jsonResponse({ uploadUrl, publicUrl, key })
