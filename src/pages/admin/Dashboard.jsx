@@ -313,6 +313,7 @@ export default function Dashboard() {
                 onCancelItem={handleCancelItem}
                 onCancelOrder={handleCancelOrder}
                 currency={restaurant?.currency}
+                restaurantName={restaurant?.name}
               />
             ))}
           </div>

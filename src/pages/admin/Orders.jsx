@@ -255,6 +255,7 @@ export default function Orders() {
                 onCancelItem={handleCancelItem}
                 onCancelOrder={handleCancelOrder}
                 currency={restaurant?.currency}
+                restaurantName={restaurant?.name}
               />
             ))}
           </motion.div>
@@ -277,6 +278,7 @@ export default function Orders() {
                 order={order}
                 onStatusChange={handleStatusChange}
                 currency={restaurant?.currency}
+                restaurantName={restaurant?.name}
               />
             ))}
           </div>

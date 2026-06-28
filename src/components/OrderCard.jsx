@@ -1,11 +1,12 @@
 import { motion } from 'framer-motion'
-import { Clock, ChefHat, Utensils, CheckCircle2, CheckCheck, XCircle, X } from 'lucide-react'
+import { Clock, ChefHat, Utensils, CheckCircle2, CheckCheck, XCircle, X, Printer } from 'lucide-react'
 import {
   ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
   formatCurrency,
   formatTime,
 } from '../utils/formatters'
+import { printKOT } from '../utils/kotPrint'
 
 const STATUS_ICONS = {
   pending: Clock,
@@ -23,7 +24,7 @@ const STATUS_BG = {
   cancelled: 'from-gray-300 to-gray-400',
 }
 
-export default function OrderCard({ order, onStatusChange, onCancelItem, onCancelOrder, currency = '₹' }) {
+export default function OrderCard({ order, onStatusChange, onCancelItem, onCancelOrder, currency = '₹', restaurantName = '' }) {
   const items = order.order_items || []
   const StatusIcon = STATUS_ICONS[order.status] || Clock
   const gradient = STATUS_BG[order.status] || 'from-gray-300 to-gray-400'
@@ -51,6 +52,14 @@ export default function OrderCard({ order, onStatusChange, onCancelItem, onCance
         <span className={`badge ${ORDER_STATUS_COLORS[order.status] || 'bg-white/20 text-white'} text-[10px]`}>
           {ORDER_STATUS_LABELS[order.status] || order.status}
         </span>
+        <button
+          type="button"
+          onClick={() => printKOT(order, restaurantName)}
+          title="Print KOT"
+          className="w-7 h-7 rounded-lg bg-white/20 hover:bg-white/35 flex items-center justify-center flex-shrink-0 transition-colors"
+        >
+          <Printer className="w-3.5 h-3.5 text-white" />
+        </button>
       </div>
 
       {/* Items list */}

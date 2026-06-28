@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChefHat, Lock, Bell, BellOff, CheckCircle2, Clock, XCircle } from 'lucide-react'
+import { ChefHat, Lock, Bell, CheckCircle2, Clock, XCircle, Printer } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
 import OrderCard from '../../components/OrderCard'
 import { usePushNotifications, showNotification } from '../../hooks/usePushNotifications'
+import { printKOT } from '../../utils/kotPrint'
 
 let _audioCtx = null
 
@@ -161,6 +162,16 @@ function ChefOrdersView({ onLock }) {
   const { checkAdminLimit } = useRateLimit()
   const { status: notifStatus, isSupported: notifSupported, enable: enableNotif } = usePushNotifications({ restaurantId: restaurant?.id })
 
+  const kotKey = `hungriar_kot_auto_${restaurant?.id}`
+  const [autoPrintKOT, setAutoPrintKOT] = useState(() => localStorage.getItem(kotKey) === 'true')
+
+  const toggleAutoPrint = () => {
+    setAutoPrintKOT((prev) => {
+      localStorage.setItem(kotKey, String(!prev))
+      return !prev
+    })
+  }
+
   // Unlock audio immediately — chef just entered their PIN (user gesture still active),
   // so resume() succeeds here. Also unlock on any subsequent click/tap.
   useEffect(() => {
@@ -177,7 +188,11 @@ function ChefOrdersView({ onLock }) {
     playNotificationSound()
     toast.success('New order!', { icon: '🔔', id: `order-${order.id}` })
     showNotification('New Order!', `Table ${order.tables?.table_number ?? '?'} placed an order`)
-  }, [])
+    if (localStorage.getItem(kotKey) === 'true') {
+      printKOT(order, restaurant?.name)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kotKey, restaurant?.name])
 
   const { orders, loading, patchOrder, refetch } = useRealtimeOrders({
     restaurantId: restaurant?.id,
@@ -276,6 +291,21 @@ function ChefOrdersView({ onLock }) {
               <Bell className="w-4 h-4 text-green-500" />
             )}
 
+            {/* KOT auto-print toggle */}
+            <button
+              type="button"
+              onClick={toggleAutoPrint}
+              title={autoPrintKOT ? 'Auto-print KOT ON — click to turn off' : 'Auto-print KOT OFF — click to turn on'}
+              className={`flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5 font-medium transition-colors ${
+                autoPrintKOT
+                  ? 'bg-green-100 text-green-700 border border-green-200'
+                  : 'bg-gray-100 text-gray-500 border border-gray-200'
+              }`}
+            >
+              <Printer className="w-3 h-3" />
+              KOT {autoPrintKOT ? 'ON' : 'OFF'}
+            </button>
+
             {/* Lock button */}
             <button
               type="button"
@@ -316,6 +346,7 @@ function ChefOrdersView({ onLock }) {
                   onCancelItem={handleCancelItem}
                   onCancelOrder={handleCancelOrder}
                   currency={restaurant?.currency}
+                  restaurantName={restaurant?.name}
                 />
               ))}
             </motion.div>
@@ -338,6 +369,7 @@ function ChefOrdersView({ onLock }) {
                   order={order}
                   onStatusChange={handleStatusChange}
                   currency={restaurant?.currency}
+                  restaurantName={restaurant?.name}
                 />
               ))}
             </div>
