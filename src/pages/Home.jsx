@@ -26,13 +26,13 @@ function RetroGrid({ opacity = 0.35 }) {
             height: '300vh', width: '600vw',
             left: '-100%', top: 0,
             backgroundImage:
-              'linear-gradient(to right, rgba(231,111,81,0.12) 1px, transparent 1px),' +
-              'linear-gradient(to bottom, rgba(231,111,81,0.12) 1px, transparent 1px)',
+              'linear-gradient(to right, rgba(212,163,115,0.14) 1px, transparent 1px),' +
+              'linear-gradient(to bottom, rgba(212,163,115,0.14) 1px, transparent 1px)',
             backgroundSize: '60px 60px',
           }}
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/60 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#0f172a] via-[#0f172a]/60 to-transparent" />
     </div>
   )
 }
@@ -74,16 +74,16 @@ function GlowCard({ children, className = '' }) {
       className={`relative rounded-2xl border border-white/10 overflow-hidden transition-all duration-300 ${className}`}
       style={{
         background: hovered
-          ? `radial-gradient(400px circle at ${pos.x}px ${pos.y}px, rgba(231,111,81,0.12), transparent 60%), rgba(255,255,255,0.03)`
+          ? `radial-gradient(400px circle at ${pos.x}px ${pos.y}px, rgba(212,163,115,0.14), transparent 60%), rgba(255,255,255,0.03)`
           : 'rgba(255,255,255,0.03)',
-        boxShadow: hovered ? '0 0 0 1px rgba(231,111,81,0.3), 0 20px 40px -12px rgba(0,0,0,0.6)' : '0 1px 3px rgba(0,0,0,0.3)',
+        boxShadow: hovered ? '0 0 0 1px rgba(212,163,115,0.35), 0 20px 40px -12px rgba(0,0,0,0.6)' : '0 1px 3px rgba(0,0,0,0.3)',
       }}
     >
       {hovered && (
         <div
           className="pointer-events-none absolute inset-0 rounded-2xl"
           style={{
-            background: `radial-gradient(250px circle at ${pos.x}px ${pos.y}px, rgba(231,111,81,0.18), transparent 60%)`,
+            background: `radial-gradient(250px circle at ${pos.x}px ${pos.y}px, rgba(212,163,115,0.22), transparent 60%)`,
           }}
         />
       )}
@@ -97,7 +97,7 @@ function PhoneMockup() {
   return (
     <div className="relative mx-auto w-[220px]">
       {/* Phone shell */}
-      <div className="relative rounded-[36px] border-4 border-white/20 bg-[#111] shadow-2xl overflow-hidden" style={{ height: 440 }}>
+      <div className="relative rounded-[36px] border-4 border-white/10 bg-navy-800 shadow-2xl overflow-hidden" style={{ height: 440 }}>
         {/* Status bar */}
         <div className="flex items-center justify-between px-5 pt-3 pb-1">
           <span className="text-[9px] text-white/50">9:41</span>
@@ -307,10 +307,10 @@ export default function Home() {
   const heroY = useTransform(scrollYProgress, [0, 1], ['0%', '30%'])
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#0a0a0a] text-white font-sans">
+    <div className="flex min-h-screen flex-col bg-navy-800 text-white font-sans">
 
       {/* ── Sticky Nav ─────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 border-b border-white/5" style={{ background: 'rgba(10,10,10,0.85)', backdropFilter: 'blur(16px)' }}>
+      <header className="sticky top-0 z-50 border-b border-white/5" style={{ background: 'rgba(15,23,42,0.90)', backdropFilter: 'blur(16px)' }}>
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5">
           <div className="flex items-center gap-2.5">
             <img src="/pwa-64x64.png" alt="hungriAR" className="w-8 h-8 rounded-xl" />
@@ -329,7 +329,7 @@ export default function Home() {
             </Link>
             <a
               href={`mailto:${SUPPORT_EMAIL}?subject=hungriAR Enquiry`}
-              className="text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white px-4 py-2 rounded-xl transition-colors"
+              className="text-sm font-semibold bg-primary-500 hover:bg-primary-400 text-navy-900 px-4 py-2 rounded-xl transition-colors"
             >
               Get Started
             </a>
@@ -338,13 +338,13 @@ export default function Home() {
       </header>
 
       {/* ── Hero ───────────────────────────────────────────────────────────── */}
-      <section ref={heroRef} className="relative min-h-screen flex items-center overflow-hidden bg-[#0a0a0a]">
+      <section ref={heroRef} className="relative min-h-screen flex items-center overflow-hidden bg-navy-800">
         <RetroGrid opacity={0.4} />
 
         {/* Radial glow */}
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-2/3 w-[700px] h-[700px] rounded-full"
-            style={{ background: 'radial-gradient(ellipse, rgba(231,111,81,0.08) 0%, transparent 70%)' }} />
+            style={{ background: 'radial-gradient(ellipse, rgba(212,163,115,0.10) 0%, transparent 70%)' }} />
         </div>
 
         <motion.div
@@ -360,7 +360,7 @@ export default function Home() {
           >
             <div className="relative">
               <img src="/pwa-512x512.png" alt="hungriAR" className="w-28 h-28 rounded-3xl shadow-2xl" />
-              <div className="absolute inset-0 rounded-3xl shadow-2xl" style={{ boxShadow: '0 0 60px rgba(231,111,81,0.35)' }} />
+              <div className="absolute inset-0 rounded-3xl shadow-2xl" style={{ boxShadow: '0 0 60px rgba(212,163,115,0.40)' }} />
             </div>
           </motion.div>
 
@@ -382,7 +382,7 @@ export default function Home() {
           >
             Restaurant Management<br />
             <span className="bg-clip-text text-transparent"
-              style={{ backgroundImage: 'linear-gradient(135deg, #e76f51 0%, #f4a261 50%, #e9c46a 100%)' }}>
+              style={{ backgroundImage: 'linear-gradient(135deg, #D4A373 0%, #e6c69a 50%, #f7ebd6 100%)' }}>
               Reimagined with AR
             </span>
           </motion.h1>
@@ -404,7 +404,7 @@ export default function Home() {
             className="mt-9 flex flex-col sm:flex-row gap-3 justify-center"
           >
             <a href="#pricing"
-              className="group inline-flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-500 text-white font-bold px-7 py-3.5 rounded-xl transition-all text-sm shadow-lg hover:shadow-primary-600/30"
+              className="group inline-flex items-center justify-center gap-2 bg-primary-500 hover:bg-primary-400 text-navy-900 font-bold px-7 py-3.5 rounded-xl transition-all text-sm shadow-lg"
             >
               View Plans <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </a>
@@ -457,7 +457,7 @@ export default function Home() {
       </section>
 
       {/* ── Features (Glow Cards) ──────────────────────────────────────────── */}
-      <section id="features" className="py-24 bg-[#0a0a0a]">
+      <section id="features" className="py-24 bg-navy-800">
         <div className="mx-auto max-w-6xl px-4">
           <FadeUp className="text-center mb-14">
             <p className="text-primary-400 text-xs font-bold tracking-widest uppercase mb-3">Everything you need</p>
@@ -495,7 +495,7 @@ export default function Home() {
       </section>
 
       {/* ── How it Works ──────────────────────────────────────────────────── */}
-      <section className="py-24 bg-[#0d0d0d] border-t border-white/5">
+      <section className="py-24 bg-navy-900 border-t border-white/5">
         <div className="mx-auto max-w-6xl px-4">
           <FadeUp className="text-center mb-14">
             <p className="text-primary-400 text-xs font-bold tracking-widest uppercase mb-3">Simple Setup</p>
@@ -519,7 +519,7 @@ export default function Home() {
       </section>
 
       {/* ── AR Differentiator ─────────────────────────────────────────────── */}
-      <section className="py-24 bg-[#0a0a0a] border-t border-white/5 overflow-hidden">
+      <section className="py-24 bg-navy-800 border-t border-white/5 overflow-hidden">
         <div className="mx-auto max-w-6xl px-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             {/* Text */}
@@ -551,7 +551,7 @@ export default function Home() {
               </ul>
               <a
                 href={`mailto:${SUPPORT_EMAIL}?subject=AR Premium Enquiry`}
-                className="inline-flex items-center gap-2 bg-gradient-to-r from-primary-600 to-orange-500 hover:from-primary-500 hover:to-orange-400 text-white font-bold px-6 py-3 rounded-xl transition-all text-sm"
+                className="inline-flex items-center gap-2 bg-gradient-to-r from-primary-600 to-primary-400 hover:from-primary-500 hover:to-primary-300 text-navy-800 font-bold px-6 py-3 rounded-xl transition-all text-sm"
               >
                 Ask about AR Premium <ArrowRight className="w-4 h-4" />
               </a>
@@ -561,7 +561,7 @@ export default function Home() {
             <FadeUp delay={0.15} className="flex justify-center">
               <div className="relative">
                 {/* Background glow */}
-                <div className="absolute inset-0 -m-8 rounded-full" style={{ background: 'radial-gradient(ellipse, rgba(231,111,81,0.15) 0%, transparent 70%)' }} />
+                <div className="absolute inset-0 -m-8 rounded-full" style={{ background: 'radial-gradient(ellipse, rgba(212,163,115,0.18) 0%, transparent 70%)' }} />
                 <motion.div
                   animate={{ y: [-6, 6, -6] }}
                   transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
@@ -575,7 +575,7 @@ export default function Home() {
       </section>
 
       {/* ── Pricing ───────────────────────────────────────────────────────── */}
-      <section id="pricing" className="py-24 bg-[#0d0d0d] border-t border-white/5">
+      <section id="pricing" className="py-24 bg-navy-900 border-t border-white/5">
         <div className="mx-auto max-w-6xl px-4">
           <FadeUp className="text-center mb-14">
             <p className="text-primary-400 text-xs font-bold tracking-widest uppercase mb-3">Pricing</p>
@@ -593,7 +593,7 @@ export default function Home() {
                   transition={{ duration: 0.25 }}
                   className={`relative rounded-2xl border p-7 flex flex-col h-full ${
                     plan.dark
-                      ? 'border-primary-500/50 bg-gradient-to-b from-[#1a0f0a] to-[#0f0a08]'
+                      ? 'border-primary-500/50 bg-gradient-to-b from-[#1c1608] to-[#110f06]'
                       : plan.badge === 'Most Popular'
                       ? 'border-primary-600/50 bg-white/[0.04]'
                       : 'border-white/8 bg-white/[0.02]'
@@ -601,7 +601,7 @@ export default function Home() {
                 >
                   {plan.badge && (
                     <div className={`absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[11px] font-bold text-white ${
-                      plan.dark ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-primary-600'
+                      plan.dark ? 'bg-gradient-to-r from-primary-500 to-primary-300' : 'bg-primary-600'
                     }`}>
                       {plan.badge}
                     </div>
@@ -638,7 +638,7 @@ export default function Home() {
                     href={`mailto:${SUPPORT_EMAIL}?subject=hungriAR ${plan.name} Enquiry`}
                     className={`block text-center py-3 rounded-xl text-sm font-bold transition-all ${
                       plan.dark
-                        ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-400 hover:to-red-400 text-white'
+                        ? 'bg-gradient-to-r from-primary-500 to-primary-300 hover:from-primary-400 hover:to-primary-200 text-navy-900 font-bold'
                         : plan.badge === 'Most Popular'
                         ? 'bg-primary-600 hover:bg-primary-500 text-white'
                         : 'bg-white/8 hover:bg-white/12 text-white/80'
@@ -664,7 +664,7 @@ export default function Home() {
       </section>
 
       {/* ── Comparison Table ──────────────────────────────────────────────── */}
-      <section id="compare" className="py-24 bg-[#0a0a0a] border-t border-white/5">
+      <section id="compare" className="py-24 bg-navy-800 border-t border-white/5">
         <div className="mx-auto max-w-6xl px-4">
           <FadeUp className="text-center mb-12">
             <p className="text-primary-400 text-xs font-bold tracking-widest uppercase mb-3">Comparison</p>
@@ -719,10 +719,10 @@ export default function Home() {
       </section>
 
       {/* ── CTA ───────────────────────────────────────────────────────────── */}
-      <section className="py-24 bg-[#0d0d0d] border-t border-white/5 relative overflow-hidden">
+      <section className="py-24 bg-navy-900 border-t border-white/5 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px]"
-            style={{ background: 'radial-gradient(ellipse, rgba(231,111,81,0.07) 0%, transparent 70%)' }} />
+            style={{ background: 'radial-gradient(ellipse, rgba(212,163,115,0.09) 0%, transparent 70%)' }} />
         </div>
         <FadeUp className="relative text-center">
           <div className="mx-auto max-w-xl px-4">
@@ -738,7 +738,7 @@ export default function Home() {
               href={`mailto:${SUPPORT_EMAIL}?subject=hungriAR Restaurant Enquiry`}
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.97 }}
-              className="inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white font-bold px-8 py-4 rounded-xl transition-colors text-sm shadow-xl"
+              className="inline-flex items-center gap-2 bg-primary-500 hover:bg-primary-400 text-navy-900 font-bold px-8 py-4 rounded-xl transition-colors text-sm shadow-xl"
             >
               Contact Us — Get Started Today <ArrowRight className="w-4 h-4" />
             </motion.a>
@@ -748,7 +748,7 @@ export default function Home() {
       </section>
 
       {/* ── Footer ────────────────────────────────────────────────────────── */}
-      <footer className="bg-[#070707] border-t border-white/5 py-10">
+      <footer className="bg-navy-900 border-t border-white/5 py-10">
         <div className="mx-auto max-w-6xl px-4">
           <div className="grid grid-cols-2 gap-8 sm:grid-cols-4 mb-10">
             {/* Brand */}
@@ -758,9 +758,9 @@ export default function Home() {
                 <span className="font-bold text-white">hungri<span className="text-primary-400">AR</span></span>
               </div>
               <p className="text-xs text-white/30 leading-relaxed">
-                Smart restaurant management with AR dish previews.
+                Restaurant Management · QR Ordering · AR Dish Preview
               </p>
-              <p className="text-xs text-primary-400/60 mt-2 italic">Order. Preview. Enjoy.</p>
+              <p className="text-[10px] text-primary-500/70 mt-2 font-semibold tracking-widest uppercase">Manage · Order · Preview · Delight</p>
             </div>
             {/* Product */}
             <div>
