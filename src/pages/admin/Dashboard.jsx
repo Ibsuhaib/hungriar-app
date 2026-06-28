@@ -13,7 +13,7 @@ import OrderCard from '../../components/OrderCard'
 import { formatCurrency } from '../../utils/formatters'
 import { usePushNotifications, showNotification } from '../../hooks/usePushNotifications'
 import { usePwaInstall } from '../../hooks/usePwaInstall'
-import { getQueuedOrders } from '../../utils/offlineQueue'
+import { getQueuedOrders, getQueuedBills } from '../../utils/offlineQueue'
 
 function playNotificationSound() {
   try {
@@ -136,9 +136,13 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!restaurant?.id) return
-    getQueuedOrders().then((q) =>
-      setOfflinePending(q.filter((o) => o.restaurantId === restaurant.id).length)
-    )
+    Promise.all([getQueuedOrders(), getQueuedBills()]).then(([orders, bills]) => {
+      const id = restaurant.id
+      setOfflinePending(
+        orders.filter((o) => o.restaurantId === id).length +
+        bills.filter((b) => b.restaurantId === id).length
+      )
+    })
   }, [restaurant?.id])
 
   // Show "just ended" banner for 10 minutes after End Day

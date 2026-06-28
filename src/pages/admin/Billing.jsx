@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Receipt, CheckCircle2, Printer, AlertCircle, TriangleAlert, Banknote, CreditCard, Smartphone, Wallet } from 'lucide-react'
+import { Receipt, CheckCircle2, Printer, AlertCircle, TriangleAlert, Banknote, CreditCard, Smartphone, Wallet, WifiOff, RefreshCw } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
 import { formatTime } from '../../utils/formatters'
+import { enqueueBill, getQueuedBills, removeQueuedBill, getQueuedOrders, removeQueuedOrder } from '../../utils/offlineQueue'
 
 const PAYMENT_METHODS = [
   { id: 'cash',  label: 'Cash',  icon: Banknote,   active: 'border-green-500 bg-green-50 text-green-700' },
@@ -210,6 +211,17 @@ export default function Billing() {
   const [activeOrdersCount, setActiveOrdersCount] = useState(0)
   const [selectedPayments, setSelectedPayments] = useState({})
   const [adjustments, setAdjustments] = useState({})
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [pendingBills, setPendingBills] = useState(0)
+  const [syncing, setSyncing] = useState(false)
+
+  useEffect(() => {
+    const on  = () => setIsOnline(true)
+    const off = () => setIsOnline(false)
+    window.addEventListener('online',  on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -225,6 +237,60 @@ export default function Billing() {
   }, [restaurant.id])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // Load pending bill count + sync on reconnect
+  const syncBills = useCallback(async () => {
+    if (!restaurant?.id) return
+    const bills = await getQueuedBills()
+    const mine  = bills.filter((b) => b.restaurantId === restaurant.id)
+    setPendingBills(mine.length)
+    if (!navigator.onLine || mine.length === 0) return
+
+    setSyncing(true)
+    let synced = 0
+    for (const bill of mine) {
+      try {
+        // Complete any pending offline orders for this table first
+        const offlineOrders = await getQueuedOrders()
+        for (const order of offlineOrders.filter((o) => o.tableId === bill.tableId)) {
+          const { error } = await supabase.rpc('admin_place_order', {
+            p_restaurant_id: order.restaurantId,
+            p_table_id:      order.tableId,
+            p_items:         order.items,
+          })
+          if (!error) await removeQueuedOrder(order.id)
+        }
+        // Auto-complete any still-pending orders for this table
+        await supabase.from('orders')
+          .update({ status: 'completed' })
+          .eq('restaurant_id', bill.restaurantId)
+          .eq('table_id', bill.tableId)
+          .in('status', ['pending', 'preparing', 'served'])
+        // Settle the bill
+        const { error } = await supabase.rpc('reset_table_billing', {
+          p_restaurant_id:  bill.restaurantId,
+          p_table_id:       bill.tableId,
+          p_payment_method: bill.paymentMethod,
+          p_discount:       bill.discountAmt,
+          p_round_off:      bill.roundOffAmt,
+        })
+        if (!error) { await removeQueuedBill(bill.id); synced++ }
+      } catch { /* keep in queue, retry later */ }
+    }
+    if (synced > 0) {
+      toast.success(`${synced} offline bill${synced > 1 ? 's' : ''} synced!`)
+      fetchData()
+    }
+    const remaining = await getQueuedBills()
+    setPendingBills(remaining.filter((b) => b.restaurantId === restaurant.id).length)
+    setSyncing(false)
+  }, [restaurant?.id, fetchData])
+
+  useEffect(() => {
+    syncBills()
+    window.addEventListener('online', syncBills)
+    return () => window.removeEventListener('online', syncBills)
+  }, [syncBills])
 
   const bills = useMemo(() =>
     tables
@@ -268,14 +334,15 @@ export default function Billing() {
     const billData = bills.find((b) => b.table.id === confirmTable.id)
     const adj = getAdj(confirmTable.id)
     const { discountAmt, roundOffAmt, finalTotal } = computeFinals(billData?.total || 0, adj)
+    const paymentMethod = selectedPayments[confirmTable.id] || 'other'
 
     if (billData) {
       printReceipt({
-        tableOrders:   billData.orders,
-        table:         confirmTable,
-        total:         billData.total,
+        tableOrders: billData.orders,
+        table:        confirmTable,
+        total:        billData.total,
         taxPercentage,
-        paymentMethod: selectedPayments[confirmTable.id] || 'other',
+        paymentMethod,
         restaurant,
         discountAmt,
         roundOffAmt,
@@ -283,12 +350,36 @@ export default function Billing() {
       })
     }
 
+    // ── Offline path ──────────────────────────────────────────────────────────
+    if (!navigator.onLine) {
+      try {
+        await enqueueBill({
+          restaurantId:  restaurant.id,
+          tableId:       confirmTable.id,
+          tableNumber:   confirmTable.table_number,
+          paymentMethod,
+          discountAmt,
+          roundOffAmt,
+          finalTotal,
+        })
+        setPendingBills((c) => c + 1)
+        toast.success(`Bill saved offline for Table ${confirmTable.table_number} — will sync when online`, { duration: 5000 })
+        setSelectedPayments((prev) => { const n = { ...prev }; delete n[confirmTable.id]; return n })
+        setAdjustments((prev) => { const n = { ...prev }; delete n[confirmTable.id]; return n })
+      } catch {
+        toast.error('Failed to save bill offline')
+      }
+      setConfirmTable(null)
+      return
+    }
+
+    // ── Online path ───────────────────────────────────────────────────────────
     setSettlingTableId(confirmTable.id)
     try {
       const { data, error } = await supabase.rpc('reset_table_billing', {
         p_restaurant_id:  restaurant.id,
         p_table_id:       confirmTable.id,
-        p_payment_method: selectedPayments[confirmTable.id] || 'other',
+        p_payment_method: paymentMethod,
         p_discount:       discountAmt,
         p_round_off:      roundOffAmt,
       })
@@ -310,6 +401,36 @@ export default function Billing() {
 
   return (
     <div className="space-y-4">
+
+      {/* Offline banner */}
+      {!isOnline && (
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+          <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-amber-800">You are offline</p>
+            <p className="text-xs text-amber-600">Bills will be saved on this device and settled in Supabase when internet returns.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Pending sync banner */}
+      {isOnline && pendingBills > 0 && (
+        <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3">
+          <RefreshCw className={`w-4 h-4 text-blue-600 flex-shrink-0 ${syncing ? 'animate-spin' : ''}`} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-blue-800">
+              {syncing ? 'Syncing bills…' : `${pendingBills} offline bill${pendingBills > 1 ? 's' : ''} pending sync`}
+            </p>
+            <p className="text-xs text-blue-600">These were settled while offline and are being synced now.</p>
+          </div>
+          {!syncing && (
+            <button type="button" onClick={syncBills} className="text-xs font-bold text-blue-600 bg-blue-100 rounded-xl px-3 py-1.5 hover:bg-blue-200 transition-colors flex-shrink-0">
+              Sync now
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex items-start gap-3 rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
         <AlertCircle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
         <p className="text-sm text-blue-700 leading-relaxed">
@@ -533,11 +654,13 @@ export default function Billing() {
                       type="button"
                       onClick={() => handleClickSettle(table)}
                       disabled={settlingTableId === table.id || !chosen}
-                      title={!chosen ? 'Select a payment method first' : 'Print receipt and settle the bill'}
+                      title={!chosen ? 'Select a payment method first' : isOnline ? 'Print receipt and settle the bill' : 'Print receipt and save bill offline'}
                       className="btn-secondary flex-1 gap-1.5 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Printer className="w-3.5 h-3.5" />
-                      {settlingTableId === table.id ? 'Settling…' : 'Print & Settle'}
+                      {settlingTableId === table.id
+                        ? 'Settling…'
+                        : isOnline ? 'Print & Settle' : 'Print & Save Offline'}
                     </button>
                   </div>
                 </div>

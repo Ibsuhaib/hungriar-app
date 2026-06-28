@@ -1,4 +1,4 @@
-import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching'
+﻿import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching'
 import { registerRoute, NavigationRoute } from 'workbox-routing'
 import {
   StaleWhileRevalidate,
@@ -76,10 +76,22 @@ registerRoute(
 
 // ─── Orders, billing, auth, edge functions — Network Only ────────────────────
 // These MUST go to the server — never serve stale data for transactional calls
+// Orders — Stale While Revalidate (5 min) so billing page shows cached orders offline
+registerRoute(
+  ({ url }) =>
+    url.hostname.includes('supabase.co') &&
+    url.pathname.includes('/rest/v1/orders'),
+  new StaleWhileRevalidate({
+    cacheName: 'supabase-orders-cache',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 5 }), // 5 min
+    ],
+  }),
+)
 const networkOnlyPattern = ({ url }) =>
   url.hostname.includes('supabase.co') &&
   (
-    url.pathname.includes('/rest/v1/orders') ||
     url.pathname.includes('/rest/v1/billing_history') ||
     url.pathname.includes('/rest/v1/expenses') ||
     url.pathname.includes('/rest/v1/day_closes') ||
