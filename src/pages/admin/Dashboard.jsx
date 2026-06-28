@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
-import { Clock, CheckCircle2, TrendingUp, ArrowRight, Bell, BellOff, ChefHat, Sunset, Download, Printer } from 'lucide-react'
+import { Clock, CheckCircle2, TrendingUp, ArrowRight, Bell, BellOff, ChefHat, Sunset, Download, Printer, WifiOff } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -13,6 +13,7 @@ import OrderCard from '../../components/OrderCard'
 import { formatCurrency } from '../../utils/formatters'
 import { usePushNotifications, showNotification } from '../../hooks/usePushNotifications'
 import { usePwaInstall } from '../../hooks/usePwaInstall'
+import { getQueuedOrders } from '../../utils/offlineQueue'
 
 function playNotificationSound() {
   try {
@@ -130,7 +131,15 @@ export default function Dashboard() {
   const { checkAdminLimit } = useRateLimit()
   const { sessionStart } = useSessionStart(restaurant?.id)
   const { canInstall, install } = usePwaInstall()
-  const [settledToday, setSettledToday] = useState({ count: 0, revenue: 0 })
+  const [settledToday, setSettledToday]   = useState({ count: 0, revenue: 0 })
+  const [offlinePending, setOfflinePending] = useState(0)
+
+  useEffect(() => {
+    if (!restaurant?.id) return
+    getQueuedOrders().then((q) =>
+      setOfflinePending(q.filter((o) => o.restaurantId === restaurant.id).length)
+    )
+  }, [restaurant?.id])
 
   // Show "just ended" banner for 10 minutes after End Day
   const justEndedKey = restaurant?.id ? `hungriar_day_ended_${restaurant.id}` : null
@@ -242,6 +251,21 @@ export default function Dashboard() {
             <p className="text-xs text-orange-600">All orders cleared. Ready for a fresh start — new orders will appear here.</p>
           </div>
         </div>
+      )}
+
+      {/* Offline orders pending sync */}
+      {offlinePending > 0 && (
+        <Link
+          to="/admin/take-order"
+          className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3"
+        >
+          <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-amber-800">{offlinePending} offline order{offlinePending > 1 ? 's' : ''} pending sync</p>
+            <p className="text-xs text-amber-600">Tap to go to Take Order and sync them now.</p>
+          </div>
+          <ArrowRight className="w-4 h-4 text-amber-500 flex-shrink-0" />
+        </Link>
       )}
 
       {/* Notification + Chef mode + KOT + Install row */}

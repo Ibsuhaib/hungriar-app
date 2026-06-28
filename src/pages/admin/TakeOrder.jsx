@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShoppingCart, Plus, Minus, X, ConciergeBell, ChevronDown, Search } from 'lucide-react'
+import { ShoppingCart, Plus, Minus, X, ConciergeBell, ChevronDown, Search, WifiOff, RefreshCw } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
+import { printKOT } from '../../utils/kotPrint'
+import { enqueueOrder, getQueuedOrders, removeQueuedOrder } from '../../utils/offlineQueue'
 
 // ─── Cart hook ────────────────────────────────────────────────────────────────
 
@@ -165,7 +167,12 @@ function CartSheet({ entries, subtotal, taxPercentage, currency, onRemove, onAdd
             disabled={placing || !selectedTable || entries.length === 0}
             className="w-full bg-primary-600 hover:bg-primary-500 text-white py-3 rounded-2xl text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {placing ? 'Placing order…' : `Place Order · ${formatCurrency(total, currency)}`}
+            {placing
+              ? (navigator.onLine ? 'Placing order…' : 'Saving offline…')
+              : navigator.onLine
+                ? `Place Order · ${formatCurrency(total, currency)}`
+                : `Save Offline · ${formatCurrency(total, currency)}`
+            }
           </button>
         </div>
       </motion.div>
@@ -190,6 +197,9 @@ export default function TakeOrder() {
   const [search, setSearch]                   = useState('')
   const [cartOpen, setCartOpen]               = useState(false)
   const [placing, setPlacing]                 = useState(false)
+  const [isOnline, setIsOnline]               = useState(navigator.onLine)
+  const [pendingCount, setPendingCount]       = useState(0)
+  const [syncing, setSyncing]                 = useState(false)
 
   const { cart, entries, totalQty, subtotal, add, remove, setNote, clear } = useCart()
 
@@ -209,6 +219,50 @@ export default function TakeOrder() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // Track online/offline state
+  useEffect(() => {
+    const setOnline  = () => setIsOnline(true)
+    const setOffline = () => setIsOnline(false)
+    window.addEventListener('online',  setOnline)
+    window.addEventListener('offline', setOffline)
+    return () => {
+      window.removeEventListener('online',  setOnline)
+      window.removeEventListener('offline', setOffline)
+    }
+  }, [])
+
+  // Load pending count + sync when online
+  const syncQueue = useCallback(async () => {
+    if (!restaurant?.id) return
+    const queued = await getQueuedOrders()
+    const mine = queued.filter((o) => o.restaurantId === restaurant.id)
+    setPendingCount(mine.length)
+    if (!navigator.onLine || mine.length === 0) return
+
+    setSyncing(true)
+    let synced = 0
+    for (const order of mine) {
+      try {
+        const { error } = await supabase.rpc('admin_place_order', {
+          p_restaurant_id: order.restaurantId,
+          p_table_id:      order.tableId,
+          p_items:         order.items,
+        })
+        if (!error) { await removeQueuedOrder(order.id); synced++ }
+      } catch { /* keep in queue, retry next time */ }
+    }
+    if (synced > 0) toast.success(`${synced} queued order${synced > 1 ? 's' : ''} synced to server!`)
+    const remaining = await getQueuedOrders()
+    setPendingCount(remaining.filter((o) => o.restaurantId === restaurant.id).length)
+    setSyncing(false)
+  }, [restaurant?.id])
+
+  useEffect(() => {
+    syncQueue()
+    window.addEventListener('online', syncQueue)
+    return () => window.removeEventListener('online', syncQueue)
+  }, [syncQueue])
+
   // Items for the selected category + search
   const filteredItems = useMemo(() => {
     let list = selectedCatId === 'all' ? menuItems : menuItems.filter((i) => i.category_id === selectedCatId)
@@ -224,18 +278,59 @@ export default function TakeOrder() {
   const handlePlaceOrder = async () => {
     if (!selectedTableId || entries.length === 0 || placing) return
     setPlacing(true)
-    try {
-      const items = entries.map(({ item, quantity, notes }) => ({
-        menu_item_id: item.id,
+
+    const tax = Math.round(subtotal * taxPercentage) / 100
+    const totalAmount = subtotal + tax
+
+    const items = entries.map(({ item, quantity, notes }) => ({
+      menu_item_id: item.id,
+      quantity,
+      notes: notes || '',
+    }))
+
+    // Build a local order object for KOT (no server ID needed)
+    const kotOrder = {
+      id: `local-${Date.now()}`,
+      order_time: new Date().toISOString(),
+      total_amount: totalAmount,
+      tables: { table_number: selectedTableNumber },
+      order_items: entries.map(({ item, quantity, notes }) => ({
+        item_name: item.name,
         quantity,
         notes: notes || '',
-      }))
+        cancelled: false,
+      })),
+    }
+
+    if (!navigator.onLine) {
+      try {
+        await enqueueOrder({
+          restaurantId:  restaurant.id,
+          tableId:       selectedTableId,
+          tableNumber:   selectedTableNumber,
+          items,
+          totalAmount,
+        })
+        setPendingCount((c) => c + 1)
+        printKOT(kotOrder, restaurant?.name)
+        toast.success(`Order saved offline for Table ${selectedTableNumber} — will sync when online`, { duration: 5000 })
+        clear()
+        setCartOpen(false)
+      } catch {
+        toast.error('Failed to save order offline')
+      }
+      setPlacing(false)
+      return
+    }
+
+    try {
       const { error } = await supabase.rpc('admin_place_order', {
         p_restaurant_id: restaurant.id,
         p_table_id:      selectedTableId,
         p_items:         items,
       })
       if (error) throw error
+      printKOT(kotOrder, restaurant?.name)
       toast.success(`Order placed for Table ${selectedTableNumber}!`)
       clear()
       setCartOpen(false)
@@ -265,6 +360,36 @@ export default function TakeOrder() {
 
   return (
     <div className="space-y-4 pb-28">
+
+      {/* Offline banner */}
+      {!isOnline && (
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+          <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-amber-800">You are offline</p>
+            <p className="text-xs text-amber-600">Orders will be saved on this device and synced when internet returns.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Pending sync banner */}
+      {isOnline && pendingCount > 0 && (
+        <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3">
+          <RefreshCw className={`w-4 h-4 text-blue-600 flex-shrink-0 ${syncing ? 'animate-spin' : ''}`} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-blue-800">
+              {syncing ? 'Syncing orders…' : `${pendingCount} order${pendingCount > 1 ? 's' : ''} pending sync`}
+            </p>
+            <p className="text-xs text-blue-600">These were taken while offline and are being synced now.</p>
+          </div>
+          {!syncing && (
+            <button type="button" onClick={syncQueue} className="text-xs font-bold text-blue-600 bg-blue-100 rounded-xl px-3 py-1.5 hover:bg-blue-200 transition-colors flex-shrink-0">
+              Sync now
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Table selector + search */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative">
