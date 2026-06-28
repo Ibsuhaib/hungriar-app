@@ -46,11 +46,16 @@ export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterva
     setLoading(false)
   }, [restaurantId, orderId, cacheKey])
 
-  // Optimistic patch — instant UI feedback before DB confirms
+  // Optimistic patch — instant UI feedback before DB confirms.
+  // Also writes to pageCache so other pages (e.g. Billing) see the update immediately on mount.
   const patchOrder = useCallback((id, patch) => {
     pendingPatchesRef.current[id] = { ...(pendingPatchesRef.current[id] || {}), ...patch, _at: Date.now() }
-    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)))
-  }, [])
+    setOrders((prev) => {
+      const next = prev.map((o) => (o.id === id ? { ...o, ...patch } : o))
+      pageCache.set(cacheKey, next)
+      return next
+    })
+  }, [cacheKey])
 
   // Initial load
   useEffect(() => {
