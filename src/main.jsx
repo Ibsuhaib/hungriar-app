@@ -16,7 +16,7 @@ import './index.css'
 
 // Register the service worker. When a new version is ready, show a toast
 // so the user can refresh to get the latest update.
-registerSW({
+const updateSW = registerSW({
   onNeedRefresh() {
     toast(
       (t) => (
@@ -25,7 +25,7 @@ registerSW({
           <button
             onClick={() => {
               toast.dismiss(t.id)
-              window.location.reload()
+              updateSW(true)
             }}
             className="flex-shrink-0 px-3 py-1 rounded-lg bg-primary-600 text-white text-xs font-bold"
           >
