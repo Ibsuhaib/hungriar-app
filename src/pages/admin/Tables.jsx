@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, QrCode, Trash2 } from 'lucide-react'
+import { Plus, QrCode, Trash2, Lock } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
@@ -120,7 +120,15 @@ export default function Tables() {
                 exit={{ opacity: 0, scale: 0.9 }}
                 className="space-y-2"
               >
-                <TableQR table={table} restaurantId={restaurant.id} />
+                {restaurant?.plan === 'standard' || restaurant?.plan === 'ar_premium' ? (
+                  <TableQR table={table} restaurantId={restaurant.id} />
+                ) : (
+                  <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 flex flex-col items-center justify-center gap-2 p-6 text-center aspect-square">
+                    <Lock className="w-6 h-6 text-gray-300" />
+                    <p className="text-xs font-semibold text-gray-400">Table {table.table_number}</p>
+                    <p className="text-[11px] text-gray-400">QR codes require<br />Standard plan</p>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => setConfirmDelete(table)}
