@@ -209,7 +209,7 @@ export default function TakeOrder() {
 
   const fetchData = useCallback(async () => {
     if (!restaurant?.id) return
-    setDataLoading(true)
+    if (!pageCache.has(toCacheKey)) setDataLoading(true)
     const [tablesRes, catsRes, itemsRes] = await Promise.all([
       supabase.from('tables').select('id, table_number').eq('restaurant_id', restaurant.id).order('table_number'),
       supabase.from('categories').select('id, name, display_order').eq('restaurant_id', restaurant.id).order('display_order'),
@@ -223,7 +223,7 @@ export default function TakeOrder() {
     if (!itemsRes.error)  setMenuItems(m)
     pageCache.set(toCacheKey, { tables: t, categories: c, menuItems: m })
     setDataLoading(false)
-  }, [restaurant.id])
+  }, [restaurant.id, toCacheKey])
 
   useEffect(() => { fetchData() }, [fetchData])
 

@@ -255,7 +255,7 @@ export default function Billing() {
   }, [loadOfflineOrders])
 
   const fetchData = useCallback(async () => {
-    setLoading(true)
+    if (!pageCache.has(billCacheKey)) setLoading(true)
     const [tablesRes, ordersRes, restaurantRes] = await Promise.all([
       supabase.from('tables').select('*').eq('restaurant_id', restaurant.id).order('table_number'),
       supabase.from('orders').select('*, order_items(*)').eq('restaurant_id', restaurant.id).eq('status', 'completed').order('order_time'),
@@ -269,7 +269,7 @@ export default function Billing() {
     if (!restaurantRes.error) setTaxPercentage(tp)
     pageCache.set(billCacheKey, { tables: t, orders: o, taxPercentage: tp })
     setLoading(false)
-  }, [restaurant.id])
+  }, [restaurant.id, billCacheKey])
 
   useEffect(() => { fetchData() }, [fetchData])
 

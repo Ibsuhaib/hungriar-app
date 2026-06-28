@@ -11,6 +11,9 @@ export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterva
   const onInsertRef = useRef(onInsert)
   onInsertRef.current = onInsert
 
+  // Track optimistic patches so polls don't overwrite them before DB confirms
+  const pendingPatchesRef = useRef({})
+
   const fetchOrders = useCallback(async ({ silent = false } = {}) => {
     if (!restaurantId && !orderId) {
       setOrders([])
@@ -29,14 +32,23 @@ export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterva
 
     const { data, error } = await query
     if (!error) {
-      pageCache.set(cacheKey, data || [])
-      setOrders(data || [])
+      const now = Date.now()
+      // Protect pending optimistic patches from being overwritten by stale poll data
+      const merged = (data || []).map((o) => {
+        const p = pendingPatchesRef.current[o.id]
+        if (p && now - p._at < 5000) return { ...o, ...p }
+        if (p) delete pendingPatchesRef.current[o.id]
+        return o
+      })
+      pageCache.set(cacheKey, merged)
+      setOrders(merged)
     }
     setLoading(false)
   }, [restaurantId, orderId, cacheKey])
 
   // Optimistic patch — instant UI feedback before DB confirms
   const patchOrder = useCallback((id, patch) => {
+    pendingPatchesRef.current[id] = { ...(pendingPatchesRef.current[id] || {}), ...patch, _at: Date.now() }
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)))
   }, [])
 
@@ -62,6 +74,8 @@ export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterva
           // Delayed refetch ensures order_items are committed before we reload
           setTimeout(() => fetchOrders({ silent: true }), 400)
         } else if (payload.eventType === 'UPDATE') {
+          // DB confirmed — clear our optimistic patch so future polls use DB data
+          delete pendingPatchesRef.current[payload.new.id]
           patchOrder(payload.new.id, payload.new)
         } else if (payload.eventType === 'DELETE') {
           setOrders((prev) => prev.filter((o) => o.id !== payload.old.id))
