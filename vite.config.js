@@ -22,11 +22,11 @@ export default defineConfig({
       registerType: 'prompt', // Ask user before activating a new SW version
 
       manifest: {
-        name: 'HungriAR',
-        short_name: 'HungriAR',
-        description: 'AR-powered restaurant ordering',
-        theme_color: '#d3552f',
-        background_color: '#ffffff',
+        name: 'hungriAR',
+        short_name: 'hungriAR',
+        description: 'Restaurant Management · QR Ordering · AR Dish Preview',
+        theme_color: '#0F172A',
+        background_color: '#0F172A',
         display: 'standalone',
         start_url: '/',
         scope: '/',
