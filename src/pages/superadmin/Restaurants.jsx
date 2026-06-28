@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, X, ChevronDown, ChevronUp, KeyRound, Trash2, Edit2, Store, Phone, CheckCircle, AlertCircle, Copy, Link, Crown } from 'lucide-react'
@@ -84,7 +84,8 @@ export default function Restaurants() {
   const [phoneTarget, setPhoneTarget] = useState(null) // { restaurantId, email, current }
   const [phoneInput, setPhoneInput] = useState('')
   const [savingPhone, setSavingPhone] = useState(false)
-  const [assigningPlan, setAssigningPlan] = useState(null) // restaurantId being updated
+  const [assigningPlan, setAssigningPlan] = useState(null) // { restaurantId, plan }
+  const planAssigningRef = useRef(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -226,15 +227,22 @@ export default function Restaurants() {
   }
 
   const handleAssignPlan = async (restaurantId, plan) => {
-    setAssigningPlan(restaurantId)
+    if (planAssigningRef.current) return
+    planAssigningRef.current = true
+    // Optimistic update — reflect change instantly in the UI
+    const prev = restaurants.find((r) => r.id === restaurantId)?.plan ?? null
+    setRestaurants((rs) => rs.map((r) => r.id === restaurantId ? { ...r, plan } : r))
+    setAssigningPlan({ restaurantId, plan })
     try {
       const { error } = await supabase.from('restaurants').update({ plan }).eq('id', restaurantId)
       if (error) throw error
-      setRestaurants((prev) => prev.map((r) => r.id === restaurantId ? { ...r, plan } : r))
       toast.success(`Plan set to ${PLANS.find((p) => p.key === plan)?.label}`)
     } catch (err) {
+      // Revert optimistic update on failure
+      setRestaurants((rs) => rs.map((r) => r.id === restaurantId ? { ...r, plan: prev } : r))
       toast.error(err.message || 'Failed to update plan')
     } finally {
+      planAssigningRef.current = false
       setAssigningPlan(null)
     }
   }
@@ -600,21 +608,28 @@ export default function Restaurants() {
                                 {restaurant.plan && <PlanBadge plan={restaurant.plan} />}
                               </div>
                               <div className="flex gap-2 flex-wrap">
-                                {PLANS.map((p) => (
-                                  <button
-                                    key={p.key}
-                                    type="button"
-                                    disabled={assigningPlan === restaurant.id}
-                                    onClick={() => handleAssignPlan(restaurant.id, p.key)}
-                                    className={`text-xs font-semibold px-4 py-2 rounded-xl border transition-all ${
-                                      restaurant.plan === p.key
-                                        ? 'bg-primary-500 text-white border-primary-500 shadow-sm'
-                                        : `bg-white ${p.btnClass}`
-                                    }`}
-                                  >
-                                    {assigningPlan === restaurant.id && restaurant.plan !== p.key ? p.label : p.label}
-                                  </button>
-                                ))}
+                                {PLANS.map((p) => {
+                                  const isThisOne = assigningPlan?.restaurantId === restaurant.id && assigningPlan?.plan === p.key
+                                  const isAnyBusy = assigningPlan?.restaurantId === restaurant.id
+                                  return (
+                                    <button
+                                      key={p.key}
+                                      type="button"
+                                      disabled={isAnyBusy}
+                                      onClick={() => handleAssignPlan(restaurant.id, p.key)}
+                                      className={`text-xs font-semibold px-4 py-2 rounded-xl border transition-all flex items-center gap-1.5 ${
+                                        restaurant.plan === p.key
+                                          ? 'bg-primary-500 text-white border-primary-500 shadow-sm'
+                                          : `bg-white ${p.btnClass}`
+                                      }`}
+                                    >
+                                      {isThisOne && (
+                                        <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                                      )}
+                                      {p.label}
+                                    </button>
+                                  )
+                                })}
                               </div>
                               {!restaurant.plan && (
                                 <p className="text-[11px] text-red-500 mt-2">⚠ No plan assigned — restaurant features are locked.</p>
