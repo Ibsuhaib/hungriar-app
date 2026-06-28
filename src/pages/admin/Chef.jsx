@@ -162,10 +162,11 @@ function ChefOrdersView({ onLock }) {
   const { checkAdminLimit } = useRateLimit()
   const { status: notifStatus, isSupported: notifSupported, enable: enableNotif } = usePushNotifications({ restaurantId: restaurant?.id })
 
-  const kotKey = `hungriar_kot_auto_${restaurant?.id}`
-  const [autoPrintKOT, setAutoPrintKOT] = useState(() => localStorage.getItem(kotKey) === 'true')
+  const kotKey = restaurant?.id ? `hungriar_kot_auto_${restaurant.id}` : null
+  const [autoPrintKOT, setAutoPrintKOT] = useState(() => kotKey ? localStorage.getItem(kotKey) === 'true' : false)
 
   const toggleAutoPrint = () => {
+    if (!kotKey) return
     setAutoPrintKOT((prev) => {
       localStorage.setItem(kotKey, String(!prev))
       return !prev
@@ -188,11 +189,11 @@ function ChefOrdersView({ onLock }) {
     playNotificationSound()
     toast.success('New order!', { icon: '🔔', id: `order-${order.id}` })
     showNotification('New Order!', `Table ${order.tables?.table_number ?? '?'} placed an order`)
-    if (localStorage.getItem(kotKey) === 'true') {
+    const key = restaurant?.id ? `hungriar_kot_auto_${restaurant.id}` : null
+    if (key && localStorage.getItem(key) === 'true') {
       printKOT(order, restaurant?.name)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kotKey, restaurant?.name])
+  }, [restaurant?.id, restaurant?.name])
 
   const { orders, loading, patchOrder, refetch } = useRealtimeOrders({
     restaurantId: restaurant?.id,

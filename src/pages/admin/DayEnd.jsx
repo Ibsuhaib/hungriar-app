@@ -63,6 +63,7 @@ ${expenses.length===0?'<p style="color:#888;font-size:11px;padding:4px 0">No exp
 </body></html>`
 
   const w = window.open('', '_blank', 'width=400,height=600')
+  if (!w) { alert('Allow pop-ups in your browser to print the report'); return }
   w.document.write(html); w.document.close(); w.focus()
   setTimeout(() => { w.print(); w.close() }, 300)
 }

@@ -65,9 +65,17 @@ function NotificationButton({ restaurantId }) {
 }
 
 function KOTToggle({ restaurantId }) {
-  const key = `hungriar_kot_auto_${restaurantId}`
-  const [on, setOn] = useState(() => localStorage.getItem(key) === 'true')
-  const toggle = () => setOn((prev) => { localStorage.setItem(key, String(!prev)); return !prev })
+  const key = restaurantId ? `hungriar_kot_auto_${restaurantId}` : null
+  const [on, setOn] = useState(false)
+
+  useEffect(() => {
+    if (key) setOn(localStorage.getItem(key) === 'true')
+  }, [key])
+
+  const toggle = () => {
+    if (!key) return
+    setOn((prev) => { localStorage.setItem(key, String(!prev)); return !prev })
+  }
   return (
     <button
       type="button"

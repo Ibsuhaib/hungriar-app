@@ -194,6 +194,7 @@ export default function TakeOrder() {
   const { cart, entries, totalQty, subtotal, add, remove, setNote, clear } = useCart()
 
   const fetchData = useCallback(async () => {
+    if (!restaurant?.id) return
     setDataLoading(true)
     const [tablesRes, catsRes, itemsRes] = await Promise.all([
       supabase.from('tables').select('id, table_number').eq('restaurant_id', restaurant.id).order('table_number'),

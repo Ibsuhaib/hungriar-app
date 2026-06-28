@@ -60,8 +60,8 @@ Deno.serve(async (req) => {
     closedAt: string
   }
 
-  if (!restaurantId || !collections) {
-    return jsonResponse({ error: 'restaurantId and collections are required' }, 400)
+  if (!restaurantId || !collections || !closedAt) {
+    return jsonResponse({ error: 'restaurantId, collections and closedAt are required' }, 400)
   }
 
   // Find owner's phone number for this restaurant

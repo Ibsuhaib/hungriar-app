@@ -76,7 +76,12 @@ export function printKOT(order, restaurantName = 'Restaurant') {
 </html>`
 
   const w = window.open('', '_blank', 'width=320,height=520,scrollbars=no')
-  if (!w) { alert('Allow pop-ups to print KOT'); return }
+  if (!w) {
+    import('react-hot-toast').then(({ default: toast }) =>
+      toast.error('Allow pop-ups in your browser to print KOT', { duration: 5000 })
+    )
+    return
+  }
   w.document.write(html)
   w.document.close()
   w.focus()

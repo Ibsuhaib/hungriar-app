@@ -71,8 +71,8 @@ export function usePushNotifications({ restaurantId } = {}) {
             { restaurant_id: restaurantId, endpoint, p256dh: keys.p256dh, auth: keys.auth },
             { onConflict: 'restaurant_id,endpoint' },
           )
-        } catch {
-          // Push subscription failed but browser notifications still work
+        } catch (err) {
+          console.error('Push subscription save failed:', err)
         }
       }
 
