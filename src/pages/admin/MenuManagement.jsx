@@ -328,24 +328,47 @@ export default function MenuManagement() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <UploadZone
-                        label="Photo"
-                        hint="Upload image"
-                        value={form.image_url}
-                        loading={uploadingImage}
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        icon={ImageIcon}
-                      />
-                      <UploadZone
-                        label="AR / 3D Model"
-                        hint=".glb or .usdz"
-                        value={form.ar_model_url}
-                        loading={uploadingModel}
-                        accept=".glb,.usdz"
-                        onChange={handleModelUpload}
-                        icon={Box}
-                      />
+                      {/* Image upload — Standard and AR Premium only */}
+                      {restaurant?.plan === 'standard' || restaurant?.plan === 'ar_premium' ? (
+                        <UploadZone
+                          label="Photo"
+                          hint="Upload image"
+                          value={form.image_url}
+                          loading={uploadingImage}
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          icon={ImageIcon}
+                        />
+                      ) : (
+                        <div>
+                          <p className="label">Photo</p>
+                          <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 min-h-[90px] px-4 py-4 text-center">
+                            <ImageIcon className="w-5 h-5 text-gray-300" />
+                            <p className="text-xs text-gray-400 font-medium">Standard plan required</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* AR model upload — AR Premium only */}
+                      {restaurant?.plan === 'ar_premium' ? (
+                        <UploadZone
+                          label="AR / 3D Model"
+                          hint=".glb or .usdz"
+                          value={form.ar_model_url}
+                          loading={uploadingModel}
+                          accept=".glb,.usdz"
+                          onChange={handleModelUpload}
+                          icon={Box}
+                        />
+                      ) : (
+                        <div>
+                          <p className="label">AR / 3D Model</p>
+                          <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 min-h-[90px] px-4 py-4 text-center">
+                            <Box className="w-5 h-5 text-gray-300" />
+                            <p className="text-xs text-gray-400 font-medium">AR Premium required</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <label className="flex items-center gap-2.5 cursor-pointer group">

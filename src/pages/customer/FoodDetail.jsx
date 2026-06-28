@@ -89,8 +89,8 @@ export default function FoodDetail() {
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
 
-        {/* AR badge */}
-        {item.ar_model_url && (
+        {/* AR badge — only shown on AR Premium plan */}
+        {item.ar_model_url && restaurant?.plan === 'ar_premium' && (
           <motion.button
             type="button"
             onClick={() => setShowAR(true)}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, X, ChevronDown, ChevronUp, KeyRound, Trash2, Edit2, Store, Phone, CheckCircle, AlertCircle, Copy, Link } from 'lucide-react'
+import { Plus, X, ChevronDown, ChevronUp, KeyRound, Trash2, Edit2, Store, Phone, CheckCircle, AlertCircle, Copy, Link, Crown } from 'lucide-react'
 import { useAuth, MAX_PASSWORD_LENGTH } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase, invokeEdgeFunction } from '../../lib/supabase'
@@ -14,6 +14,18 @@ const EMPTY_ADD_FORM = {
 const MIN_PASSWORD_LENGTH = 8
 const SLUG_PATTERN = /^[a-z0-9-]+$/
 const BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME ?? 'HungriARBot'
+
+const PLANS = [
+  { key: 'starter',    label: 'Starter',    badgeClass: 'bg-slate-100 text-slate-700',  btnClass: 'border-slate-300 text-slate-700 hover:border-slate-500' },
+  { key: 'standard',   label: 'Standard',   badgeClass: 'bg-blue-100 text-blue-700',    btnClass: 'border-blue-300 text-blue-700 hover:border-blue-500' },
+  { key: 'ar_premium', label: 'AR Premium', badgeClass: 'bg-amber-100 text-amber-700',  btnClass: 'border-amber-300 text-amber-700 hover:border-amber-500' },
+]
+
+function PlanBadge({ plan }) {
+  const cfg = PLANS.find((p) => p.key === plan)
+  if (!cfg) return <span className="badge bg-red-50 text-red-500">No Plan</span>
+  return <span className={`badge ${cfg.badgeClass}`}>{cfg.label}</span>
+}
 
 function slugify(v) {
   return v.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
@@ -72,6 +84,7 @@ export default function Restaurants() {
   const [phoneTarget, setPhoneTarget] = useState(null) // { restaurantId, email, current }
   const [phoneInput, setPhoneInput] = useState('')
   const [savingPhone, setSavingPhone] = useState(false)
+  const [assigningPlan, setAssigningPlan] = useState(null) // restaurantId being updated
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -209,6 +222,20 @@ export default function Restaurants() {
       toast.error(err.message || 'Failed to reset password')
     } finally {
       setResetting(false)
+    }
+  }
+
+  const handleAssignPlan = async (restaurantId, plan) => {
+    setAssigningPlan(restaurantId)
+    try {
+      const { error } = await supabase.from('restaurants').update({ plan }).eq('id', restaurantId)
+      if (error) throw error
+      setRestaurants((prev) => prev.map((r) => r.id === restaurantId ? { ...r, plan } : r))
+      toast.success(`Plan set to ${PLANS.find((p) => p.key === plan)?.label}`)
+    } catch (err) {
+      toast.error(err.message || 'Failed to update plan')
+    } finally {
+      setAssigningPlan(null)
     }
   }
 
@@ -374,7 +401,8 @@ export default function Restaurants() {
                     <p className="font-semibold text-gray-900 truncate text-sm">{restaurant.name}</p>
                     <p className="text-xs text-gray-400">/{restaurant.slug} · {admin?.email || 'No admin'}</p>
                   </div>
-                  <span className={`badge flex-shrink-0 ${SUBSCRIPTION_STATUS_COLORS[restaurant.subscription_status] || 'bg-gray-100 text-gray-600'}`}>
+                  <PlanBadge plan={restaurant.plan} />
+                  <span className={`badge flex-shrink-0 hidden sm:inline-flex ${SUBSCRIPTION_STATUS_COLORS[restaurant.subscription_status] || 'bg-gray-100 text-gray-600'}`}>
                     {SUBSCRIPTION_STATUS_LABELS[restaurant.subscription_status] || restaurant.subscription_status}
                   </span>
                   {isExpanded
@@ -561,6 +589,35 @@ export default function Restaurants() {
                                 </>
                               ) : (
                                 <p className="text-xs text-gray-400">No admin account linked.</p>
+                              )}
+                            </div>
+
+                            {/* ── Plan Assignment ── */}
+                            <div className="rounded-xl bg-gray-50 px-4 py-3">
+                              <div className="flex items-center gap-2 mb-3">
+                                <Crown className="w-3.5 h-3.5 text-amber-500" />
+                                <p className="text-xs font-semibold text-gray-700">Subscription Plan</p>
+                                {restaurant.plan && <PlanBadge plan={restaurant.plan} />}
+                              </div>
+                              <div className="flex gap-2 flex-wrap">
+                                {PLANS.map((p) => (
+                                  <button
+                                    key={p.key}
+                                    type="button"
+                                    disabled={assigningPlan === restaurant.id}
+                                    onClick={() => handleAssignPlan(restaurant.id, p.key)}
+                                    className={`text-xs font-semibold px-4 py-2 rounded-xl border transition-all ${
+                                      restaurant.plan === p.key
+                                        ? 'bg-primary-500 text-white border-primary-500 shadow-sm'
+                                        : `bg-white ${p.btnClass}`
+                                    }`}
+                                  >
+                                    {assigningPlan === restaurant.id && restaurant.plan !== p.key ? p.label : p.label}
+                                  </button>
+                                ))}
+                              </div>
+                              {!restaurant.plan && (
+                                <p className="text-[11px] text-red-500 mt-2">⚠ No plan assigned — restaurant features are locked.</p>
                               )}
                             </div>
 
