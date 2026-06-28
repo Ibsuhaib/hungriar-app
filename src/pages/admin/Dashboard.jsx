@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
-import { Clock, CheckCircle2, TrendingUp, ArrowRight, Bell, BellOff, ChefHat, Sunset, Download } from 'lucide-react'
+import { Clock, CheckCircle2, TrendingUp, ArrowRight, Bell, BellOff, ChefHat, Sunset, Download, Printer } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -60,6 +60,27 @@ function NotificationButton({ restaurantId }) {
     >
       <Bell className="w-3 h-3" />
       {status === 'requesting' ? 'Enabling…' : 'Enable notifications'}
+    </button>
+  )
+}
+
+function KOTToggle({ restaurantId }) {
+  const key = `hungriar_kot_auto_${restaurantId}`
+  const [on, setOn] = useState(() => localStorage.getItem(key) === 'true')
+  const toggle = () => setOn((prev) => { localStorage.setItem(key, String(!prev)); return !prev })
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={on ? 'Auto-print KOT ON — click to turn off' : 'Auto-print KOT OFF — click to turn on'}
+      className={`flex items-center gap-1.5 text-xs rounded-full px-3 py-1 font-medium border transition-colors ${
+        on
+          ? 'bg-green-50 text-green-700 border-green-200'
+          : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+      }`}
+    >
+      <Printer className="w-3 h-3" />
+      KOT {on ? 'ON' : 'OFF'}
     </button>
   )
 }
@@ -215,7 +236,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Notification + Chef mode + Install row */}
+      {/* Notification + Chef mode + KOT + Install row */}
       <div className="flex items-center gap-3 flex-wrap">
         <NotificationButton restaurantId={restaurant?.id} />
         <Link
@@ -224,6 +245,7 @@ export default function Dashboard() {
         >
           <ChefHat className="w-3 h-3" /> Open Chef View
         </Link>
+        <KOTToggle restaurantId={restaurant?.id} />
         {canInstall && (
           <button
             type="button"
