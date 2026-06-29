@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 
-const SUPPORT_EMAIL = 'bgo83418@gmail.com'
+const SUPPORT_EMAIL = 'hungriar.app@gmail.com'
 const SUPPORT_PHONE = '+91-81970-02978'
 
 export default function Privacy() {

@@ -256,7 +256,7 @@ export default function Settings() {
             </dl>
             <p className="text-xs text-gray-400 leading-relaxed">
               Subscription details are managed by the HungriAR team. Contact{' '}
-              <a href="mailto:bgo83418@gmail.com" className="text-primary-600 underline underline-offset-2">bgo83418@gmail.com</a>{' '}
+              <a href="mailto:hungriar.app@gmail.com" className="text-primary-600 underline underline-offset-2">hungriar.app@gmail.com</a>{' '}
               to renew or change your plan.
             </p>
           </motion.section>

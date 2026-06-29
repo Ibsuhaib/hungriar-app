@@ -7,7 +7,7 @@ import {
   Box, Receipt, Bell, Zap, Star,
 } from 'lucide-react'
 
-const SUPPORT_EMAIL = 'bgo83418@gmail.com'
+const SUPPORT_EMAIL = 'hungriar.app@gmail.com'
 
 // ─── Retro Grid ───────────────────────────────────────────────────────────────
 function RetroGrid({ opacity = 0.35 }) {
@@ -635,9 +635,9 @@ export default function Home() {
           {/* Setup fee */}
           <FadeUp delay={0.3} className="mt-8">
             <div className="mx-auto max-w-lg text-center border border-white/8 rounded-2xl px-6 py-5 bg-white/[0.02]">
-              <p className="text-sm font-bold text-white">One-time Setup Charge: ₹2,700 + GST</p>
+              <p className="text-sm font-bold text-white">One-time Setup Service Charge</p>
               <p className="text-xs text-white/35 mt-1.5 leading-relaxed">
-                Includes full menu entry (up to 200 items), table & QR setup, and staff onboarding. Charged once only.
+                Covers full menu entry, table & QR setup, and staff onboarding. Quoted individually based on restaurant size. Charged once only.
               </p>
             </div>
           </FadeUp>

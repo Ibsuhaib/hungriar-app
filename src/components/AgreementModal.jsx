@@ -13,7 +13,7 @@ const PLANS_SUMMARY = [
 ]
 
 const TERMS = [
-  'A one-time setup fee of ₹2,700 + 18% GST (₹486) = ₹3,186 covers full menu entry (up to 200 items), table & QR setup, and staff onboarding. This is charged once only.',
+  'A one-time setup service charge applies for full menu entry, table & QR setup, and staff onboarding. The amount is quoted individually based on your restaurant size and number of tables. This is charged once only.',
   'Annual subscription fees (excluding 18% GST) are: Starter — ₹8,400/year (₹700/mo equivalent); Standard — ₹18,000/year (₹1,500/mo equivalent); AR Premium — ₹30,000/year (₹2,500/mo equivalent). All payments are collected directly by HungriAR via UPI or cash and recorded manually — no payment is processed through the app.',
   'Your plan determines which features are available: Starter includes the waiter ordering app, live kitchen display (KOT), billing, analytics, and daily Telegram reports. Standard adds QR menu for customers, food images, and customer self-ordering. AR Premium adds 3D dish previews viewable in augmented reality.',
   'Subscription status and paid-until date are managed manually by the HungriAR team. Your dashboard always shows your current plan and access level.',
@@ -94,7 +94,7 @@ export default function AgreementModal() {
                   <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">{plan.features}</p>
                 </div>
               ))}
-              <p className="text-[11px] text-gray-400 pl-1">+ One-time setup: ₹2,700 + GST</p>
+              <p className="text-[11px] text-gray-400 pl-1">+ One-time setup service charge (quoted per restaurant)</p>
             </div>
           </div>
 

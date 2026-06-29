@@ -2,7 +2,7 @@ import { Lock, Mail, Phone } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useSubscriptionStatus } from '../../hooks/useSubscriptionStatus'
 
-const SUPPORT_EMAIL = 'bgo83418@gmail.com'
+const SUPPORT_EMAIL = 'hungriar.app@gmail.com'
 const SUPPORT_PHONE = '+91-81970-02978'
 
 export default function Expired() {
