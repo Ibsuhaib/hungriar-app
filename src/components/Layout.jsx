@@ -18,34 +18,31 @@ export default function Layout({ title, navItems, signOutPath = '/admin/login', 
 
   return (
     <div className="min-h-screen bg-gray-50 lg:flex">
-      {/* Sidebar */}
+      {/* Mobile backdrop — properly animated via AnimatePresence */}
       <AnimatePresence>
-        {(sidebarOpen || true) && (
-          <>
-            {/* Mobile backdrop */}
-            {sidebarOpen && (
-              <motion.div
-                key="backdrop"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="fixed inset-0 z-20 bg-black/50 backdrop-blur-sm lg:hidden"
-                onClick={() => setSidebarOpen(false)}
-                aria-hidden="true"
-              />
-            )}
+        {sidebarOpen && (
+          <motion.div
+            key="backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-20 bg-black/50 backdrop-blur-sm lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+      </AnimatePresence>
 
-            <motion.aside
-              key="sidebar"
-              initial={false}
-              className={`
-                fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-navy-800 border-r border-navy-700
-                shadow-xl transition-transform duration-200 ease-in-out
-                lg:static lg:translate-x-0 lg:shadow-none
-                ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-              `}
-            >
+      {/* Sidebar — always in DOM; CSS transform controls mobile visibility */}
+      <aside
+        className={`
+          fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-navy-800 border-r border-navy-700
+          shadow-xl transition-transform duration-200 ease-in-out
+          lg:static lg:translate-x-0 lg:shadow-none
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}
+      >
               {/* Brand */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-navy-700">
                 <div className="flex items-center gap-3">
@@ -121,10 +118,7 @@ export default function Layout({ title, navItems, signOutPath = '/admin/login', 
                   Sign Out
                 </button>
               </div>
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
+      </aside>
 
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col">

@@ -107,8 +107,8 @@ self.addEventListener('push', (event) => {
   const title = data.title ?? 'New Order!'
   const options = {
     body: data.body ?? 'A new order has been placed',
-    icon: '/icon-192.png',
-    badge: '/icon-72.png',
+    icon: '/pwa-192x192.png',
+    badge: '/pwa-64x64.png',
     tag: 'hungriar-order',
     requireInteraction: true,
     data: { url: data.url ?? '/admin/orders' },

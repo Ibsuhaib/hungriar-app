@@ -30,12 +30,12 @@ const QR_STYLES = [
   {
     id: 'branded',
     label: 'Branded',
-    dot: '#d3552f',
+    dot: '#D4A373',
     bg: '#ffffff',
     options: {
-      dotsOptions:          { type: 'rounded',       color: '#d3552f' },
-      cornersSquareOptions: { type: 'extra-rounded', color: '#d3552f' },
-      cornersDotOptions:    { type: 'dot',           color: '#d3552f' },
+      dotsOptions:          { type: 'rounded',       color: '#D4A373' },
+      cornersSquareOptions: { type: 'extra-rounded', color: '#D4A373' },
+      cornersDotOptions:    { type: 'dot',           color: '#D4A373' },
       backgroundOptions:    { color: '#ffffff' },
     },
   },
@@ -58,8 +58,8 @@ const QR_STYLES = [
     bg: '#fffbf5',
     options: {
       dotsOptions:          { type: 'classy-rounded', color: '#1a1a2e' },
-      cornersSquareOptions: { type: 'extra-rounded',  color: '#d3552f' },
-      cornersDotOptions:    { type: 'dot',            color: '#d3552f' },
+      cornersSquareOptions: { type: 'extra-rounded',  color: '#D4A373' },
+      cornersDotOptions:    { type: 'dot',            color: '#D4A373' },
       backgroundOptions:    { color: '#fffbf5' },
     },
   },

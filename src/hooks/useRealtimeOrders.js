@@ -67,8 +67,8 @@ export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterva
     if (!restaurantId && !orderId) return
 
     const filter = restaurantId ? `restaurant_id=eq.${restaurantId}` : `id=eq.${orderId}`
-    // Unique name avoids conflicts when navigating between pages that use this hook
-    const channelName = `orders-${restaurantId || orderId}-${Date.now()}`
+    // Stable name scoped to the entity — avoids duplicate subscriptions on re-render
+    const channelName = `orders-${restaurantId || orderId}`
 
     const channel = supabase
       .channel(channelName)
