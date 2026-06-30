@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShoppingCart, Plus, Minus, X, ConciergeBell, ChevronDown, Search, WifiOff, RefreshCw } from 'lucide-react'
+import { ShoppingCart, Plus, Minus, X, ConciergeBell, ChevronLeft, Search, WifiOff, RefreshCw } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
@@ -358,15 +358,9 @@ export default function TakeOrder() {
   if (dataLoading) {
     return (
       <div className="space-y-4">
-        <div className="flex gap-3">
-          <div className="skeleton h-10 rounded-xl w-44" />
-          <div className="skeleton h-10 rounded-xl flex-1" />
-        </div>
-        <div className="flex gap-2">
-          {Array.from({ length: 5 }).map((_, i) => <div key={i} className="skeleton h-9 w-24 rounded-full" />)}
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton h-28 rounded-2xl" />)}
+        <div className="skeleton h-5 w-40 rounded-lg" />
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          {Array.from({ length: 12 }).map((_, i) => <div key={i} className="skeleton aspect-square rounded-2xl" />)}
         </div>
       </div>
     )
@@ -404,70 +398,96 @@ export default function TakeOrder() {
         </div>
       )}
 
-      {/* Table selector + search */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="relative">
-          <select
-            value={selectedTableId}
-            onChange={(e) => setSelectedTableId(e.target.value)}
-            className="input pr-9 appearance-none font-semibold text-gray-800 min-w-[160px]"
-          >
-            <option value="">Select table…</option>
-            {tables.map((t) => (
-              <option key={t.id} value={t.id}>Table {t.table_number}</option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-        </div>
-
-        <div className="relative flex-1 min-w-[180px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          <input
-            type="search" value={search}
-            onChange={(e) => { setSearch(e.target.value); setSelectedCatId('all') }}
-            placeholder="Search items…"
-            className="input pl-9 w-full"
-          />
-        </div>
-      </div>
-
-      {/* Category tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {[{ id: 'all', name: 'All' }, ...categories].map((cat) => (
-          <button
-            key={cat.id}
-            type="button"
-            onClick={() => { setSelectedCatId(cat.id); setSearch('') }}
-            className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold border transition-all
-              ${selectedCatId === cat.id
-                ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
-                : 'bg-white text-gray-500 border-gray-200 hover:border-primary-300 hover:text-primary-600'
-              }`}
-          >
-            {cat.name}
-          </button>
-        ))}
-      </div>
-
-      {/* Items grid */}
-      {filteredItems.length === 0 ? (
-        <div className="bg-gray-50 border border-gray-100 rounded-2xl py-16 text-center">
-          <ConciergeBell className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-sm font-medium text-gray-400">No items found.</p>
-        </div>
+      {selectedTableId === '' ? (
+        /* ── Step 1: pick a table ──────────────────────────────────────── */
+        <>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Select a Table</h2>
+            <p className="text-sm text-gray-400 mt-0.5">Tap a table to start taking its order</p>
+          </div>
+          {tables.length === 0 ? (
+            <div className="bg-gray-50 border border-gray-100 rounded-2xl py-16 text-center">
+              <ConciergeBell className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+              <p className="text-sm font-medium text-gray-400">No tables yet.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              {tables.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setSelectedTableId(t.id)}
+                  className="aspect-square flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-gray-200 bg-white hover:border-primary-400 hover:bg-primary-50 active:scale-95 transition-all shadow-sm"
+                >
+                  <ConciergeBell className="w-5 h-5 text-gray-300" />
+                  <span className="text-base font-bold text-gray-800">Table {t.table_number}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {filteredItems.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              qty={cart[item.id]?.quantity ?? 0}
-              onAdd={add}
-              onRemove={remove}
-              currency={currency}
-            />
-          ))}
-        </div>
+        /* ── Step 2: browse menu for the selected table ───────────────── */
+        <>
+          <div className="flex flex-wrap gap-3 items-center">
+            <button
+              type="button"
+              onClick={() => { setSelectedTableId(''); setSelectedCatId('all'); setSearch(''); clear() }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors flex-shrink-0"
+            >
+              <ChevronLeft className="w-4 h-4" /> Table {selectedTableNumber}
+            </button>
+
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="search" value={search}
+                onChange={(e) => { setSearch(e.target.value); setSelectedCatId('all') }}
+                placeholder="Search items…"
+                className="input pl-9 w-full"
+              />
+            </div>
+          </div>
+
+          {/* Category grid — every category visible at once, no side scroll */}
+          <div className="flex flex-wrap gap-2">
+            {[{ id: 'all', name: 'All' }, ...categories].map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => { setSelectedCatId(cat.id); setSearch('') }}
+                className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all
+                  ${selectedCatId === cat.id
+                    ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-primary-300 hover:text-primary-600'
+                  }`}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+
+          {/* Items grid */}
+          {filteredItems.length === 0 ? (
+            <div className="bg-gray-50 border border-gray-100 rounded-2xl py-16 text-center">
+              <ConciergeBell className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+              <p className="text-sm font-medium text-gray-400">No items found.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {filteredItems.map((item) => (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  qty={cart[item.id]?.quantity ?? 0}
+                  onAdd={add}
+                  onRemove={remove}
+                  currency={currency}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Floating cart bar */}
