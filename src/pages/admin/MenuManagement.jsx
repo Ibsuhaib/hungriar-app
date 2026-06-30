@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Edit2, Trash2, X, Upload, Box, ImageIcon, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Edit2, Trash2, X, Upload, Box, ImageIcon, ToggleLeft, ToggleRight, Search } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
@@ -114,6 +114,7 @@ export default function MenuManagement() {
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [uploadingModel, setUploadingModel] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -243,19 +244,38 @@ export default function MenuManagement() {
     await fetchData()
   }
 
+  const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return items
+    return items.filter((i) => i.name.toLowerCase().includes(q) || i.description?.toLowerCase().includes(q))
+  }, [items, searchQuery])
+
   const groups = [
-    ...categories.map((cat) => ({ cat, items: items.filter((i) => i.category_id === cat.id) })),
-    { cat: null, items: items.filter((i) => !i.category_id) },
+    ...categories.map((cat) => ({ cat, items: filteredItems.filter((i) => i.category_id === cat.id) })),
+    { cat: null, items: filteredItems.filter((i) => !i.category_id) },
   ].filter((g) => g.items.length > 0)
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{items.length} item{items.length !== 1 ? 's' : ''} on your menu</p>
-        <button type="button" onClick={openNewForm} className="btn-primary gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-gray-500 flex-shrink-0">{items.length} item{items.length !== 1 ? 's' : ''} on your menu</p>
+        <button type="button" onClick={openNewForm} className="btn-primary gap-2 flex-shrink-0">
           <Plus className="w-4 h-4" /> Add Item
         </button>
       </div>
+
+      {items.length > 0 && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search menu items…"
+            className="input pl-9 w-full"
+          />
+        </div>
+      )}
 
       {/* Form modal overlay */}
       <AnimatePresence>
@@ -409,6 +429,11 @@ export default function MenuManagement() {
           <p className="text-2xl mb-2">🍽</p>
           <p className="text-sm font-medium text-gray-500">No menu items yet.</p>
           <p className="text-xs text-gray-400 mt-1">Click "Add Item" to create your first menu item.</p>
+        </div>
+      ) : groups.length === 0 ? (
+        <div className="card py-12 text-center bg-gray-50">
+          <p className="text-2xl mb-2">🔍</p>
+          <p className="text-sm font-medium text-gray-500">No items match "{searchQuery}".</p>
         </div>
       ) : (
         <div className="space-y-6">

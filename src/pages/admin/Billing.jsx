@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Receipt, CheckCircle2, Printer, AlertCircle, TriangleAlert, Banknote, CreditCard, Smartphone, Wallet, WifiOff, RefreshCw, Plus, Minus, Trash2 } from 'lucide-react'
+import { Receipt, CheckCircle2, Printer, AlertCircle, TriangleAlert, Banknote, CreditCard, Smartphone, Wallet, WifiOff, RefreshCw, Plus, Minus, Trash2, Search } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
@@ -281,7 +281,25 @@ export default function Billing() {
   const [busyItemId, setBusyItemId] = useState(null)
   const [addItemTableId, setAddItemTableId] = useState(null)
   const [addItemSelection, setAddItemSelection] = useState({ menuItemId: '', quantity: 1 })
+  const [addItemSearch, setAddItemSearch] = useState('')
   const [addingItem, setAddingItem] = useState(false)
+
+  const filteredMenuItems = useMemo(() => {
+    const q = addItemSearch.trim().toLowerCase()
+    if (!q) return menuItems
+    return menuItems.filter((mi) => mi.name.toLowerCase().includes(q))
+  }, [menuItems, addItemSearch])
+
+  const closeAddItemPanel = () => {
+    setAddItemTableId(null)
+    setAddItemSelection({ menuItemId: '', quantity: 1 })
+    setAddItemSearch('')
+  }
+
+  const selectMenuItemForAdd = (mi) => {
+    setAddItemSelection((p) => ({ ...p, menuItemId: mi.id }))
+    setAddItemSearch(mi.name)
+  }
 
   useEffect(() => {
     if (!restaurant?.id) return
@@ -330,8 +348,7 @@ export default function Billing() {
       toast.error(error.message || 'Failed to add item')
     } else {
       toast.success('Item added to bill')
-      setAddItemTableId(null)
-      setAddItemSelection({ menuItemId: '', quantity: 1 })
+      closeAddItemPanel()
       refetch({ silent: true })
     }
     setAddingItem(false)
@@ -723,30 +740,59 @@ export default function Billing() {
                     <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
                       {addItemTableId === table.id ? (
                         <div className="space-y-2">
-                          <div className="flex gap-1.5">
-                            <select
-                              className="input text-sm py-1.5 flex-1 min-w-0"
-                              value={addItemSelection.menuItemId}
-                              onChange={(e) => setAddItemSelection((p) => ({ ...p, menuItemId: e.target.value }))}
-                            >
-                              <option value="">Select item…</option>
-                              {menuItems.map((mi) => (
-                                <option key={mi.id} value={mi.id}>{mi.name} — {cur}{Number(mi.price).toFixed(2)}</option>
-                              ))}
-                            </select>
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
                             <input
-                              type="number"
-                              min="1"
-                              max="50"
-                              value={addItemSelection.quantity}
-                              onChange={(e) => setAddItemSelection((p) => ({ ...p, quantity: e.target.value }))}
-                              className="input text-sm py-1.5 w-16 flex-shrink-0"
+                              type="text"
+                              autoFocus
+                              placeholder="Search menu items…"
+                              value={addItemSearch}
+                              onChange={(e) => {
+                                setAddItemSearch(e.target.value)
+                                setAddItemSelection((p) => ({ ...p, menuItemId: '' }))
+                              }}
+                              className="input text-sm py-1.5 pl-8 w-full"
                             />
                           </div>
+
+                          {addItemSearch && !addItemSelection.menuItemId && (
+                            <div className="max-h-36 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-50">
+                              {filteredMenuItems.length === 0 ? (
+                                <p className="px-3 py-2 text-xs text-gray-400">No items found</p>
+                              ) : (
+                                filteredMenuItems.map((mi) => (
+                                  <button
+                                    key={mi.id}
+                                    type="button"
+                                    onClick={() => selectMenuItemForAdd(mi)}
+                                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs hover:bg-gray-50 transition-colors"
+                                  >
+                                    <span className="text-gray-700 truncate">{mi.name}</span>
+                                    <span className="text-gray-400 flex-shrink-0">{cur}{Number(mi.price).toFixed(2)}</span>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          )}
+
+                          {addItemSelection.menuItemId && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs text-gray-500 flex-1 min-w-0 truncate">Qty</span>
+                              <input
+                                type="number"
+                                min="1"
+                                max="50"
+                                value={addItemSelection.quantity}
+                                onChange={(e) => setAddItemSelection((p) => ({ ...p, quantity: e.target.value }))}
+                                className="input text-sm py-1.5 w-20 flex-shrink-0"
+                              />
+                            </div>
+                          )}
+
                           <div className="flex gap-1.5">
                             <button
                               type="button"
-                              onClick={() => { setAddItemTableId(null); setAddItemSelection({ menuItemId: '', quantity: 1 }) }}
+                              onClick={closeAddItemPanel}
                               className="btn-outline text-xs py-1.5 flex-1"
                             >
                               Cancel
