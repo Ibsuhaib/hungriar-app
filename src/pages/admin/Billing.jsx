@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Receipt, CheckCircle2, Printer, AlertCircle, TriangleAlert, Banknote, CreditCard, Smartphone, Wallet, WifiOff, RefreshCw } from 'lucide-react'
+import { Receipt, CheckCircle2, Printer, AlertCircle, TriangleAlert, Banknote, CreditCard, Smartphone, Wallet, WifiOff, RefreshCw, Plus, Minus, Trash2 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
@@ -252,7 +252,7 @@ export default function Billing() {
   const [tablesLoading, setTablesLoading] = useState(!tablesCache.tables)
 
   // Shared realtime orders — updates instantly when chef marks orders completed
-  const { orders: allOrders, loading: ordersLoading, patchOrder } = useRealtimeOrders({
+  const { orders: allOrders, loading: ordersLoading, patchOrder, refetch } = useRealtimeOrders({
     restaurantId: restaurant?.id,
     pollInterval: 8000,
   })
@@ -270,6 +270,60 @@ export default function Billing() {
   const [pendingBills, setPendingBills] = useState(0)
   const [syncing, setSyncing] = useState(false)
   const [offlineOrders, setOfflineOrders] = useState([])
+  const [menuItems, setMenuItems] = useState([])
+  const [busyItemId, setBusyItemId] = useState(null)
+  const [addItemTableId, setAddItemTableId] = useState(null)
+  const [addItemSelection, setAddItemSelection] = useState({ menuItemId: '', quantity: 1 })
+  const [addingItem, setAddingItem] = useState(false)
+
+  useEffect(() => {
+    if (!restaurant?.id) return
+    supabase
+      .from('menu_items')
+      .select('id, name, price')
+      .eq('restaurant_id', restaurant.id)
+      .eq('available', true)
+      .order('name')
+      .then(({ data }) => setMenuItems(data || []))
+  }, [restaurant?.id])
+
+  const handleItemQtyChange = async (item, newQty) => {
+    if (busyItemId) return
+    setBusyItemId(item.id)
+    const { error } = await supabase.rpc('update_order_item_quantity', { p_item_id: item.id, p_quantity: newQty })
+    if (error) toast.error(error.message || 'Failed to update quantity')
+    else refetch({ silent: true })
+    setBusyItemId(null)
+  }
+
+  const handleDeleteItem = async (item) => {
+    if (busyItemId) return
+    setBusyItemId(item.id)
+    const { error } = await supabase.rpc('cancel_order_item', { p_item_id: item.id })
+    if (error) toast.error('Failed to remove item')
+    else { toast.success(`${item.item_name} removed`); refetch({ silent: true }) }
+    setBusyItemId(null)
+  }
+
+  const handleAddItem = async (table) => {
+    if (!addItemSelection.menuItemId || addingItem) return
+    setAddingItem(true)
+    const { error } = await supabase.rpc('admin_add_billing_item', {
+      p_restaurant_id: restaurant.id,
+      p_table_id:      table.id,
+      p_menu_item_id:  addItemSelection.menuItemId,
+      p_quantity:      Math.max(1, Math.min(50, Number(addItemSelection.quantity) || 1)),
+    })
+    if (error) {
+      toast.error(error.message || 'Failed to add item')
+    } else {
+      toast.success('Item added to bill')
+      setAddItemTableId(null)
+      setAddItemSelection({ menuItemId: '', quantity: 1 })
+      refetch({ silent: true })
+    }
+    setAddingItem(false)
+  }
 
   const loadOfflineOrders = useCallback(async () => {
     if (!restaurant?.id) return
@@ -609,18 +663,103 @@ export default function Billing() {
                             {cur}{Number(order.total_amount).toFixed(2)}
                           </span>
                         </div>
-                        <ul className="mt-1 pl-3 space-y-0.5">
+                        <ul className="mt-1 pl-3 space-y-1">
                           {(order.order_items || []).filter((item) => !item.cancelled).map((item) => (
-                            <li key={item.id} className="flex items-center gap-1.5 text-xs text-gray-400">
-                              <span className="font-medium text-gray-500">{item.quantity}×</span>
-                              {item.item_name}
-                              {item.notes && <span className="italic text-gray-300">— {item.notes}</span>}
+                            <li key={item.id} className="flex items-center gap-2 text-xs text-gray-400">
+                              <span className="flex-1 min-w-0 truncate">
+                                {item.item_name}
+                                {item.notes && <span className="italic text-gray-300"> — {item.notes}</span>}
+                              </span>
+                              {isBillOffline ? (
+                                <span className="font-medium text-gray-500 flex-shrink-0">{item.quantity}×</span>
+                              ) : (
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => item.quantity === 1
+                                      ? handleDeleteItem(item)
+                                      : handleItemQtyChange(item, item.quantity - 1)}
+                                    disabled={busyItemId === item.id}
+                                    aria-label={item.quantity === 1 ? `Remove ${item.item_name}` : `Decrease ${item.item_name} quantity`}
+                                    className="flex h-5 w-5 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                                  >
+                                    {item.quantity === 1
+                                      ? <Trash2 className="w-2.5 h-2.5 text-red-400" />
+                                      : <Minus className="w-2.5 h-2.5" />}
+                                  </button>
+                                  <span className="w-4 text-center font-semibold text-gray-600">{item.quantity}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleItemQtyChange(item, item.quantity + 1)}
+                                    disabled={busyItemId === item.id}
+                                    aria-label={`Increase ${item.item_name} quantity`}
+                                    className="flex h-5 w-5 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                                  >
+                                    <Plus className="w-2.5 h-2.5" />
+                                  </button>
+                                </div>
+                              )}
                             </li>
                           ))}
                         </ul>
                       </li>
                     ))}
                   </ul>
+
+                  {/* Add a missed item */}
+                  {!isBillOffline && (
+                    <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
+                      {addItemTableId === table.id ? (
+                        <div className="space-y-2">
+                          <div className="flex gap-1.5">
+                            <select
+                              className="input text-sm py-1.5 flex-1 min-w-0"
+                              value={addItemSelection.menuItemId}
+                              onChange={(e) => setAddItemSelection((p) => ({ ...p, menuItemId: e.target.value }))}
+                            >
+                              <option value="">Select item…</option>
+                              {menuItems.map((mi) => (
+                                <option key={mi.id} value={mi.id}>{mi.name} — {cur}{Number(mi.price).toFixed(2)}</option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              min="1"
+                              max="50"
+                              value={addItemSelection.quantity}
+                              onChange={(e) => setAddItemSelection((p) => ({ ...p, quantity: e.target.value }))}
+                              className="input text-sm py-1.5 w-16 flex-shrink-0"
+                            />
+                          </div>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => { setAddItemTableId(null); setAddItemSelection({ menuItemId: '', quantity: 1 }) }}
+                              className="btn-outline text-xs py-1.5 flex-1"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAddItem(table)}
+                              disabled={!addItemSelection.menuItemId || addingItem}
+                              className="btn-secondary text-xs py-1.5 flex-1 disabled:opacity-40"
+                            >
+                              {addingItem ? 'Adding…' : 'Add to Bill'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setAddItemTableId(table.id)}
+                          className="flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-700"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add Item
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Controls + totals */}
