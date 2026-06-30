@@ -47,6 +47,13 @@ const PM_LABELS = { cash: 'Cash', upi: 'UPI', card: 'Card', other: 'Other' }
 
 const EMPTY_ADJ = { discountType: 'amount', discountValue: '', roundOff: '' }
 
+// Recompute a tax-inclusive order total from its (non-cancelled) items —
+// used for optimistic UI updates before the server round-trip confirms.
+function computeOrderTotal(items, taxPercentage) {
+  const subtotal = items.filter((i) => !i.cancelled).reduce((s, i) => s + i.quantity * i.unit_price, 0)
+  return Math.round(subtotal * (1 + taxPercentage / 100) * 100) / 100
+}
+
 function computeFinals(total, adj) {
   const dv = Math.max(0, Number(adj.discountValue) || 0)  // Bug 2: clamp negative inputs to 0
   const discountAmt = adj.discountType === 'percent'
@@ -287,21 +294,26 @@ export default function Billing() {
       .then(({ data }) => setMenuItems(data || []))
   }, [restaurant?.id])
 
-  const handleItemQtyChange = async (item, newQty) => {
-    if (busyItemId) return
+  // Optimistic: patch the order locally first so the UI reacts instantly,
+  // then fire the RPC in the background. On failure, resync from the server.
+  const handleItemQtyChange = async (order, item, newQty) => {
+    if (busyItemId === item.id) return
     setBusyItemId(item.id)
+    const newItems = order.order_items.map((i) => (i.id === item.id ? { ...i, quantity: newQty } : i))
+    patchOrder(order.id, { order_items: newItems, total_amount: computeOrderTotal(newItems, taxPercentage) })
     const { error } = await supabase.rpc('update_order_item_quantity', { p_item_id: item.id, p_quantity: newQty })
-    if (error) toast.error(error.message || 'Failed to update quantity')
-    else refetch({ silent: true })
+    if (error) { toast.error(error.message || 'Failed to update quantity'); refetch({ silent: true }) }
     setBusyItemId(null)
   }
 
-  const handleDeleteItem = async (item) => {
-    if (busyItemId) return
+  const handleDeleteItem = async (order, item) => {
+    if (busyItemId === item.id) return
     setBusyItemId(item.id)
-    const { error } = await supabase.rpc('cancel_order_item', { p_item_id: item.id })
-    if (error) toast.error('Failed to remove item')
-    else { toast.success(`${item.item_name} removed`); refetch({ silent: true }) }
+    const newItems = order.order_items.map((i) => (i.id === item.id ? { ...i, cancelled: true } : i))
+    patchOrder(order.id, { order_items: newItems, total_amount: computeOrderTotal(newItems, taxPercentage) })
+    const { error } = await supabase.rpc('billing_remove_item', { p_item_id: item.id })
+    if (error) { toast.error('Failed to remove item'); refetch({ silent: true }) }
+    else toast.success(`${item.item_name} removed`)
     setBusyItemId(null)
   }
 
@@ -663,7 +675,7 @@ export default function Billing() {
                             {cur}{Number(order.total_amount).toFixed(2)}
                           </span>
                         </div>
-                        <ul className="mt-1 pl-3 space-y-1">
+                        <ul className="mt-1.5 pl-3 space-y-1.5">
                           {(order.order_items || []).filter((item) => !item.cancelled).map((item) => (
                             <li key={item.id} className="flex items-center gap-2 text-xs text-gray-400">
                               <span className="flex-1 min-w-0 truncate">
@@ -673,29 +685,29 @@ export default function Billing() {
                               {isBillOffline ? (
                                 <span className="font-medium text-gray-500 flex-shrink-0">{item.quantity}×</span>
                               ) : (
-                                <div className="flex items-center gap-1 flex-shrink-0">
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
                                   <button
                                     type="button"
                                     onClick={() => item.quantity === 1
-                                      ? handleDeleteItem(item)
-                                      : handleItemQtyChange(item, item.quantity - 1)}
+                                      ? handleDeleteItem(order, item)
+                                      : handleItemQtyChange(order, item, item.quantity - 1)}
                                     disabled={busyItemId === item.id}
                                     aria-label={item.quantity === 1 ? `Remove ${item.item_name}` : `Decrease ${item.item_name} quantity`}
-                                    className="flex h-5 w-5 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 text-gray-500 active:bg-gray-100 hover:bg-gray-50 disabled:opacity-40 transition-colors"
                                   >
                                     {item.quantity === 1
-                                      ? <Trash2 className="w-2.5 h-2.5 text-red-400" />
-                                      : <Minus className="w-2.5 h-2.5" />}
+                                      ? <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                                      : <Minus className="w-3.5 h-3.5" />}
                                   </button>
-                                  <span className="w-4 text-center font-semibold text-gray-600">{item.quantity}</span>
+                                  <span className="w-5 text-center text-sm font-bold text-gray-700">{item.quantity}</span>
                                   <button
                                     type="button"
-                                    onClick={() => handleItemQtyChange(item, item.quantity + 1)}
+                                    onClick={() => handleItemQtyChange(order, item, item.quantity + 1)}
                                     disabled={busyItemId === item.id}
                                     aria-label={`Increase ${item.item_name} quantity`}
-                                    className="flex h-5 w-5 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 text-gray-500 active:bg-gray-100 hover:bg-gray-50 disabled:opacity-40 transition-colors"
                                   >
-                                    <Plus className="w-2.5 h-2.5" />
+                                    <Plus className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
                               )}

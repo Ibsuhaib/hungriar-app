@@ -161,6 +161,8 @@ export default function DayEnd() {
   const [activeOrders,  setActiveOrders]  = useState(0)
   const [totalDiscount, setTotalDiscount] = useState(0)
   const [totalRoundOff, setTotalRoundOff] = useState(0)
+  const [billEditsAdded,   setBillEditsAdded]   = useState(0)
+  const [billEditsRemoved, setBillEditsRemoved] = useState(0)
   const [loading,       setLoading]       = useState(true)
 
   const [desc,   setDesc]   = useState('')
@@ -177,7 +179,7 @@ export default function DayEnd() {
     if (!sessionStart) return
     setLoading(true)
 
-    const [collRes, expRes, activeRes] = await Promise.all([
+    const [collRes, expRes, activeRes, billEditsRes] = await Promise.all([
       // Collections: all bills settled since session started
       supabase
         .from('billing_history')
@@ -197,6 +199,12 @@ export default function DayEnd() {
         .select('id', { count: 'exact', head: true })
         .eq('restaurant_id', restaurant.id)
         .in('status', ['pending', 'preparing', 'served']),
+      // Bill edits (quantity changes / removals / added items) since session started
+      supabase
+        .from('bill_edit_log')
+        .select('amount_delta')
+        .eq('restaurant_id', restaurant.id)
+        .gte('created_at', sessionStart),
     ])
 
     if (!collRes.error) {
@@ -216,6 +224,16 @@ export default function DayEnd() {
     }
     if (!expRes.error)    setExpenses(expRes.data || [])
     if (!activeRes.error) setActiveOrders(activeRes.count ?? 0)
+    if (!billEditsRes.error) {
+      let added = 0; let removed = 0
+      for (const row of billEditsRes.data || []) {
+        const d = Number(row.amount_delta) || 0
+        if (d > 0) added += d
+        else removed += Math.abs(d)
+      }
+      setBillEditsAdded(added)
+      setBillEditsRemoved(removed)
+    }
     setLoading(false)
   }, [restaurant?.id, sessionStart])
 
@@ -297,6 +315,8 @@ export default function DayEnd() {
           totalExpenses,
           totalDiscount,
           totalRoundOff,
+          billEditsAdded,
+          billEditsRemoved,
           netTotal,
           closedAt: new Date().toISOString(),
         })

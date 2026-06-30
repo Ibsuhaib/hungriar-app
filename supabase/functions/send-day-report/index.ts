@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Invalid JSON' }, 400)
   }
 
-  const { restaurantId, restaurantName, currency = '₹', collections, expenses, netMap, totalCollected, totalExpenses, totalDiscount = 0, totalRoundOff = 0, netTotal, closedAt } = body as {
+  const { restaurantId, restaurantName, currency = '₹', collections, expenses, netMap, totalCollected, totalExpenses, totalDiscount = 0, totalRoundOff = 0, billEditsAdded = 0, billEditsRemoved = 0, netTotal, closedAt } = body as {
     restaurantId: string
     restaurantName: string
     currency: string
@@ -56,6 +56,8 @@ Deno.serve(async (req) => {
     totalExpenses: number
     totalDiscount: number
     totalRoundOff: number
+    billEditsAdded: number
+    billEditsRemoved: number
     netTotal: number
     closedAt: string
   }
@@ -114,6 +116,15 @@ Deno.serve(async (req) => {
       const sign = totalRoundOff > 0 ? '+ ' : '− '
       lines.push(`  Round Off: ${sign}${fmt(Math.abs(totalRoundOff), currency)}`)
     }
+    lines.push('')
+  }
+
+  if (billEditsAdded > 0 || billEditsRemoved > 0) {
+    lines.push(`✏️ *Bill Edits*`)
+    if (billEditsAdded > 0)   lines.push(`  Items Added: + ${fmt(billEditsAdded, currency)}`)
+    if (billEditsRemoved > 0) lines.push(`  Items Removed: − ${fmt(billEditsRemoved, currency)}`)
+    const netEdited = billEditsAdded - billEditsRemoved
+    lines.push(`  *Net Edited: ${netEdited >= 0 ? '+ ' : '− '}${fmt(Math.abs(netEdited), currency)}*`)
     lines.push('')
   }
 
