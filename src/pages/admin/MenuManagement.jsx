@@ -7,6 +7,7 @@ import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
 import { uploadAsset, deleteAsset } from '../../lib/storage'
 import { formatCurrency, truncate } from '../../utils/formatters'
+import MenuImport from '../../components/MenuImport'
 
 const EMPTY_FORM = {
   id: null,
@@ -115,6 +116,7 @@ export default function MenuManagement() {
   const [uploadingImage, setUploadingImage] = useState(false)
   const [uploadingModel, setUploadingModel] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [showImport, setShowImport] = useState(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -259,9 +261,18 @@ export default function MenuManagement() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-gray-500 flex-shrink-0">{items.length} item{items.length !== 1 ? 's' : ''} on your menu</p>
-        <button type="button" onClick={openNewForm} className="btn-primary gap-2 flex-shrink-0">
-          <Plus className="w-4 h-4" /> Add Item
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowImport(true)}
+            className="btn-outline gap-2 text-sm"
+          >
+            <Upload className="w-4 h-4" /> Import CSV
+          </button>
+          <button type="button" onClick={openNewForm} className="btn-primary gap-2">
+            <Plus className="w-4 h-4" /> Add Item
+          </button>
+        </div>
       </div>
 
       {items.length > 0 && (
@@ -458,6 +469,21 @@ export default function MenuManagement() {
           ))}
         </div>
       )}
+
+      {/* CSV import flow */}
+      <AnimatePresence>
+        {showImport && (
+          <MenuImport
+            restaurantId={restaurant.id}
+            currency={restaurant?.currency}
+            existingCategories={categories}
+            userId={user?.id}
+            checkAdminLimit={checkAdminLimit}
+            onSuccess={fetchData}
+            onClose={() => setShowImport(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
