@@ -58,19 +58,36 @@ function computeFinals(total, adj) {
   return { discountAmt, roundOffAmt, finalTotal }
 }
 
-function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod, restaurant, discountAmt = 0, roundOffAmt = 0, finalTotal = null }) {
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod, restaurant, discountAmt = 0, roundOffAmt = 0, finalTotal = null, billNumber = null }) {
   const cur = restaurant?.currency || '₹'
   const fmt = (v) => `${cur}${Number(v).toFixed(2)}`
-  const name = restaurant?.name || 'Restaurant'
+  const name = escapeHtml(restaurant?.name || 'Restaurant')
   const now = new Date()
   const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
   const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
   const pm = PM_LABELS[paymentMethod] || paymentMethod || '—'
+  const billNoLabel = billNumber != null ? String(billNumber).padStart(4, '0') : 'PREVIEW'
 
   const subtotalPreTax = taxPercentage > 0 ? total / (1 + taxPercentage / 100) : total
   const taxAmt = total - subtotalPreTax
+  const halfTaxPct = parseFloat((taxPercentage / 2).toFixed(2))
+  const halfTaxAmt = taxAmt / 2
   const displayTotal = finalTotal !== null ? finalTotal : total
   const hasAdj = discountAmt > 0 || roundOffAmt !== 0
+
+  const headerLines = [
+    restaurant?.address          ? `<div class="c sm">${escapeHtml(restaurant.address)}</div>` : '',
+    restaurant?.phone            ? `<div class="c sm">Ph: ${escapeHtml(restaurant.phone)}</div>` : '',
+    restaurant?.gstin            ? `<div class="c sm">GSTIN: ${escapeHtml(restaurant.gstin)}</div>` : '',
+    restaurant?.fssai_license_no ? `<div class="c sm">FSSAI Lic: ${escapeHtml(restaurant.fssai_license_no)}</div>` : '',
+  ].filter(Boolean).join('')
 
   const orderRows = tableOrders.map((order, idx) => {
     const activeItems = (order.order_items || []).filter((i) => !i.cancelled)
@@ -90,7 +107,8 @@ function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod,
   const totalsSection = `
     ${taxPercentage > 0 ? `
       <tr class="sub-row"><td>Items</td><td class="r">${fmt(subtotalPreTax)}</td></tr>
-      <tr class="sub-row"><td>Tax (${taxPercentage}%)</td><td class="r">+${fmt(taxAmt)}</td></tr>
+      <tr class="sub-row"><td>CGST (${halfTaxPct}%)</td><td class="r">+${fmt(halfTaxAmt)}</td></tr>
+      <tr class="sub-row"><td>SGST (${halfTaxPct}%)</td><td class="r">+${fmt(halfTaxAmt)}</td></tr>
       ${hasAdj ? `<tr class="sub-row b-row"><td>Subtotal</td><td class="r">${fmt(total)}</td></tr>` : ''}
       <tr><td colspan="2"><div class="dash" style="margin:3px 0"></div></td></tr>
     ` : hasAdj ? `
@@ -131,15 +149,18 @@ function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod,
 </head>
 <body>
   <div class="c b" style="font-size:15px">${name}</div>
-  <div class="c sm" style="margin-top:2px">Powered by HungriAR</div>
+  ${headerLines}
 
   <div class="dash" style="margin-top:7px"></div>
 
   <div style="display:flex;justify-content:space-between">
-    <span>Table: <strong>${table.table_number}</strong></span>
+    <span>Bill No: <strong>${billNoLabel}</strong></span>
     <span>${dateStr}</span>
   </div>
-  <div class="sm">${timeStr}</div>
+  <div style="display:flex;justify-content:space-between">
+    <span>Table: <strong>${table.table_number}</strong></span>
+    <span class="sm">${timeStr}</span>
+  </div>
 
   <div class="dash"></div>
 
@@ -400,22 +421,23 @@ export default function Billing() {
     const { discountAmt, roundOffAmt, finalTotal } = computeFinals(billData?.total || 0, adj)
     const paymentMethod = selectedPayments[confirmTable.id] || 'other'
 
-    if (billData) {
-      printReceipt({
-        tableOrders: billData.orders,
-        table:        confirmTable,
-        total:        billData.total,
-        taxPercentage,
-        paymentMethod,
-        restaurant,
-        discountAmt,
-        roundOffAmt,
-        finalTotal,
-      })
-    }
-
-    // ── Offline path ──────────────────────────────────────────────────────────
+    // ── Offline path — no real bill number can be reserved without a server
+    // round-trip, so the printed receipt shows "PREVIEW" until it syncs ───────
     if (!navigator.onLine) {
+      if (billData) {
+        printReceipt({
+          tableOrders: billData.orders,
+          table:        confirmTable,
+          total:        billData.total,
+          taxPercentage,
+          paymentMethod,
+          restaurant,
+          discountAmt,
+          roundOffAmt,
+          finalTotal,
+          billNumber:   null,
+        })
+      }
       try {
         await enqueueBill({
           restaurantId:  restaurant.id,
@@ -463,7 +485,21 @@ export default function Billing() {
         p_round_off:      roundOffAmt,
       })
       if (error) throw error
-      if (!data) { toast.error('No completed orders to settle'); return }
+      if (!data || data.length === 0) { toast.error('No completed orders to settle'); return }
+      if (billData) {
+        printReceipt({
+          tableOrders: billData.orders,
+          table:        confirmTable,
+          total:        billData.total,
+          taxPercentage,
+          paymentMethod,
+          restaurant,
+          discountAmt,
+          roundOffAmt,
+          finalTotal,
+          billNumber:   data[0].bill_number,
+        })
+      }
       toast.success('Bill settled!')
       // Realtime DELETE events from the RPC will remove the orders from allOrders automatically
     } catch (err) {
@@ -731,7 +767,7 @@ export default function Billing() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod: chosen, restaurant, discountAmt, roundOffAmt, finalTotal })}
+                      onClick={() => printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod: chosen, restaurant, discountAmt, roundOffAmt, finalTotal, billNumber: null })}
                       title="Print receipt without settling"
                       className="btn-outline gap-1.5 text-sm px-3"
                     >

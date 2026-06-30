@@ -26,6 +26,10 @@ export default function Settings() {
   const [currency, setCurrency] = useState(restaurant?.currency || '₹')
   const [taxPercentage, setTaxPercentage] = useState(restaurant?.tax_percentage ?? 5)
   const [logoUrl, setLogoUrl] = useState(restaurant?.logo_url || '')
+  const [address, setAddress] = useState(restaurant?.address || '')
+  const [phone, setPhone] = useState(restaurant?.phone || '')
+  const [gstin, setGstin] = useState(restaurant?.gstin || '')
+  const [fssaiLicenseNo, setFssaiLicenseNo] = useState(restaurant?.fssai_license_no || '')
   const [savingProfile, setSavingProfile] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
 
@@ -75,6 +79,10 @@ export default function Settings() {
         currency: currency.trim() || '₹',
         tax_percentage: tax,
         logo_url: logoUrl || null,
+        address: address.trim() || null,
+        phone: phone.trim() || null,
+        gstin: gstin.trim() || null,
+        fssai_license_no: fssaiLicenseNo.trim() || null,
       }).eq('id', restaurant.id)
       if (error) throw error
       await refreshProfile()
@@ -218,6 +226,42 @@ export default function Settings() {
                     value={taxPercentage} onChange={(e) => setTaxPercentage(e.target.value)} required />
                 </div>
               </div>
+
+              <div className="pt-2 border-t border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-800 mb-3">Business Details for Bills</h3>
+                <p className="text-xs text-gray-400 -mt-2 mb-3 leading-relaxed">
+                  Shown on printed bills when filled in. Leave blank to omit a line.
+                </p>
+                <div className="space-y-4">
+                  <div>
+                    <label className="label" htmlFor="address">Restaurant Address</label>
+                    <textarea id="address" className="input resize-none" rows={2} maxLength={300}
+                      placeholder="123 MG Road, Bengaluru 560001"
+                      value={address} onChange={(e) => setAddress(e.target.value)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="label" htmlFor="phone">Phone Number</label>
+                      <input id="phone" type="tel" className="input" maxLength={20}
+                        placeholder="98765 43210"
+                        value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="label" htmlFor="gstin">GSTIN</label>
+                      <input id="gstin" className="input" maxLength={20}
+                        placeholder="29ABCDE1234F1Z5"
+                        value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="fssai">FSSAI License No.</label>
+                    <input id="fssai" className="input" maxLength={20}
+                      placeholder="12345678901234"
+                      value={fssaiLicenseNo} onChange={(e) => setFssaiLicenseNo(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
               <button type="submit" disabled={savingProfile} className="btn-primary">
                 {savingProfile ? (
                   <span className="flex items-center gap-2">
