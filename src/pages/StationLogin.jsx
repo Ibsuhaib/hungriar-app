@@ -35,16 +35,15 @@ export default function StationLogin() {
     }
   }, [loading, user, role, navigate])
 
-  // Fetch the station's role so we can show the right icon
+  // Fetch the station's role via a public SECURITY DEFINER function
+  // (anon users can't read restaurant_stations directly via RLS)
   useEffect(() => {
     if (!stationId) return
     supabase
-      .from('restaurant_stations')
-      .select('role')
-      .eq('id', stationId)
-      .maybeSingle()
+      .rpc('get_station_role', { p_station_id: stationId })
       .then(({ data }) => {
-        setStationRole(data?.role ?? null)
+        // data is { role, label } or null if station doesn't exist
+        setStationRole(data?.role ?? 'staff')  // default icon if lookup fails
         setFetching(false)
       })
   }, [stationId])
@@ -86,7 +85,7 @@ export default function StationLogin() {
       // AuthContext will load the profile and redirect via the useEffect above
       setAttempts(0)
     } catch {
-      toast.error('Login failed. Please try again.')
+      setError('Something went wrong. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -113,17 +112,7 @@ export default function StationLogin() {
     )
   }
 
-  if (!stationId || stationRole === null) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
-        <div className="bg-gray-800 rounded-3xl p-8 w-full max-w-xs text-center">
-          <p className="text-red-400 text-sm">Station not found. Please scan the QR code again.</p>
-        </div>
-      </div>
-    )
-  }
-
-  const meta = ROLE_META[stationRole] ?? ROLE_META.staff
+  const meta = ROLE_META[stationRole ?? 'staff'] ?? ROLE_META.staff
   const Icon = meta.icon
 
   return (
