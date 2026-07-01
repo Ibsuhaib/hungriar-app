@@ -6,12 +6,17 @@ import { RestaurantProvider } from './contexts/RestaurantContext'
 import { CartProvider } from './contexts/CartContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import SuperAdminRoute from './components/SuperAdminRoute'
+import StaffRoute from './components/StaffRoute'
 
 // Public pages — small, always needed
 import Home from './pages/Home'
 import Terms from './pages/Terms'
 import Privacy from './pages/Privacy'
 import NotFound from './pages/NotFound'
+
+// Station + staff — lazy: only needed on kiosk devices
+const StationLogin = lazy(() => import('./pages/StationLogin'))
+const StaffPanel   = lazy(() => import('./pages/staff/StaffPanel'))
 
 // Customer pages — lazy: only needed when scanning a QR code
 const Menu         = lazy(() => import('./pages/customer/Menu'))
@@ -101,6 +106,12 @@ export default function App() {
               <Route path="settings" element={<Settings />} />
               <Route path="take-order" element={<TakeOrder />} />
               <Route path="day-end" element={<DayEnd />} />
+            </Route>
+
+            <Route path="/station/:stationId" element={<StationLogin />} />
+
+            <Route path="/staff" element={<StaffRoute />}>
+              <Route index element={<StaffPanel />} />
             </Route>
 
             <Route path="/superadmin/login" element={<SuperAdminLogin />} />

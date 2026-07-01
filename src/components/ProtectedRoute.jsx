@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useSubscriptionStatus } from '../hooks/useSubscriptionStatus'
 import Layout from './Layout'
 import { AGREEMENT_VERSION } from './AgreementModal'
+import PinLockScreen from './PinLockScreen'
 
 const NAV_ITEMS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -51,7 +52,26 @@ export default function ProtectedRoute() {
     )
   }
 
-  if (!user || role !== 'admin') {
+  if (!user) {
+    return <Navigate to="/admin/login" replace state={{ from: location }} />
+  }
+
+  // ── Chef station account ──────────────────────────────────────────────────
+  // Chef accounts are locked to /admin/chef only — no layout, no sidebar.
+  if (role === 'chef') {
+    if (location.pathname !== '/admin/chef') {
+      return <Navigate to="/admin/chef" replace />
+    }
+    return <Outlet />
+  }
+
+  // ── Staff station account ─────────────────────────────────────────────────
+  // Staff accounts should not be in the /admin area at all.
+  if (role === 'staff') {
+    return <Navigate to="/staff" replace />
+  }
+
+  if (role !== 'admin') {
     return <Navigate to="/admin/login" replace state={{ from: location }} />
   }
 
@@ -102,8 +122,10 @@ export default function ProtectedRoute() {
   const title = PAGE_TITLES[location.pathname] || 'HungriAR'
 
   return (
-    <Layout title={title} navItems={NAV_ITEMS} signOutPath="/admin/login">
-      <Outlet />
-    </Layout>
+    <PinLockScreen>
+      <Layout title={title} navItems={NAV_ITEMS} signOutPath="/admin/login">
+        <Outlet />
+      </Layout>
+    </PinLockScreen>
   )
 }

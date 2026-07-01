@@ -382,15 +382,25 @@ function ChefOrdersView({ onLock }) {
 }
 
 export default function Chef() {
-  const { restaurant } = useAuth()
+  const { restaurant, role } = useAuth()
   const sessionKey = `hungriar_chef_auth_${restaurant?.id}`
-  const [authenticated, setAuthenticated] = useState(false)
+
+  // Station chef accounts (role === 'chef') are already authenticated via Supabase;
+  // skip the PIN entry and go straight to the order queue.
+  const [authenticated, setAuthenticated] = useState(() => {
+    if (role === 'chef') return true
+    return sessionStorage.getItem(`hungriar_chef_auth_${restaurant?.id}`) === '1'
+  })
 
   useEffect(() => {
+    if (role === 'chef') {
+      setAuthenticated(true)
+      return
+    }
     if (sessionStorage.getItem(sessionKey) === '1') {
       setAuthenticated(true)
     }
-  }, [sessionKey])
+  }, [sessionKey, role])
 
   const handleSuccess = () => {
     sessionStorage.setItem(sessionKey, '1')
@@ -398,6 +408,7 @@ export default function Chef() {
   }
 
   const handleLock = () => {
+    if (role === 'chef') return  // station chefs don't use sessionStorage lock
     sessionStorage.removeItem(sessionKey)
     setAuthenticated(false)
   }

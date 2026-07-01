@@ -35,6 +35,31 @@ export function AuthProvider({ children }) {
         .eq('user_id', currentUser.id)
         .maybeSingle()
       setRestaurantAdmin(adminRow ?? null)
+    } else if (userRole === 'chef' || userRole === 'staff') {
+      // Station accounts: look up restaurant via restaurant_stations
+      const { data: stationRow } = await supabase
+        .from('restaurant_stations')
+        .select('id, restaurant_id, role, label, restaurants(*)')
+        .eq('auth_user_id', currentUser.id)
+        .maybeSingle()
+      if (stationRow) {
+        // Shape a compatible restaurantAdmin-like object so existing code that
+        // reads restaurantAdmin.restaurant_id / restaurantAdmin.restaurants works.
+        setRestaurantAdmin({
+          id: stationRow.id,
+          user_id: currentUser.id,
+          restaurant_id: stationRow.restaurant_id,
+          restaurants: stationRow.restaurants,
+          // Sentinel values so ProtectedRoute skips agreement / subscription checks
+          agreement_accepted_at: '__station__',
+          agreement_version: '__station__',
+          isStation: true,
+          stationRole: stationRow.role,
+          stationLabel: stationRow.label,
+        })
+      } else {
+        setRestaurantAdmin(null)
+      }
     } else {
       setRestaurantAdmin(null)
     }
