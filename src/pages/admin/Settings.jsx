@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Building2, CreditCard, Lock, Camera, Eye, EyeOff, ChefHat, Users, Plus, Trash2, RotateCcw, QrCode, Copy, ChevronDown, ChevronUp, Shield } from 'lucide-react'
+import { Building2, CreditCard, Lock, Camera, Eye, EyeOff, Users, Plus, Trash2, RotateCcw, QrCode, Copy, ChevronDown, ChevronUp, Shield } from 'lucide-react'
 import QRCodeStyling from 'qr-code-styling'
 import { useAuth, MAX_PASSWORD_LENGTH } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -40,9 +40,6 @@ export default function Settings() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
-
-  const [chefPin, setChefPin] = useState(restaurant?.chef_pin || '')
-  const [savingPin, setSavingPin] = useState(false)
 
   // ── Stations state ──────────────────────────────────────────────────────
   const [stations,       setStations]       = useState([])
@@ -112,32 +109,6 @@ export default function Settings() {
       toast.error(err.message || 'Failed to save settings')
     } finally {
       setSavingProfile(false)
-    }
-  }
-
-  const handleChefPinSubmit = async (e) => {
-    e.preventDefault()
-    if (savingPin) return
-    const trimmed = chefPin.trim()
-    if (trimmed && (trimmed.length < 4 || trimmed.length > 10)) {
-      toast.error('PIN must be 4–10 characters')
-      return
-    }
-    const allowed = await checkAdminLimit(user?.id)
-    if (!allowed) return
-    setSavingPin(true)
-    try {
-      const { error } = await supabase
-        .from('restaurants')
-        .update({ chef_pin: trimmed || null })
-        .eq('id', restaurant.id)
-      if (error) throw error
-      await refreshProfile()
-      toast.success(trimmed ? 'Chef PIN saved' : 'Chef PIN removed')
-    } catch (err) {
-      toast.error(err.message || 'Failed to save PIN')
-    } finally {
-      setSavingPin(false)
     }
   }
 
@@ -429,33 +400,6 @@ export default function Settings() {
             className="card space-y-4"
           >
             <h2 className="text-base font-bold text-gray-900 font-display">Change Password</h2>
-            {/* Chef PIN */}
-            <div className="pt-2 border-t border-gray-100 space-y-3">
-              <div className="flex items-center gap-2">
-                <ChefHat className="w-4 h-4 text-gray-400" />
-                <h3 className="text-sm font-semibold text-gray-800">Chef View PIN</h3>
-              </div>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                Staff use this PIN to access the kitchen-only view at{' '}
-                <span className="font-mono text-gray-500">/admin/chef</span>.
-                Leave blank to allow entry without a PIN.
-              </p>
-              <form onSubmit={handleChefPinSubmit} className="flex gap-2">
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  placeholder="4–10 digit PIN"
-                  value={chefPin}
-                  onChange={(e) => setChefPin(e.target.value)}
-                  maxLength={10}
-                  className="input flex-1"
-                />
-                <button type="submit" disabled={savingPin} className="btn-outline shrink-0">
-                  {savingPin ? 'Saving…' : 'Save PIN'}
-                </button>
-              </form>
-            </div>
-
             {/* Manager PIN lock */}
             <div className="pt-2 border-t border-gray-100 space-y-3">
               <div className="flex items-center gap-2">
