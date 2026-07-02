@@ -316,42 +316,59 @@ export default function Billing() {
   // then fire the RPC in the background. On failure, resync from the server.
   const handleItemQtyChange = async (order, item, newQty) => {
     if (busyItemId === item.id) return
+    if (!navigator.onLine) { toast.error('Editing needs an internet connection'); return }
     setBusyItemId(item.id)
     const newItems = order.order_items.map((i) => (i.id === item.id ? { ...i, quantity: newQty } : i))
     patchOrder(order.id, { order_items: newItems, total_amount: computeOrderTotal(newItems, taxPercentage) })
-    const { error } = await supabase.rpc('update_order_item_quantity', { p_item_id: item.id, p_quantity: newQty })
-    if (error) { toast.error(error.message || 'Failed to update quantity'); refetch({ silent: true }) }
-    setBusyItemId(null)
+    try {
+      const { error } = await supabase.rpc('update_order_item_quantity', { p_item_id: item.id, p_quantity: newQty })
+      if (error) throw error
+    } catch (err) {
+      toast.error(err.message || 'Failed to update quantity')
+      refetch({ silent: true })
+    } finally {
+      setBusyItemId(null)
+    }
   }
 
   const handleDeleteItem = async (order, item) => {
     if (busyItemId === item.id) return
+    if (!navigator.onLine) { toast.error('Editing needs an internet connection'); return }
     setBusyItemId(item.id)
     const newItems = order.order_items.map((i) => (i.id === item.id ? { ...i, cancelled: true } : i))
     patchOrder(order.id, { order_items: newItems, total_amount: computeOrderTotal(newItems, taxPercentage) })
-    const { error } = await supabase.rpc('billing_remove_item', { p_item_id: item.id })
-    if (error) { toast.error('Failed to remove item'); refetch({ silent: true }) }
-    else toast.success(`${item.item_name} removed`)
-    setBusyItemId(null)
+    try {
+      const { error } = await supabase.rpc('billing_remove_item', { p_item_id: item.id })
+      if (error) throw error
+      toast.success(`${item.item_name} removed`)
+    } catch (err) {
+      toast.error(err.message || 'Failed to remove item')
+      refetch({ silent: true })
+    } finally {
+      setBusyItemId(null)
+    }
   }
 
   const handleAddItem = async (table) => {
     if (!addItemSelection.menuItemId || addingItem) return
+    if (!navigator.onLine) { toast.error('Editing needs an internet connection'); return }
     setAddingItem(true)
-    const { error } = await supabase.rpc('admin_add_billing_item', {
-      p_restaurant_id: restaurant.id,
-      p_table_id:      table.id,
-      p_menu_item_id:  addItemSelection.menuItemId,
-      p_quantity:      Math.max(1, Math.min(50, Number(addItemSelection.quantity) || 1)),
-    })
-    if (error) {
-      toast.error(error.message || 'Failed to add item')
-    } else {
+    try {
+      const { error } = await supabase.rpc('admin_add_billing_item', {
+        p_restaurant_id: restaurant.id,
+        p_table_id:      table.id,
+        p_menu_item_id:  addItemSelection.menuItemId,
+        p_quantity:      Math.max(1, Math.min(50, Number(addItemSelection.quantity) || 1)),
+      })
+      if (error) throw error
       toast.success('Item added to bill')
       closeAddItemPanel()
       refetch({ silent: true })
+    } catch (err) {
+      toast.error(err.message || 'Failed to add item')
+    } finally {
+      setAddingItem(false)
     }
-    setAddingItem(false)
   }
 
   const loadOfflineOrders = useCallback(async () => {
@@ -612,7 +629,7 @@ export default function Billing() {
           <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-amber-800">You are offline</p>
-            <p className="text-xs text-amber-600">Bills will be saved on this device and settled in Supabase when internet returns.</p>
+            <p className="text-xs text-amber-600">New bills will be saved on this device and settled when internet returns. Editing existing bill items is disabled until you're back online.</p>
           </div>
         </div>
       )}
@@ -706,7 +723,7 @@ export default function Billing() {
                                 {item.item_name}
                                 {item.notes && <span className="italic text-gray-300"> — {item.notes}</span>}
                               </span>
-                              {isBillOffline ? (
+                              {isBillOffline || !isOnline ? (
                                 <span className="font-medium text-gray-500 flex-shrink-0">{item.quantity}×</span>
                               ) : (
                                 <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -743,7 +760,7 @@ export default function Billing() {
                   </ul>
 
                   {/* Add a missed item */}
-                  {!isBillOffline && (
+                  {!isBillOffline && isOnline && (
                     <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
                       {addItemTableId === table.id ? (
                         <div className="space-y-2">
