@@ -389,16 +389,21 @@ export default function Billing() {
   const fetchTables = useCallback(async () => {
     if (!restaurant?.id) return
     if (!pageCache.has(tablesCacheKey)) setTablesLoading(true)
-    const [tablesRes, restaurantRes] = await Promise.all([
-      supabase.from('tables').select('*').eq('restaurant_id', restaurant.id).order('table_number'),
-      supabase.from('restaurants').select('tax_percentage').eq('id', restaurant.id).maybeSingle(),
-    ])
-    const t  = tablesRes.data || []
-    const tp = Number(restaurantRes.data?.tax_percentage) || 0
-    if (!tablesRes.error)     setTables(t)
-    if (!restaurantRes.error) setTaxPercentage(tp)
-    pageCache.set(tablesCacheKey, { tables: t, tax: tp })
-    setTablesLoading(false)
+    try {
+      const [tablesRes, restaurantRes] = await Promise.all([
+        supabase.from('tables').select('*').eq('restaurant_id', restaurant.id).order('table_number'),
+        supabase.from('restaurants').select('tax_percentage').eq('id', restaurant.id).maybeSingle(),
+      ])
+      const t  = tablesRes.data || []
+      const tp = Number(restaurantRes.data?.tax_percentage) || 0
+      if (!tablesRes.error)     setTables(t)
+      if (!restaurantRes.error) setTaxPercentage(tp)
+      pageCache.set(tablesCacheKey, { tables: t, tax: tp })
+    } catch {
+      // Offline with no cache yet — keep whatever's in state and stop loading.
+    } finally {
+      setTablesLoading(false)
+    }
   }, [restaurant?.id, tablesCacheKey])
 
   useEffect(() => { fetchTables() }, [fetchTables])
@@ -503,14 +508,21 @@ export default function Billing() {
     setSelectedPayments((prev) => ({ ...prev, [tableId]: methodId }))
 
   const handleClickSettle = async (table) => {
-    const { count } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('restaurant_id', restaurant.id)
-      .eq('table_id', table.id)
-      .neq('status', 'completed')
-      .neq('status', 'cancelled')
-    setActiveOrdersCount(count ?? 0)
+    // Best-effort — if this fails (e.g. no real connectivity despite
+    // navigator.onLine), just skip the "still in the kitchen" warning and
+    // let the settle flow itself handle online/offline.
+    try {
+      const { count } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('restaurant_id', restaurant.id)
+        .eq('table_id', table.id)
+        .neq('status', 'completed')
+        .neq('status', 'cancelled')
+      setActiveOrdersCount(count ?? 0)
+    } catch {
+      setActiveOrdersCount(0)
+    }
     setConfirmTable(table)
   }
 
