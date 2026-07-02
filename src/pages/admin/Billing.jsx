@@ -275,6 +275,10 @@ export default function Billing() {
   const [adjustments, setAdjustments] = useState({})
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [pendingBills, setPendingBills] = useState(0)
+  // Tables whose bill has been settled offline and is waiting to sync. Their
+  // orders stay in the queue (so the sync can place + archive them); this list
+  // just hides the already-settled card in the meantime.
+  const [queuedBillTableIds, setQueuedBillTableIds] = useState([])
   const [syncing, setSyncing] = useState(false)
   const [offlineOrders, setOfflineOrders] = useState([])
   const [menuItems, setMenuItems] = useState([])
@@ -414,6 +418,7 @@ export default function Billing() {
     const bills = await getQueuedBills()
     const mine  = bills.filter((b) => b.restaurantId === restaurant.id)
     setPendingBills(mine.length)
+    setQueuedBillTableIds(mine.map((b) => b.tableId))
     if (!navigator.onLine || mine.length === 0) return
 
     setSyncing(true)
@@ -453,11 +458,14 @@ export default function Billing() {
     if (synced > 0) {
       toast.success(`${synced} offline bill${synced > 1 ? 's' : ''} synced!`)
       fetchTables()
+      await loadOfflineOrders()  // synced orders were dequeued — refresh so their card stays gone
     }
     const remaining = await getQueuedBills()
-    setPendingBills(remaining.filter((b) => b.restaurantId === restaurant.id).length)
+    const remainingMine = remaining.filter((b) => b.restaurantId === restaurant.id)
+    setPendingBills(remainingMine.length)
+    setQueuedBillTableIds(remainingMine.map((b) => b.tableId))
     setSyncing(false)
-  }, [restaurant?.id, fetchTables])
+  }, [restaurant?.id, fetchTables, loadOfflineOrders])
 
   useEffect(() => {
     syncBills()
@@ -466,7 +474,9 @@ export default function Billing() {
   }, [syncBills])
 
   const bills = useMemo(() => {
-    // Online bills — derived from the shared realtime orders (completedOrders)
+    // Online bills — derived from the shared realtime orders (completedOrders).
+    // Tables already settled offline (queuedBillTableIds) are hidden until their
+    // queued bill syncs, so they can't be settled twice.
     const onlineBills = tables
       .map((table) => {
         const tableOrders = completedOrders.filter((o) => o.table_id === table.id)
@@ -474,6 +484,7 @@ export default function Billing() {
         return { table, orders: tableOrders, total, isOffline: false }
       })
       .filter((b) => b.orders.length > 0)
+      .filter((b) => !queuedBillTableIds.includes(b.table.id))
 
     // Offline bills from IndexedDB — grouped by tableId
     const offlineByTable = {}
@@ -484,6 +495,7 @@ export default function Billing() {
 
     const offlineBills = Object.entries(offlineByTable)
       .filter(([tableId]) => !onlineBills.find((b) => b.table.id === tableId))
+      .filter(([tableId]) => !queuedBillTableIds.includes(tableId))  // already settled offline, pending sync
       .map(([tableId, queuedOrders]) => {
         const fakeTable = {
           id:           tableId,
@@ -494,7 +506,7 @@ export default function Billing() {
       })
 
     return [...onlineBills, ...offlineBills]
-  }, [tables, completedOrders, offlineOrders, taxPercentage, restaurant?.id])
+  }, [tables, completedOrders, offlineOrders, taxPercentage, restaurant?.id, queuedBillTableIds])
 
   const getAdj = (tableId) => adjustments[tableId] || EMPTY_ADJ
   // Bug 1 fix: read from `prev` inside the functional update, not from the outer `adjustments` closure
@@ -575,11 +587,10 @@ export default function Billing() {
       toast.success(`Bill saved offline for Table ${confirmTable.table_number} — will sync when online`, { duration: 5000 })
       setSelectedPayments((prev) => { const n = { ...prev }; delete n[tableId]; return n })
       setAdjustments((prev) => { const n = { ...prev }; delete n[tableId]; return n })
-      // Remove offline orders for this table since they're now billed
-      for (const o of offlineOrders.filter((o) => o.tableId === tableId)) {
-        await removeQueuedOrder(o.id)
-      }
-      await loadOfflineOrders()
+      // Keep the queued orders — the sync places + archives them so nothing is
+      // lost. Hide this table's card in the meantime via queuedBillTableIds
+      // (deleting the orders here is what silently dropped the sale before).
+      setQueuedBillTableIds((prev) => (prev.includes(tableId) ? prev : [...prev, tableId]))
     }
 
     setConfirmTable(null)
