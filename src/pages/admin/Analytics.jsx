@@ -11,7 +11,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { useAuth } from '../../contexts/AuthContext'
-import { supabase } from '../../lib/supabase'
+import { supabase, invokeEdgeFunction } from '../../lib/supabase'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
 const CHART_COLORS = ['#e76f51', '#2a9d8f', '#f4a261', '#264653', '#e9c46a', '#a8dadc']
@@ -196,6 +196,16 @@ export default function Analytics() {
         category:       'collection',
       })
       if (insErr) throw insErr
+      // Best-effort: notify the owner's Telegram that money was collected.
+      // Fire-and-forget — never blocks or fails the collection flow.
+      invokeEdgeFunction('send-collection-report', {
+        restaurantId:   restaurant.id,
+        restaurantName: restaurant.name,
+        currency,
+        paymentMethod:  method,
+        amount,
+        note,
+      }).catch(() => {})
       toast.success(`${getMeta(method).label} collection recorded`)
       setCollectMethod(null)
       await loadAnalytics()
