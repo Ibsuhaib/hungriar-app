@@ -3,6 +3,24 @@ const DB_VERSION = 2
 const STORE      = 'order_queue'
 const BILL_STORE = 'bill_queue'
 
+/**
+ * True when a failed request looks like a connectivity problem rather than a
+ * server-side rejection. `navigator.onLine` is unreliable — it reports `true`
+ * on any LAN/WiFi even with no real internet — so callers use this to decide
+ * whether to fall back to the offline queue. Postgres/permission errors (which
+ * carry a real message like "not authorized") are NOT treated as network errors.
+ */
+export function isNetworkError(err) {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return true
+  const msg = (err?.message || String(err ?? '')).toLowerCase()
+  return (
+    msg.includes('failed to fetch') ||   // Chrome/Edge
+    msg.includes('load failed') ||        // Safari
+    msg.includes('networkerror') ||       // Firefox
+    msg.includes('network request failed')
+  )
+}
+
 function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)

@@ -10,7 +10,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
-import { enqueueOrder, getQueuedOrders, removeQueuedOrder } from '../../utils/offlineQueue'
+import { enqueueOrder, getQueuedOrders, removeQueuedOrder, isNetworkError } from '../../utils/offlineQueue'
 
 // ─── Cart hook (same shape as TakeOrder) ──────────────────────────────────────
 function useCart() {
@@ -172,24 +172,26 @@ export default function StaffPanel() {
       setSearch('')
     }
 
-    // ── Offline: queue on-device, sync when the connection returns ──────────
+    // Save to the on-device queue (used both when known-offline and when a live
+    // request fails because the internet is actually down despite navigator.onLine).
+    const saveOffline = async () => {
+      await enqueueOrder({
+        orderId,
+        rpc:          'staff_place_order',
+        restaurantId: restaurant.id,
+        tableId:      selectedTableId,
+        tableNumber,
+        items,
+        richItems,
+      })
+      setPendingCount((c) => c + 1)
+      toast.success(`Order saved offline for Table ${tableNumber} — will sync when online`, { duration: 5000 })
+      resetAfterPlace()
+    }
+
+    // ── Known-offline: queue on-device, sync when the connection returns ────
     if (!navigator.onLine) {
-      try {
-        await enqueueOrder({
-          orderId,
-          rpc:          'staff_place_order',
-          restaurantId: restaurant.id,
-          tableId:      selectedTableId,
-          tableNumber,
-          items,
-          richItems,
-        })
-        setPendingCount((c) => c + 1)
-        toast.success(`Order saved offline for Table ${tableNumber} — will sync when online`, { duration: 5000 })
-        resetAfterPlace()
-      } catch {
-        toast.error('Failed to save order offline')
-      }
+      try { await saveOffline() } catch { toast.error('Failed to save order offline') }
       setPlacing(false)
       return
     }
@@ -207,7 +209,14 @@ export default function StaffPanel() {
       setTab('active')
       refetch({ silent: true })
     } catch (err) {
-      toast.error(err.message || 'Failed to place order')
+      // navigator.onLine can be true on a WiFi with no real internet. If the
+      // request failed for a network reason, queue it instead of losing it —
+      // idempotent p_order_id makes the later replay safe.
+      if (isNetworkError(err)) {
+        try { await saveOffline() } catch { toast.error('Failed to save order offline') }
+      } else {
+        toast.error(err.message || 'Failed to place order')
+      }
     } finally {
       setPlacing(false)
     }

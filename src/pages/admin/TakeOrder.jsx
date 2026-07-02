@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
 import { printKOT } from '../../utils/kotPrint'
-import { enqueueOrder, getQueuedOrders, removeQueuedOrder } from '../../utils/offlineQueue'
+import { enqueueOrder, getQueuedOrders, removeQueuedOrder, isNetworkError } from '../../utils/offlineQueue'
 import { pageCache } from '../../utils/pageCache'
 
 // ─── Cart hook ────────────────────────────────────────────────────────────────
@@ -322,26 +322,28 @@ export default function TakeOrder() {
       order_items: richItems.map((i) => ({ ...i, cancelled: false })),
     }
 
+    // Save to the on-device queue (used both when known-offline and when a live
+    // request fails because the internet is actually down despite navigator.onLine).
+    const saveOffline = async () => {
+      await enqueueOrder({
+        orderId,                    // stable id → idempotent replay
+        rpc:           'admin_place_order',
+        restaurantId:  restaurant.id,
+        tableId:       selectedTableId,
+        tableNumber:   selectedTableNumber,
+        items,        // for Supabase sync
+        richItems,    // for offline billing display
+        totalAmount,
+      })
+      setPendingCount((c) => c + 1)
+      printKOT(kotOrder, restaurant?.name)
+      toast.success(`Order saved offline for Table ${selectedTableNumber} — will sync when online`, { duration: 5000 })
+      clear()
+      setCartOpen(false)
+    }
+
     if (!navigator.onLine) {
-      try {
-        await enqueueOrder({
-          orderId,                    // stable id → idempotent replay
-          rpc:           'admin_place_order',
-          restaurantId:  restaurant.id,
-          tableId:       selectedTableId,
-          tableNumber:   selectedTableNumber,
-          items,        // for Supabase sync
-          richItems,    // for offline billing display
-          totalAmount,
-        })
-        setPendingCount((c) => c + 1)
-        printKOT(kotOrder, restaurant?.name)
-        toast.success(`Order saved offline for Table ${selectedTableNumber} — will sync when online`, { duration: 5000 })
-        clear()
-        setCartOpen(false)
-      } catch {
-        toast.error('Failed to save order offline')
-      }
+      try { await saveOffline() } catch { toast.error('Failed to save order offline') }
       setPlacing(false)
       return
     }
@@ -359,7 +361,14 @@ export default function TakeOrder() {
       clear()
       setCartOpen(false)
     } catch (err) {
-      toast.error(err.message || 'Failed to place order')
+      // navigator.onLine can be true on a WiFi with no real internet. If the
+      // request failed for a network reason, queue it instead of losing it —
+      // idempotent p_order_id makes the later replay safe.
+      if (isNetworkError(err)) {
+        try { await saveOffline() } catch { toast.error('Failed to save order offline') }
+      } else {
+        toast.error(err.message || 'Failed to place order')
+      }
     } finally {
       setPlacing(false)
     }
