@@ -45,20 +45,27 @@ Deno.serve(async (req) => {
     return jsonResponse(req, { error: 'Invalid JSON' }, 400)
   }
 
-  const { restaurantId, restaurantName, currency = '₹', collections, expenses, netMap, totalCollected, totalExpenses, totalDiscount = 0, totalRoundOff = 0, billEditsAdded = 0, billEditsRemoved = 0, netTotal, closedAt } = body as {
+  const {
+    restaurantId, restaurantName, currency = '₹', collections, expenses, ownerCollections = [],
+    netMap, totalCollected, totalExpenses, totalCollectedByOwner = 0, totalDiscount = 0, totalRoundOff = 0,
+    billEditsAdded = 0, billEditsRemoved = 0, netTotal, carryoverFromPrevDays = 0, closedAt,
+  } = body as {
     restaurantId: string
     restaurantName: string
     currency: string
     collections: Array<{ payment_method: string; count: number; total: number }>
     expenses: Array<{ description: string; amount: number; payment_method: string }>
+    ownerCollections: Array<{ description: string; amount: number; payment_method: string }>
     netMap: Record<string, number>
     totalCollected: number
     totalExpenses: number
+    totalCollectedByOwner: number
     totalDiscount: number
     totalRoundOff: number
     billEditsAdded: number
     billEditsRemoved: number
     netTotal: number
+    carryoverFromPrevDays: number
     closedAt: string
   }
 
@@ -128,7 +135,7 @@ Deno.serve(async (req) => {
     lines.push('')
   }
 
-  lines.push(`💸 *Expenses*`)
+  lines.push(`💸 *Business Expenses*`)
   if ((expenses as Array<unknown>).length === 0) {
     lines.push('  No expenses this session.')
   } else {
@@ -139,14 +146,43 @@ Deno.serve(async (req) => {
   }
   lines.push('')
 
-  lines.push(`📈 *Cash in Hand*`)
-  for (const [method, net] of Object.entries(netMap)) {
-    lines.push(`  ${methodLabel(method)}: ${fmt(net, currency)}`)
+  // Money the owner physically took out of the register — NOT a business
+  // cost, so it's kept out of Expenses/Net Total above and shown separately.
+  if ((ownerCollections as Array<unknown>).length > 0) {
+    lines.push(`🏦 *Collected by Owner*`)
+    for (const c of ownerCollections) {
+      lines.push(`  ${c.description} — ${fmt(c.amount, currency)} (${methodLabel(c.payment_method)})`)
+    }
+    lines.push(`  *Total Collected by Owner: ${fmt(totalCollectedByOwner, currency)}*`)
+    lines.push('')
+  }
+
+  const cashEntries = Object.entries(netMap).filter(([m]) => m === 'cash')
+  const bankEntries = Object.entries(netMap).filter(([m]) => m !== 'cash')
+
+  lines.push(`🪙 *In the Drawer (Cash)*`)
+  if (cashEntries.length === 0) {
+    lines.push('  No cash on hand.')
+  } else {
+    for (const [method, net] of cashEntries) lines.push(`  ${methodLabel(method)}: ${fmt(net, currency)}`)
   }
   lines.push('')
 
+  lines.push(`🏧 *In the Bank (UPI / Card)*`)
+  if (bankEntries.length === 0) {
+    lines.push('  Nothing pending.')
+  } else {
+    for (const [method, net] of bankEntries) lines.push(`  ${methodLabel(method)}: ${fmt(net, currency)}`)
+  }
+  lines.push('')
+
+  if (carryoverFromPrevDays > 0) {
+    lines.push(`⏳ Uncollected from previous days: ${fmt(carryoverFromPrevDays, currency)} (see Register Balance in Analytics)`)
+    lines.push('')
+  }
+
   const emoji = netTotal >= 0 ? '✅' : '⚠️'
-  lines.push(`${emoji} *Net Total: ${fmt(netTotal, currency)}*`)
+  lines.push(`${emoji} *Net Total (today): ${fmt(netTotal, currency)}*`)
   lines.push('')
   lines.push(`_Sent by HungriAR_`)
 

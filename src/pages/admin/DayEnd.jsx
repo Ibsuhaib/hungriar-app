@@ -35,11 +35,17 @@ function fmtTime(iso) {
 
 // ─── Print ────────────────────────────────────────────────────────────────────
 
-function printReport({ restaurantName, closedAt, collections, expenses, netMap, totalCollected, totalExpenses, currency }) {
+function printReport({
+  restaurantName, closedAt, collections, expenses, ownerCollections, netMap,
+  totalCollected, totalExpenses, totalCollectedByOwner, carryoverFromPrevDays, currency,
+}) {
   const fmt = (n) => formatCurrency(n, currency)
   const row = (l, v, bold) =>
     `<tr><td style="padding:3px 0;${bold?'font-weight:700':''}">${l}</td>
      <td style="text-align:right;padding:3px 0;${bold?'font-weight:700':''}">${v}</td></tr>`
+
+  const cashEntries = Object.entries(netMap).filter(([m]) => m === 'cash')
+  const bankEntries = Object.entries(netMap).filter(([m]) => m !== 'cash')
 
   const html = `<!DOCTYPE html><html><head><title>Day End</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}
@@ -49,16 +55,23 @@ h1{font-size:14px;text-align:center;margin-bottom:2px}
 .sec{margin:8px 0 4px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#555;border-top:1px solid #111;padding-top:6px}
 table{width:100%;border-collapse:collapse;border-bottom:1px dashed #ccc}
 tr{border-bottom:1px dashed #e5e7eb}
+.note{font-size:10px;color:#888;padding:3px 0}
 .foot{margin-top:12px;text-align:center;font-size:10px;color:#888}</style>
 </head><body>
 <h1>${restaurantName}</h1>
 <p class="sub">Day End Report &mdash; ${fmtTime(closedAt)}</p>
 <p class="sec">Collections</p>
 <table>${collections.map(c=>row(`${getMeta(c.payment_method).label} (${c.count} bills)`,fmt(c.total))).join('')}${row('Total Collected',fmt(totalCollected),true)}</table>
-<p class="sec">Expenses</p>
+<p class="sec">Business Expenses</p>
 ${expenses.length===0?'<p style="color:#888;font-size:11px;padding:4px 0">No expenses recorded.</p>':`<table>${expenses.map(e=>row(`${e.description} (${getMeta(e.payment_method).label})`,`- ${fmt(e.amount)}`)).join('')}${row('Total Expenses',`- ${fmt(totalExpenses)}`,true)}</table>`}
+${ownerCollections.length>0?`<p class="sec">Collected by Owner</p><table>${ownerCollections.map(e=>row(`${e.description} (${getMeta(e.payment_method).label})`,`- ${fmt(e.amount)}`)).join('')}${row('Total Collected by Owner',`- ${fmt(totalCollectedByOwner)}`,true)}</table>`:''}
+<p class="sec">In the Drawer (Cash)</p>
+<table>${cashEntries.length===0?'<tr><td class="note">No cash on hand.</td></tr>':cashEntries.map(([m,v])=>row(getMeta(m).label,fmt(v),true)).join('')}</table>
+<p class="sec">In the Bank (UPI / Card)</p>
+<table>${bankEntries.length===0?'<tr><td class="note">Nothing pending.</td></tr>':bankEntries.map(([m,v])=>row(getMeta(m).label,fmt(v),true)).join('')}</table>
+${carryoverFromPrevDays>0?`<p class="note">Uncollected from previous days: ${fmt(carryoverFromPrevDays)} (see Register Balance in Analytics)</p>`:''}
 <p class="sec">Net Summary</p>
-<table>${Object.entries(netMap).map(([m,v])=>row(getMeta(m).label+' in hand',fmt(v),true)).join('')}${row('Net Total',fmt(totalCollected-totalExpenses),true)}</table>
+<table>${row('Net Total (today)',fmt(totalCollected-totalExpenses),true)}</table>
 <p class="foot">Printed ${new Date().toLocaleString('en-IN')}</p>
 </body></html>`
 
@@ -156,13 +169,15 @@ export default function DayEnd() {
 
   const { sessionStart, refresh: refreshSession } = useSessionStart(restaurant?.id)
 
-  const [collections,   setCollections]   = useState([])
-  const [expenses,      setExpenses]      = useState([])
+  const [collections,       setCollections]       = useState([])
+  const [expenses,          setExpenses]          = useState([])
+  const [ownerCollections,  setOwnerCollections]  = useState([])
   const [activeOrders,  setActiveOrders]  = useState(0)
   const [totalDiscount, setTotalDiscount] = useState(0)
   const [totalRoundOff, setTotalRoundOff] = useState(0)
   const [billEditsAdded,   setBillEditsAdded]   = useState(0)
   const [billEditsRemoved, setBillEditsRemoved] = useState(0)
+  const [registerBalance,  setRegisterBalance]  = useState(0)
   const [loading,       setLoading]       = useState(true)
 
   const [desc,   setDesc]   = useState('')
@@ -222,7 +237,14 @@ export default function DayEnd() {
       setTotalDiscount(disc)
       setTotalRoundOff(roff)
     }
-    if (!expRes.error)    setExpenses(expRes.data || [])
+    if (!expRes.error) {
+      // 'collection' rows are money the owner physically took out of the
+      // register (via Analytics → Collect) — not a business cost. Keep them
+      // out of "expenses" so they can't be counted against day profitability.
+      const rows = expRes.data || []
+      setExpenses(rows.filter((e) => e.category !== 'collection'))
+      setOwnerCollections(rows.filter((e) => e.category === 'collection'))
+    }
     if (!activeRes.error) setActiveOrders(activeRes.count ?? 0)
     if (!billEditsRes.error) {
       let added = 0; let removed = 0
@@ -234,6 +256,29 @@ export default function DayEnd() {
       setBillEditsAdded(added)
       setBillEditsRemoved(removed)
     }
+
+    // Register balance — money sitting in the restaurant across ALL days
+    // since the last Analytics collection, independent of the day session
+    // boundary above. Used to surface "uncollected from previous days".
+    try {
+      const { data: resets } = await supabase
+        .from('collection_resets')
+        .select('reset_at')
+        .eq('restaurant_id', restaurant.id)
+        .order('reset_at', { ascending: false })
+        .limit(1)
+      const { data: reg } = await supabase.rpc('get_restaurant_analytics', {
+        p_restaurant_id: restaurant.id,
+        p_from:          resets?.[0]?.reset_at ?? null,
+      })
+      if (reg) {
+        setRegisterBalance(
+          Number(reg.total_revenue || 0) - Number(reg.total_expenses || 0) - Number(reg.total_collections || 0)
+        )
+      }
+    } catch {
+      // Non-critical — the reconciliation line just won't show if this fails.
+    }
     setLoading(false)
   }, [restaurant?.id, sessionStart])
 
@@ -241,18 +286,37 @@ export default function DayEnd() {
 
   // ── Derived ──────────────────────────────────────────────────────────────
 
-  const totalCollected = collections.reduce((s, c) => s + c.total, 0)
-  const totalExpenses  = expenses.reduce((s, e) => s + Number(e.amount), 0)
-  const netTotal       = totalCollected - totalExpenses
+  const totalCollected        = collections.reduce((s, c) => s + c.total, 0)
+  const totalExpenses         = expenses.reduce((s, e) => s + Number(e.amount), 0)
+  const totalCollectedByOwner = ownerCollections.reduce((s, e) => s + Number(e.amount), 0)
+  // Day profitability = revenue minus business costs only. The owner taking
+  // money out of the register isn't a cost — it's still counted below in
+  // netMap ("cash in hand"), just not here.
+  const netTotal = totalCollected - totalExpenses
 
   const expByMethod = {}
   for (const ex of expenses) {
     const m = (ex.payment_method || 'cash').toLowerCase()
     expByMethod[m] = (expByMethod[m] || 0) + Number(ex.amount)
   }
+  const ownerCollByMethod = {}
+  for (const oc of ownerCollections) {
+    const m = (oc.payment_method || 'cash').toLowerCase()
+    ownerCollByMethod[m] = (ownerCollByMethod[m] || 0) + Number(oc.amount)
+  }
+  // Cash-in-hand per method: revenue minus both business spend AND whatever
+  // the owner already walked away with — this is what's physically left.
   const netMap = {}
-  for (const c of collections) netMap[c.payment_method] = c.total - (expByMethod[c.payment_method] || 0)
-  for (const [m, amt] of Object.entries(expByMethod)) if (!(m in netMap)) netMap[m] = -amt
+  for (const c of collections) {
+    netMap[c.payment_method] = c.total - (expByMethod[c.payment_method] || 0) - (ownerCollByMethod[c.payment_method] || 0)
+  }
+  for (const m of new Set([...Object.keys(expByMethod), ...Object.keys(ownerCollByMethod)])) {
+    if (!(m in netMap)) netMap[m] = -(expByMethod[m] || 0) - (ownerCollByMethod[m] || 0)
+  }
+
+  // Whatever's in the register beyond what THIS session itself contributed
+  // must be carryover sitting there from before today started.
+  const carryoverFromPrevDays = Math.max(0, registerBalance - netTotal)
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -266,6 +330,7 @@ export default function DayEnd() {
       const { error } = await supabase.from('expenses').insert({
         restaurant_id: restaurant.id, description: desc.trim(),
         amount: amt, payment_method: method, expense_date: today,
+        category: 'expense',
       })
       if (error) throw error
       toast.success('Expense added')
@@ -310,6 +375,8 @@ export default function DayEnd() {
           currency,
           collections,
           expenses,
+          ownerCollections,
+          totalCollectedByOwner,
           netMap,
           totalCollected,
           totalExpenses,
@@ -318,6 +385,7 @@ export default function DayEnd() {
           billEditsAdded,
           billEditsRemoved,
           netTotal,
+          carryoverFromPrevDays,
           closedAt: new Date().toISOString(),
         })
       } catch (reportErr) {
@@ -343,8 +411,8 @@ export default function DayEnd() {
   const handlePrint = () => printReport({
     restaurantName: restaurant.name || 'Restaurant',
     closedAt: new Date().toISOString(),
-    collections, expenses, netMap,
-    totalCollected, totalExpenses, currency,
+    collections, expenses, ownerCollections, netMap,
+    totalCollected, totalExpenses, totalCollectedByOwner, carryoverFromPrevDays, currency,
   })
 
   // ── Loading ───────────────────────────────────────────────────────────────
@@ -368,10 +436,11 @@ export default function DayEnd() {
   return (
     <div className="space-y-5 max-w-2xl pb-28">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs text-gray-400 font-medium uppercase tracking-widest">Day End</p>
+          <p className="text-xs text-gray-400 font-medium uppercase tracking-widest">Day Session</p>
           <p className="text-sm font-semibold text-gray-600">Since {fmtTime(sessionStart)}</p>
+          <p className="text-xs text-gray-400 mt-0.5">Today's activity only — see Analytics for total register balance.</p>
         </div>
         <button
           type="button" onClick={handlePrint}
@@ -456,7 +525,7 @@ export default function DayEnd() {
       {expenses.length > 0 && (
         <div className="card p-0 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900">Expenses This Session</h2>
+            <h2 className="text-sm font-bold text-gray-900">Business Expenses This Session</h2>
             <span className="text-xs font-bold text-rose-600">− {formatCurrency(totalExpenses, currency)}</span>
           </div>
           <div className="divide-y divide-gray-50">
@@ -488,18 +557,62 @@ export default function DayEnd() {
         </div>
       )}
 
+      {/* Owner collections — NOT a business cost, kept separate from Expenses above */}
+      {ownerCollections.length > 0 && (
+        <div className="card p-0 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">Collected by Owner This Session</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Money taken out of the register — reduces cash in hand, not profitability</p>
+            </div>
+            <span className="text-xs font-bold text-amber-600">− {formatCurrency(totalCollectedByOwner, currency)}</span>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {ownerCollections.map((oc) => {
+              const meta = getMeta(oc.payment_method); const Icon = meta.Icon
+              return (
+                <div key={oc.id} className="flex items-center gap-3 px-4 py-3">
+                  <div className={`w-8 h-8 flex-shrink-0 rounded-xl flex items-center justify-center ${meta.iconBg} shadow-sm`}>
+                    <Icon className="w-3.5 h-3.5 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{oc.description}</p>
+                    <p className="text-xs text-gray-400">{meta.label}</p>
+                  </div>
+                  <p className="text-sm font-bold text-amber-600 tabular-nums flex-shrink-0">
+                    − {formatCurrency(oc.amount, currency)}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Reconciliation with the Register Balance (Analytics) */}
+      {carryoverFromPrevDays > 0 && (
+        <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3">
+          <Wallet className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-blue-700 leading-relaxed">
+            <span className="font-bold">{formatCurrency(carryoverFromPrevDays, currency)} uncollected from previous days</span>{' '}
+            is still sitting in the register. See Register Balance in Analytics to collect it.
+          </p>
+        </div>
+      )}
+
       {/* Net Summary */}
       {Object.keys(netMap).length > 0 && (
         <div className="card p-0 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100">
             <h2 className="text-sm font-bold text-gray-900">Net Summary</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Cash in hand after expenses</p>
+            <p className="text-xs text-gray-400 mt-0.5">What's left after business expenses and owner withdrawals</p>
           </div>
           <div className="divide-y divide-gray-50">
             {Object.entries(netMap).map(([m, net]) => {
               const meta = getMeta(m); const Icon = meta.Icon
               const col = collections.find((c) => c.payment_method === m)?.total ?? 0
               const spent = expByMethod[m] ?? 0
+              const takenByOwner = ownerCollByMethod[m] ?? 0
               return (
                 <div key={m} className="px-4 py-3">
                   <div className="flex items-center gap-3 mb-1">
@@ -511,11 +624,11 @@ export default function DayEnd() {
                       {formatCurrency(net, currency)}
                     </p>
                   </div>
-                  {spent > 0 && (
-                    <div className="ml-11 flex items-center gap-1.5 text-xs text-gray-400">
+                  {(spent > 0 || takenByOwner > 0) && (
+                    <div className="ml-11 flex flex-wrap items-center gap-1.5 text-xs text-gray-400">
                       <span>{formatCurrency(col, currency)} collected</span>
-                      <ArrowRight className="w-3 h-3" />
-                      <span className="text-rose-400">− {formatCurrency(spent, currency)}</span>
+                      {spent > 0 && <><ArrowRight className="w-3 h-3" /><span className="text-rose-400">− {formatCurrency(spent, currency)} expenses</span></>}
+                      {takenByOwner > 0 && <><ArrowRight className="w-3 h-3" /><span className="text-amber-500">− {formatCurrency(takenByOwner, currency)} taken by owner</span></>}
                     </div>
                   )}
                 </div>

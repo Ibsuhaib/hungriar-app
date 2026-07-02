@@ -314,7 +314,7 @@ export default function Billing() {
       .eq('restaurant_id', restaurant.id)
       .eq('available', true)
       .order('name')
-      .then(({ data }) => setMenuItems(data || []))
+      .then(({ data }) => { if (data) setMenuItems(data) })
   }, [restaurant?.id])
 
   // Optimistic: patch the order locally first so the UI reacts instantly,
@@ -403,7 +403,11 @@ export default function Billing() {
       const tp = Number(restaurantRes.data?.tax_percentage) || 0
       if (!tablesRes.error)     setTables(t)
       if (!restaurantRes.error) setTaxPercentage(tp)
-      pageCache.set(tablesCacheKey, { tables: t, tax: tp })
+      // Only cache a fully successful fetch — caching a failed (offline) result
+      // would poison the cache with empty tables / 0% tax for the whole session.
+      if (!tablesRes.error && !restaurantRes.error) {
+        pageCache.set(tablesCacheKey, { tables: t, tax: tp })
+      }
     } catch {
       // Offline with no cache yet — keep whatever's in state and stop loading.
     } finally {
@@ -411,7 +415,11 @@ export default function Billing() {
     }
   }, [restaurant?.id, tablesCacheKey])
 
-  useEffect(() => { fetchTables() }, [fetchTables])
+  useEffect(() => {
+    fetchTables()
+    window.addEventListener('online', fetchTables)
+    return () => window.removeEventListener('online', fetchTables)
+  }, [fetchTables])
 
   // Load pending bill count + sync on reconnect
   const syncBills = useCallback(async () => {
@@ -537,28 +545,44 @@ export default function Billing() {
   const selectPayment = (tableId, methodId) =>
     setSelectedPayments((prev) => ({ ...prev, [tableId]: methodId }))
 
+  // Count of this table's orders still in the kitchen, from local realtime state
+  const localActiveCount = (tableId) =>
+    allOrders.filter((o) => o.table_id === tableId && o.status !== 'completed' && o.status !== 'cancelled' && o.status !== '_settling').length
+
   const handleClickSettle = async (table) => {
-    // Best-effort — if this fails (e.g. no real connectivity despite
-    // navigator.onLine), just skip the "still in the kitchen" warning and
-    // let the settle flow itself handle online/offline.
+    // Offline: never block the dialog on a network round-trip — the local
+    // realtime state is the best answer we have anyway.
+    if (!navigator.onLine) {
+      setActiveOrdersCount(localActiveCount(table.id))
+      setConfirmTable(table)
+      return
+    }
+    // Best-effort — if this fails or stalls (e.g. no real connectivity despite
+    // navigator.onLine), fall back to the local count after 3.5s so the
+    // confirm dialog never feels stuck.
     try {
-      const { count } = await supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .eq('restaurant_id', restaurant.id)
-        .eq('table_id', table.id)
-        .neq('status', 'completed')
-        .neq('status', 'cancelled')
-      setActiveOrdersCount(count ?? 0)
+      const res = await Promise.race([
+        supabase
+          .from('orders')
+          .select('*', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurant.id)
+          .eq('table_id', table.id)
+          .neq('status', 'completed')
+          .neq('status', 'cancelled'),
+        new Promise((resolve) => setTimeout(() => resolve(null), 3500)),
+      ])
+      setActiveOrdersCount(res?.count ?? localActiveCount(table.id))
     } catch {
-      setActiveOrdersCount(0)
+      setActiveOrdersCount(localActiveCount(table.id))
     }
     setConfirmTable(table)
   }
 
   const handleSettle = async () => {
     if (!confirmTable || settlingTableId) return
-    const allowed = await checkAdminLimit(user?.id)
+    // Rate-limit check is a server RPC — pointless (and slow) while offline;
+    // the offline path writes to IndexedDB only.
+    const allowed = navigator.onLine ? await checkAdminLimit(user?.id) : true
     if (!allowed) { setConfirmTable(null); return }
 
     const tableId = confirmTable.id

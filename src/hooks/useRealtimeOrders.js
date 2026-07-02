@@ -93,12 +93,21 @@ export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterva
     }
   }, [restaurantId, orderId, fetchOrders, patchOrder])
 
-  // Polling fallback — catches any INSERT events Realtime misses
+  // Polling fallback — catches any INSERT events Realtime misses.
+  // Skipped while offline: repeatedly firing doomed fetches just churns the
+  // main thread / console. The 'online' listener below resyncs on reconnect.
   useEffect(() => {
     if (!restaurantId && !orderId) return
-    const timer = setInterval(() => fetchOrders({ silent: true }), pollInterval)
+    const timer = setInterval(() => { if (navigator.onLine) fetchOrders({ silent: true }) }, pollInterval)
     return () => clearInterval(timer)
   }, [restaurantId, orderId, fetchOrders, pollInterval])
+
+  // Resync immediately when connectivity returns
+  useEffect(() => {
+    const onOnline = () => fetchOrders({ silent: true })
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [fetchOrders])
 
   // Refetch when the admin switches back to this browser tab
   useEffect(() => {

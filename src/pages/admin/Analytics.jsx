@@ -158,6 +158,7 @@ export default function Analytics() {
   // Collect sheet state
   const [collectMethod, setCollectMethod] = useState(null)
   const [saving,        setSaving]        = useState(false)
+  const [collectingAll, setCollectingAll] = useState(false)
 
   // Fetch latest reset + analytics, both scoped to current period
   const loadAnalytics = useCallback(async () => {
@@ -216,21 +217,6 @@ export default function Analytics() {
     }
   }
 
-  const handleResetCollections = async () => {
-    if (!window.confirm(
-      'Reset all payment totals to zero?\n\nThis starts a new collection period — all current balances (cash, UPI, card, discounts, round-off) reset to ₹0. No data is deleted; old records are archived.'
-    )) return
-    const { error } = await supabase
-      .from('collection_resets')
-      .insert({ restaurant_id: restaurant.id })
-    if (error) {
-      toast.error('Failed to reset — ' + error.message)
-    } else {
-      toast.success('New collection period started — all balances reset to ₹0')
-      loadAnalytics()
-    }
-  }
-
   if (loading) {
     return (
       <div className="space-y-4">
@@ -270,8 +256,6 @@ export default function Analytics() {
   const totalDiscount       = Number(data.total_discount    || 0)
   const totalRoundOff       = Number(data.total_round_off   || 0)
   const discountCount       = Number(data.discount_count    || 0)
-  const totalExpenses       = Number(data.total_expenses    || 0)
-  const totalCollections    = Number(data.total_collections || 0)
 
   const collectedByMethod  = Object.fromEntries(paymentBreakdown.map((r) => [r.payment_method, r]))
   const expenseByMethod    = Object.fromEntries(expenseBreakdown.map((r) => [r.payment_method, r.total]))
@@ -289,7 +273,69 @@ export default function Analytics() {
       (collectedByMethod[m]?.total ?? 0) - (expenseByMethod[m] ?? 0) - (collectionByMethod[m] ?? 0),
     ])
   )
-  const totalInRestaurant = Number(data.total_revenue) - totalExpenses - totalCollections
+  // Only settled bills have a known payment method, so this is the true
+  // collectible total — matches the sum of the per-method rows above exactly.
+  const totalInRestaurant = Object.values(netByMethod).reduce((s, v) => s + v, 0)
+  // Revenue from completed-but-unsettled kitchen orders — real money owed,
+  // but not yet in any drawer/bank bucket, and can still shrink via a
+  // discount, an item removal, or a cancellation before it's billed.
+  const settledRevenue     = paymentBreakdown.reduce((s, r) => s + Number(r.total || 0), 0)
+  const awaitingSettlement = Math.max(0, Number(data.total_revenue || 0) - settledRevenue)
+
+  const handleCollectAll = async () => {
+    const totalToCollect = Object.values(netByMethod).reduce((s, v) => s + Math.max(0, v), 0)
+    const msg = totalToCollect > 0
+      ? `Collect everything and start a new period?\n\nThis records a collection of ${formatCurrency(totalToCollect, currency)} across all payment methods (so it stays auditable), then resets balances to ₹0.`
+      : 'Nothing to collect right now. Start a new period anyway?'
+    if (!window.confirm(msg)) return
+
+    setCollectingAll(true)
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const rows = Object.entries(netByMethod)
+        .filter(([, net]) => net > 0)
+        .map(([m, net]) => ({
+          restaurant_id:  restaurant.id,
+          description:    `${getMeta(m).label} collection (collect everything)`,
+          amount:         net,
+          payment_method: m,
+          expense_date:   today,
+          category:       'collection',
+        }))
+
+      if (rows.length > 0) {
+        const { error: insErr } = await supabase.from('expenses').insert(rows)
+        if (insErr) throw insErr
+        // Best-effort Telegram notification per method, mirroring the single-Collect flow.
+        for (const row of rows) {
+          invokeEdgeFunction('send-collection-report', {
+            restaurantId:   restaurant.id,
+            restaurantName: restaurant.name,
+            currency,
+            paymentMethod:  row.payment_method,
+            amount:         row.amount,
+            note:           row.description,
+          }).catch(() => {})
+        }
+      }
+
+      const { error: resetErr } = await supabase
+        .from('collection_resets')
+        .insert({ restaurant_id: restaurant.id })
+      if (resetErr) throw resetErr
+
+      toast.success(
+        totalToCollect > 0
+          ? `Collected ${formatCurrency(totalToCollect, currency)} — new period started`
+          : 'New period started'
+      )
+      loadAnalytics()
+    } catch (err) {
+      toast.error('Failed — ' + (err.message || 'unknown error'))
+    } finally {
+      setCollectingAll(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -311,20 +357,20 @@ export default function Analytics() {
         <div className="card p-0 overflow-hidden">
           <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex items-start justify-between gap-2">
             <div>
-              <h2 className="text-sm font-bold text-gray-900 font-display">Payment Collection</h2>
+              <h2 className="text-sm font-bold text-gray-900 font-display">Register Balance</h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                {periodStart
-                  ? <>Since {formatDate(periodStart)}</>
-                  : 'All-time totals per payment method'}
+                Money sitting in the restaurant right now — resets only when you collect it.
+                {periodStart && <> Since {formatDate(periodStart)}.</>}
               </p>
             </div>
             <button
               type="button"
-              onClick={handleResetCollections}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-500 text-xs font-medium hover:bg-red-50 hover:border-red-100 hover:text-red-600 transition-colors flex-shrink-0"
-              title="Start a new collection period — resets all balances to ₹0"
+              onClick={handleCollectAll}
+              disabled={collectingAll}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-500 text-xs font-medium hover:bg-green-50 hover:border-green-100 hover:text-green-600 transition-colors flex-shrink-0 disabled:opacity-50"
+              title="Record a collection for every method's current balance, then start a new period"
             >
-              <RefreshCw className="w-3 h-3" /> Reset All
+              <RefreshCw className={`w-3 h-3 ${collectingAll ? 'animate-spin' : ''}`} /> {collectingAll ? 'Collecting…' : 'Collect All'}
             </button>
           </div>
 
@@ -415,17 +461,28 @@ export default function Analytics() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-bold text-gray-900">Total in restaurant right now</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Revenue {formatCurrency(Number(data.total_revenue), currency)}
-                  {totalExpenses > 0 && <> − expenses {formatCurrency(totalExpenses, currency)}</>}
-                  {totalCollections > 0 && <> − collected {formatCurrency(totalCollections, currency)}</>}
-                </p>
+                <p className="text-xs text-gray-500 mt-0.5">Sum of every payment method above — this is what's actually collectible.</p>
               </div>
               <p className="text-lg font-bold text-green-700 tabular-nums">
                 {formatCurrency(totalInRestaurant, currency)}
               </p>
             </div>
           </div>
+
+          {/* Revenue for completed orders not yet billed — real, but not physically collectible yet */}
+          {awaitingSettlement > 0 && (
+            <div className="border-t border-amber-100 px-4 py-3 bg-amber-50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold text-amber-800">Awaiting settlement</p>
+                  <p className="text-xs text-amber-600 mt-0.5">Kitchen has completed orders not yet billed — can still change before settling.</p>
+                </div>
+                <p className="text-lg font-bold text-amber-700 tabular-nums">
+                  {formatCurrency(awaitingSettlement, currency)}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Discount + Round-off */}
           <div className="border-t border-gray-100 grid grid-cols-2 divide-x divide-gray-100">
@@ -452,6 +509,10 @@ export default function Analytics() {
               </div>
             </div>
           </div>
+
+          <p className="px-4 py-2.5 text-[11px] text-gray-400 bg-gray-50 border-t border-gray-100">
+            This is cumulative across all days. For today's profit/loss only, see Day End.
+          </p>
         </div>
       )}
 
