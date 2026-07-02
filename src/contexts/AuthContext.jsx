@@ -5,6 +5,27 @@ const AuthContext = createContext(null)
 
 export const MAX_PASSWORD_LENGTH = 128
 
+// Cache the resolved profile (role + restaurant) so a reload with no internet
+// can restore it instead of failing every guard and bouncing to login.
+const PROFILE_CACHE_KEY = 'hungriar_profile_cache'
+
+function cacheProfile(userId, role, restaurantAdmin) {
+  try {
+    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ userId, role, restaurantAdmin }))
+  } catch { /* storage full / unavailable — ignore */ }
+}
+
+function readCachedProfile(userId) {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed?.userId === userId ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [user, setUser] = useState(null)
@@ -19,49 +40,70 @@ export function AuthProvider({ children }) {
       return
     }
 
-    const { data: roleRow } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', currentUser.id)
-      .maybeSingle()
+    // If any lookup fails (almost always: offline), fall back to the last known
+    // profile so the Chef / Staff / Admin panels stay usable with no internet.
+    const restoreFromCache = () => {
+      const cached = readCachedProfile(currentUser.id)
+      if (cached) {
+        setRole(cached.role)
+        setRestaurantAdmin(cached.restaurantAdmin)
+        return true
+      }
+      return false
+    }
 
-    const userRole = roleRow?.role ?? null
-    setRole(userRole)
-
-    if (userRole === 'admin') {
-      const { data: adminRow } = await supabase
-        .from('restaurant_admins')
-        .select('*, restaurants(*)')
+    try {
+      const { data: roleRow, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role')
         .eq('user_id', currentUser.id)
         .maybeSingle()
-      setRestaurantAdmin(adminRow ?? null)
-    } else if (userRole === 'chef' || userRole === 'staff') {
-      // Station accounts: look up restaurant via restaurant_stations
-      const { data: stationRow } = await supabase
-        .from('restaurant_stations')
-        .select('id, restaurant_id, role, label, restaurants(*)')
-        .eq('auth_user_id', currentUser.id)
-        .maybeSingle()
-      if (stationRow) {
-        // Shape a compatible restaurantAdmin-like object so existing code that
-        // reads restaurantAdmin.restaurant_id / restaurantAdmin.restaurants works.
-        setRestaurantAdmin({
-          id: stationRow.id,
-          user_id: currentUser.id,
-          restaurant_id: stationRow.restaurant_id,
-          restaurants: stationRow.restaurants,
-          // Sentinel values so ProtectedRoute skips agreement / subscription checks
-          agreement_accepted_at: '__station__',
-          agreement_version: '__station__',
-          isStation: true,
-          stationRole: stationRow.role,
-          stationLabel: stationRow.label,
-        })
-      } else {
-        setRestaurantAdmin(null)
+      if (roleError) throw roleError
+
+      const userRole = roleRow?.role ?? null
+      let admin = null
+
+      if (userRole === 'admin') {
+        const { data: adminRow, error: adminError } = await supabase
+          .from('restaurant_admins')
+          .select('*, restaurants(*)')
+          .eq('user_id', currentUser.id)
+          .maybeSingle()
+        if (adminError) throw adminError
+        admin = adminRow ?? null
+      } else if (userRole === 'chef' || userRole === 'staff') {
+        // Station accounts: look up restaurant via restaurant_stations
+        const { data: stationRow, error: stationError } = await supabase
+          .from('restaurant_stations')
+          .select('id, restaurant_id, role, label, restaurants(*)')
+          .eq('auth_user_id', currentUser.id)
+          .maybeSingle()
+        if (stationError) throw stationError
+        if (stationRow) {
+          // Shape a compatible restaurantAdmin-like object so existing code that
+          // reads restaurantAdmin.restaurant_id / restaurantAdmin.restaurants works.
+          admin = {
+            id: stationRow.id,
+            user_id: currentUser.id,
+            restaurant_id: stationRow.restaurant_id,
+            restaurants: stationRow.restaurants,
+            // Sentinel values so ProtectedRoute skips agreement / subscription checks
+            agreement_accepted_at: '__station__',
+            agreement_version: '__station__',
+            isStation: true,
+            stationRole: stationRow.role,
+            stationLabel: stationRow.label,
+          }
+        }
       }
-    } else {
-      setRestaurantAdmin(null)
+
+      setRole(userRole)
+      setRestaurantAdmin(admin)
+      cacheProfile(currentUser.id, userRole, admin)
+    } catch {
+      // Offline (or transient failure): keep the panels working with the last
+      // known profile. Never throw — the caller relies on this settling loading.
+      restoreFromCache()
     }
   }, [])
 
@@ -117,6 +159,7 @@ export function AuthProvider({ children }) {
   )
 
   const signOut = useCallback(async () => {
+    try { localStorage.removeItem(PROFILE_CACHE_KEY) } catch { /* ignore */ }
     await supabase.auth.signOut()
     setSession(null)
     setUser(null)

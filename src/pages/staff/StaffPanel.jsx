@@ -11,6 +11,7 @@ import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { enqueueOrder, getQueuedOrders, removeQueuedOrder, isNetworkError } from '../../utils/offlineQueue'
+import { pageCache } from '../../utils/pageCache'
 
 // ─── Cart hook (same shape as TakeOrder) ──────────────────────────────────────
 function useCart() {
@@ -50,11 +51,13 @@ export default function StaffPanel() {
   const { restaurant, signOut } = useAuth()
   const currency = restaurant?.currency ?? '₹'
 
-  // ── Shared data ─────────────────────────────────────────────────────────
-  const [tables,     setTables]     = useState([])
-  const [categories, setCategories] = useState([])
-  const [menuItems,  setMenuItems]  = useState([])
-  const [dataLoading, setDataLoading] = useState(true)
+  // ── Shared data (cached so the panel loads instantly and works offline) ───
+  const spCacheKey = `staffpanel-${restaurant?.id}`
+  const spCache    = pageCache.get(spCacheKey) || {}
+  const [tables,     setTables]     = useState(() => spCache.tables || [])
+  const [categories, setCategories] = useState(() => spCache.categories || [])
+  const [menuItems,  setMenuItems]  = useState(() => spCache.menuItems || [])
+  const [dataLoading, setDataLoading] = useState(!spCache.tables)
 
   // ── Navigation state ────────────────────────────────────────────────────
   const [tab,            setTab]            = useState('order')   // 'order' | 'active'
@@ -71,17 +74,24 @@ export default function StaffPanel() {
 
   const fetchData = useCallback(async () => {
     if (!restaurant?.id) return
-    setDataLoading(true)
-    const [t, c, m] = await Promise.all([
-      supabase.from('tables').select('id, table_number').eq('restaurant_id', restaurant.id).order('table_number'),
-      supabase.from('categories').select('id, name, display_order').eq('restaurant_id', restaurant.id).order('display_order'),
-      supabase.from('menu_items').select('id, name, price, category_id, available').eq('restaurant_id', restaurant.id).eq('available', true).order('name'),
-    ])
-    if (!t.error) setTables(t.data ?? [])
-    if (!c.error) setCategories(c.data ?? [])
-    if (!m.error) setMenuItems(m.data ?? [])
-    setDataLoading(false)
-  }, [restaurant?.id])
+    if (!pageCache.has(spCacheKey)) setDataLoading(true)
+    try {
+      const [t, c, m] = await Promise.all([
+        supabase.from('tables').select('id, table_number').eq('restaurant_id', restaurant.id).order('table_number'),
+        supabase.from('categories').select('id, name, display_order').eq('restaurant_id', restaurant.id).order('display_order'),
+        supabase.from('menu_items').select('id, name, price, category_id, available').eq('restaurant_id', restaurant.id).eq('available', true).order('name'),
+      ])
+      const tt = t.data ?? [], cc = c.data ?? [], mm = m.data ?? []
+      if (!t.error) setTables(tt)
+      if (!c.error) setCategories(cc)
+      if (!m.error) setMenuItems(mm)
+      if (!t.error && !c.error && !m.error) pageCache.set(spCacheKey, { tables: tt, categories: cc, menuItems: mm })
+    } catch {
+      // Offline — keep whatever's cached in state.
+    } finally {
+      setDataLoading(false)
+    }
+  }, [restaurant?.id, spCacheKey])
 
   useEffect(() => { fetchData() }, [fetchData])
 

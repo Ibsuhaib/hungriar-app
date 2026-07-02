@@ -84,15 +84,23 @@ function PinEntry({ onSuccess }) {
     setChecking(true)
     setError('')
 
-    const { data } = await supabase
-      .from('restaurants')
-      .select('chef_pin')
-      .eq('id', restaurant.id)
-      .single()
+    // Prefer a fresh value, but fall back to the PIN already in context so the
+    // Chef view still unlocks with no internet (never hangs on the request).
+    let chefPin = restaurant?.chef_pin ?? null
+    try {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('chef_pin')
+        .eq('id', restaurant.id)
+        .maybeSingle()
+      if (!error && data) chefPin = data.chef_pin
+    } catch {
+      /* offline — use the cached chef_pin from context */
+    }
 
-    if (!data?.chef_pin) {
+    if (!chefPin) {
       onSuccess()
-    } else if (data.chef_pin === pin) {
+    } else if (chefPin === pin) {
       setAttempts(0)
       onSuccess()
     } else {
