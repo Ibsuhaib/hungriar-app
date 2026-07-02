@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 import { corsHeaders } from '../_shared/cors.ts'
-import { jsonResponse } from '../_shared/utils.ts'
+import { jsonResponse, getClientIp, checkRateLimit } from '../_shared/utils.ts'
 
 const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -26,6 +26,16 @@ Deno.serve(async (req) => {
 
   if (!phone_number) return jsonResponse({ error: 'phone_number is required' }, 400)
   if (phone_number.length > 20) return jsonResponse({ error: 'Invalid phone number' }, 400)
+
+  // Per-IP rate limit — the per-phone cap below stops targeting one number,
+  // this stops a single client spraying OTPs across many numbers.
+  const ip = getClientIp(req)
+  const ipLimit = await checkRateLimit(supabase, `otp-send-ip:${ip}`, 'customer', 10)
+  if (!ipLimit.allowed) {
+    return jsonResponse({ error: 'Too many requests. Please slow down.' }, 429, {
+      'Retry-After': String(ipLimit.retryAfter),
+    })
+  }
 
   // Check phone has at least one restaurant linked
   const { data: links } = await supabase
