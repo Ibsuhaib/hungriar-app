@@ -53,5 +53,19 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        // Split rarely-changing vendor code into long-cacheable chunks so a
+        // small app change doesn't force users to re-download React/Supabase.
+        // Heavy, route-only libs (recharts, model-viewer, qr-code-styling) are
+        // already isolated by React.lazy + dynamic import, so they don't need
+        // manual chunks here.
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          supabase: ['@supabase/supabase-js'],
+          motion: ['framer-motion'],
+        },
+      },
+    },
   },
 })
