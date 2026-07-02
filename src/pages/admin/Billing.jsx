@@ -7,7 +7,7 @@ import { useRateLimit } from '../../hooks/useRateLimit'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { supabase } from '../../lib/supabase'
 import { formatTime } from '../../utils/formatters'
-import { enqueueBill, getQueuedBills, removeQueuedBill, getQueuedOrders, removeQueuedOrder } from '../../utils/offlineQueue'
+import { enqueueBill, getQueuedBills, removeQueuedBill, getQueuedOrders, removeQueuedOrder, isNetworkError } from '../../utils/offlineQueue'
 import { pageCache } from '../../utils/pageCache'
 
 // Build a fake order list from offline queued orders for a table
@@ -519,14 +519,22 @@ export default function Billing() {
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) { setConfirmTable(null); return }
 
-    const billData = bills.find((b) => b.table.id === confirmTable.id)
-    const adj = getAdj(confirmTable.id)
+    const tableId = confirmTable.id
+    const billData = bills.find((b) => b.table.id === tableId)
+    const adj = getAdj(tableId)
     const { discountAmt, roundOffAmt, finalTotal } = computeFinals(billData?.total || 0, adj)
-    const paymentMethod = selectedPayments[confirmTable.id] || 'other'
+    const paymentMethod = selectedPayments[tableId] || 'other'
+
+    // Real (already-synced) orders backing this bill, if any — hidden optimistically
+    // regardless of whether the settle completes online or falls back to the queue,
+    // so the card never lingers after the admin has already acted on it.
+    const tableOrderIds = completedOrders.filter((o) => o.table_id === tableId).map((o) => o.id)
+    const hideBill    = () => tableOrderIds.forEach((id) => patchOrder(id, { status: '_settling' }))
+    const restoreBill = () => tableOrderIds.forEach((id) => patchOrder(id, { status: 'completed' }))
 
     // ── Offline path — no real bill number can be reserved without a server
     // round-trip, so the printed receipt shows "PREVIEW" until it syncs ───────
-    if (!navigator.onLine) {
+    const saveOffline = async () => {
       if (billData) {
         printReceipt({
           tableOrders: billData.orders,
@@ -541,44 +549,42 @@ export default function Billing() {
           billNumber:   null,
         })
       }
-      try {
-        await enqueueBill({
-          restaurantId:  restaurant.id,
-          tableId:       confirmTable.id,
-          tableNumber:   confirmTable.table_number,
-          paymentMethod,
-          discountAmt,
-          roundOffAmt,
-          finalTotal,
-        })
-        setPendingBills((c) => c + 1)
-        toast.success(`Bill saved offline for Table ${confirmTable.table_number} — will sync when online`, { duration: 5000 })
-        setSelectedPayments((prev) => { const n = { ...prev }; delete n[confirmTable.id]; return n })
-        setAdjustments((prev) => { const n = { ...prev }; delete n[confirmTable.id]; return n })
-        // Remove offline orders for this table since they're now billed
-        for (const o of offlineOrders.filter((o) => o.tableId === confirmTable.id)) {
-          await removeQueuedOrder(o.id)
-        }
-        await loadOfflineOrders()
-      } catch {
-        toast.error('Failed to save bill offline')
+      hideBill()
+      await enqueueBill({
+        restaurantId:  restaurant.id,
+        tableId,
+        tableNumber:   confirmTable.table_number,
+        paymentMethod,
+        discountAmt,
+        roundOffAmt,
+        finalTotal,
+      })
+      setPendingBills((c) => c + 1)
+      toast.success(`Bill saved offline for Table ${confirmTable.table_number} — will sync when online`, { duration: 5000 })
+      setSelectedPayments((prev) => { const n = { ...prev }; delete n[tableId]; return n })
+      setAdjustments((prev) => { const n = { ...prev }; delete n[tableId]; return n })
+      // Remove offline orders for this table since they're now billed
+      for (const o of offlineOrders.filter((o) => o.tableId === tableId)) {
+        await removeQueuedOrder(o.id)
       }
-      setConfirmTable(null)
+      await loadOfflineOrders()
+    }
+
+    setConfirmTable(null)
+    setSettlingTableId(tableId)
+
+    if (!navigator.onLine) {
+      try { await saveOffline() }
+      catch { restoreBill(); toast.error('Failed to save bill offline') }
+      finally { setSettlingTableId(null) }
       return
     }
 
-    // ── Online path: optimistic vanish before RPC ─────────────────────────────
-    const tableId = confirmTable.id
-    // Snapshot order IDs before closing dialog
-    const tableOrderIds = completedOrders.filter((o) => o.table_id === tableId).map((o) => o.id)
-
-    setConfirmTable(null)
-    // Remove from completedOrders instantly — status '_settling' is filtered out of completedOrders
-    tableOrderIds.forEach((id) => patchOrder(id, { status: '_settling' }))
+    // ── Online attempt: optimistic vanish before the RPC ──────────────────────
+    hideBill()
     setSelectedPayments((prev) => { const n = { ...prev }; delete n[tableId]; return n })
     setAdjustments((prev) => { const n = { ...prev }; delete n[tableId]; return n })
 
-    setSettlingTableId(tableId)
     try {
       const { data, error } = await supabase.rpc('reset_table_billing', {
         p_restaurant_id:  restaurant.id,
@@ -589,7 +595,7 @@ export default function Billing() {
       })
       if (error) throw error
       if (!data || data.length === 0) {
-        tableOrderIds.forEach((id) => patchOrder(id, { status: 'completed' }))
+        restoreBill()
         toast.error('No completed orders to settle')
         return
       }
@@ -610,9 +616,16 @@ export default function Billing() {
       toast.success('Bill settled!')
       // Realtime DELETE events from the RPC will remove the orders from allOrders automatically
     } catch (err) {
-      // Rollback optimistic patch
-      tableOrderIds.forEach((id) => patchOrder(id, { status: 'completed' }))
-      toast.error(err.message || 'Failed to settle bill')
+      // navigator.onLine can be true on a WiFi with no real internet. If the
+      // request failed for a network reason, queue it instead of losing it —
+      // the bill stays hidden (already optimistically settled) either way.
+      if (isNetworkError(err)) {
+        try { await saveOffline() }
+        catch { restoreBill(); toast.error('Failed to save bill offline') }
+      } else {
+        restoreBill()
+        toast.error(err.message || 'Failed to settle bill')
+      }
     } finally {
       setSettlingTableId(null)
     }
