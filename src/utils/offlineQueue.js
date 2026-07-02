@@ -12,12 +12,21 @@ const BILL_STORE = 'bill_queue'
  */
 export function isNetworkError(err) {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return true
+  // Per the Fetch spec, a failed network request rejects with a TypeError in
+  // EVERY browser — only the message wording differs. Matching the type is the
+  // reliable, browser-agnostic signal; the message checks are a backup for when
+  // supabase-js hands back a plain error object (no TypeError instance).
+  if (err?.name === 'TypeError') return true
   const msg = (err?.message || String(err ?? '')).toLowerCase()
   return (
-    msg.includes('failed to fetch') ||   // Chrome/Edge
-    msg.includes('load failed') ||        // Safari
-    msg.includes('networkerror') ||       // Firefox
-    msg.includes('network request failed')
+    msg.includes('failed to fetch') ||                 // Chrome/Edge
+    msg.includes('load failed') ||                     // Safari
+    msg.includes('networkerror') ||                    // Firefox
+    msg.includes('network request failed') ||
+    msg.includes('network connection') ||              // Safari: "The network connection was lost."
+    msg.includes('connection was lost') ||             // Safari
+    msg.includes('connection appears to be offline') ||// Safari
+    msg.includes('the internet connection')            // Safari
   )
 }
 
