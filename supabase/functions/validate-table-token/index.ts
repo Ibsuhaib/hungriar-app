@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse, getClientIp, checkRateLimit } from '../_shared/utils.ts'
 import { verifyTableToken } from '../_shared/tableToken.ts'
 
@@ -13,13 +13,13 @@ const TABLE_TOKEN_SECRET = Deno.env.get('TABLE_TOKEN_SECRET')!
  * Returns { valid, restaurantId, restaurantSlug, restaurantName, tableId, tableNumber, expiresAt }
  */
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
+  if (req.method !== 'POST') return jsonResponse(req, { error: 'Method not allowed' }, 405)
 
   try {
     if (!TABLE_TOKEN_SECRET) {
       console.error('TABLE_TOKEN_SECRET is not configured')
-      return jsonResponse({ error: 'Server misconfiguration' }, 500)
+      return jsonResponse(req, { error: 'Server misconfiguration' }, 500)
     }
 
     const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
@@ -27,17 +27,17 @@ Deno.serve(async (req) => {
 
     const rateLimit = await checkRateLimit(supabaseAdmin, ip, 'customer', 60)
     if (!rateLimit.allowed) {
-      return jsonResponse({ error: 'Too many requests, please slow down' }, 429, { 'Retry-After': String(rateLimit.retryAfter) })
+      return jsonResponse(req, { error: 'Too many requests, please slow down' }, 429, { 'Retry-After': String(rateLimit.retryAfter) })
     }
 
     const body = await req.json().catch(() => null)
     if (!body || typeof body.token !== 'string' || body.token.length === 0 || body.token.length > 1000) {
-      return jsonResponse({ valid: false, error: 'Token is required' }, 400)
+      return jsonResponse(req, { valid: false, error: 'Token is required' }, 400)
     }
 
     const result = await verifyTableToken(body.token, TABLE_TOKEN_SECRET)
     if (!result.valid) {
-      return jsonResponse({ valid: false, error: 'Invalid QR code. Please ask staff for a new one.' })
+      return jsonResponse(req, { valid: false, error: 'Invalid QR code. Please ask staff for a new one.' })
     }
 
     const { data: restaurant, error: restaurantError } = await supabaseAdmin
@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
       .maybeSingle()
 
     if (restaurantError || !restaurant || restaurant.subscription_status === 'inactive') {
-      return jsonResponse({ valid: false, error: 'This restaurant is currently unavailable.' })
+      return jsonResponse(req, { valid: false, error: 'This restaurant is currently unavailable.' })
     }
 
     const { data: table, error: tableError } = await supabaseAdmin
@@ -58,10 +58,10 @@ Deno.serve(async (req) => {
       .maybeSingle()
 
     if (tableError || !table) {
-      return jsonResponse({ valid: false, error: 'Table not found.' })
+      return jsonResponse(req, { valid: false, error: 'Table not found.' })
     }
 
-    return jsonResponse({
+    return jsonResponse(req, {
       valid: true,
       restaurantId: restaurant.id,
       restaurantSlug: restaurant.slug,
@@ -72,6 +72,6 @@ Deno.serve(async (req) => {
     })
   } catch (err) {
     console.error('validate-table-token error', err)
-    return jsonResponse({ valid: false, error: 'Internal server error' }, 500)
+    return jsonResponse(req, { valid: false, error: 'Internal server error' }, 500)
   }
 })

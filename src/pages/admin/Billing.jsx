@@ -571,7 +571,11 @@ export default function Billing() {
         p_round_off:      roundOffAmt,
       })
       if (error) throw error
-      if (!data || data.length === 0) { toast.error('No completed orders to settle'); return }
+      if (!data || data.length === 0) {
+        tableOrderIds.forEach((id) => patchOrder(id, { status: 'completed' }))
+        toast.error('No completed orders to settle')
+        return
+      }
       if (billData) {
         printReceipt({
           tableOrders: billData.orders,

@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse } from '../_shared/utils.ts'
 
 const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')!
@@ -28,21 +28,21 @@ function methodLabel(m: string) {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
+  if (req.method !== 'POST') return jsonResponse(req, { error: 'Method not allowed' }, 405)
 
   const authHeader = req.headers.get('Authorization') ?? ''
   const jwt = authHeader.replace('Bearer ', '').trim()
-  if (!jwt) return jsonResponse({ error: 'Missing authorization' }, 401)
+  if (!jwt) return jsonResponse(req, { error: 'Missing authorization' }, 401)
 
   const { data: userData, error: userError } = await adminClient.auth.getUser(jwt)
-  if (userError || !userData?.user) return jsonResponse({ error: 'Invalid session' }, 401)
+  if (userError || !userData?.user) return jsonResponse(req, { error: 'Invalid session' }, 401)
 
   let body: Record<string, unknown>
   try {
     body = await req.json()
   } catch {
-    return jsonResponse({ error: 'Invalid JSON' }, 400)
+    return jsonResponse(req, { error: 'Invalid JSON' }, 400)
   }
 
   const { restaurantId, restaurantName, currency = '₹', collections, expenses, netMap, totalCollected, totalExpenses, totalDiscount = 0, totalRoundOff = 0, billEditsAdded = 0, billEditsRemoved = 0, netTotal, closedAt } = body as {
@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
   }
 
   if (!restaurantId || !collections || !closedAt) {
-    return jsonResponse({ error: 'restaurantId, collections and closedAt are required' }, 400)
+    return jsonResponse(req, { error: 'restaurantId, collections and closedAt are required' }, 400)
   }
 
   // Find owner's phone number for this restaurant
@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
     .maybeSingle()
 
   if (!phoneRow?.phone_number) {
-    return jsonResponse({ skipped: true, reason: 'No owner phone linked to this restaurant' })
+    return jsonResponse(req, { skipped: true, reason: 'No owner phone linked to this restaurant' })
   }
 
   // Find Telegram chat_id for this phone
@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
     .maybeSingle()
 
   if (!tgRow?.chat_id) {
-    return jsonResponse({ skipped: true, reason: 'Owner has not linked Telegram' })
+    return jsonResponse(req, { skipped: true, reason: 'Owner has not linked Telegram' })
   }
 
   // Build report message
@@ -161,8 +161,8 @@ Deno.serve(async (req) => {
   if (!tgRes.ok) {
     const err = await tgRes.text()
     console.error('Telegram sendMessage failed', err)
-    return jsonResponse({ error: 'Failed to send Telegram report' }, 500)
+    return jsonResponse(req, { error: 'Failed to send Telegram report' }, 500)
   }
 
-  return jsonResponse({ success: true })
+  return jsonResponse(req, { success: true })
 })

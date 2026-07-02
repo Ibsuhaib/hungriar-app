@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse, checkRateLimit } from '../_shared/utils.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -29,18 +29,18 @@ function isValidEmail(v: unknown): v is string {
  *  remove_owner_phone           — { userId }              unlink phone number
  */
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
+  if (req.method !== 'POST') return jsonResponse(req, { error: 'Method not allowed' }, 405)
 
   try {
     const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
     const authHeader = req.headers.get('Authorization') ?? ''
     const jwt = authHeader.replace('Bearer ', '').trim()
-    if (!jwt) return jsonResponse({ error: 'Missing authorization' }, 401)
+    if (!jwt) return jsonResponse(req, { error: 'Missing authorization' }, 401)
 
     const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(jwt)
-    if (userError || !userData?.user) return jsonResponse({ error: 'Invalid session' }, 401)
+    if (userError || !userData?.user) return jsonResponse(req, { error: 'Invalid session' }, 401)
     const callerId = userData.user.id
 
     const { data: roleRow } = await supabaseAdmin
@@ -49,15 +49,15 @@ Deno.serve(async (req) => {
       .eq('user_id', callerId)
       .maybeSingle()
 
-    if (roleRow?.role !== 'super_admin') return jsonResponse({ error: 'Forbidden' }, 403)
+    if (roleRow?.role !== 'super_admin') return jsonResponse(req, { error: 'Forbidden' }, 403)
 
     const rateLimit = await checkRateLimit(supabaseAdmin, callerId, 'admin', 120)
     if (!rateLimit.allowed) {
-      return jsonResponse({ error: 'Too many requests' }, 429, { 'Retry-After': String(rateLimit.retryAfter) })
+      return jsonResponse(req, { error: 'Too many requests' }, 429, { 'Retry-After': String(rateLimit.retryAfter) })
     }
 
     const body = await req.json().catch(() => null)
-    if (!body || typeof body.action !== 'string') return jsonResponse({ error: 'action is required' }, 400)
+    if (!body || typeof body.action !== 'string') return jsonResponse(req, { error: 'action is required' }, 400)
 
     // ── list_admins ──────────────────────────────────────────────────────────
     if (body.action === 'list_admins') {
@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
 
       if (error) {
         console.error('list_admins query error', error)
-        return jsonResponse({ error: 'Failed to load admins' }, 500)
+        return jsonResponse(req, { error: 'Failed to load admins' }, 500)
       }
 
       // Bulk-fetch phone numbers per restaurant
@@ -117,45 +117,45 @@ Deno.serve(async (req) => {
         })
       }
 
-      return jsonResponse({ admins: result })
+      return jsonResponse(req, { admins: result })
     }
 
     // ── reset_password ───────────────────────────────────────────────────────
     if (body.action === 'reset_password') {
       if (typeof body.userId !== 'string' || typeof body.newPassword !== 'string') {
-        return jsonResponse({ error: 'userId and newPassword are required' }, 400)
+        return jsonResponse(req, { error: 'userId and newPassword are required' }, 400)
       }
       if (body.newPassword.length < MIN_PASSWORD_LENGTH || body.newPassword.length > MAX_PASSWORD_LENGTH) {
-        return jsonResponse({ error: `Password must be ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters` }, 400)
+        return jsonResponse(req, { error: `Password must be ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters` }, 400)
       }
 
       const { error } = await supabaseAdmin.auth.admin.updateUserById(body.userId, { password: body.newPassword })
       if (error) {
         console.error('reset_password error', error)
-        return jsonResponse({ error: error.message }, 500)
+        return jsonResponse(req, { error: error.message }, 500)
       }
 
-      return jsonResponse({ success: true })
+      return jsonResponse(req, { success: true })
     }
 
     // ── create_restaurant_admin ──────────────────────────────────────────────
     if (body.action === 'create_restaurant_admin') {
       if (!isValidEmail(body.email) || typeof body.password !== 'string' || !isValidUUID(body.restaurantId)) {
-        return jsonResponse({ error: 'Valid email, password and restaurantId (UUID) are required' }, 400)
+        return jsonResponse(req, { error: 'Valid email, password and restaurantId (UUID) are required' }, 400)
       }
       if (body.password.length < MIN_PASSWORD_LENGTH || body.password.length > MAX_PASSWORD_LENGTH) {
-        return jsonResponse({ error: `Password must be ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters` }, 400)
+        return jsonResponse(req, { error: `Password must be ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters` }, 400)
       }
 
       const { data: restaurant, error: restaurantError } = await supabaseAdmin
         .from('restaurants').select('id').eq('id', body.restaurantId).maybeSingle()
-      if (restaurantError || !restaurant) return jsonResponse({ error: 'Restaurant not found' }, 404)
+      if (restaurantError || !restaurant) return jsonResponse(req, { error: 'Restaurant not found' }, 404)
 
       const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email: body.email, password: body.password, email_confirm: true,
       })
       if (createError || !created?.user) {
-        return jsonResponse({ error: createError?.message || 'Failed to create admin user' }, 500)
+        return jsonResponse(req, { error: createError?.message || 'Failed to create admin user' }, 500)
       }
 
       const newUserId = created.user.id
@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
       if (roleError) {
         console.error('role insert error', roleError)
         await supabaseAdmin.auth.admin.deleteUser(newUserId)
-        return jsonResponse({ error: 'Failed to assign admin role' }, 500)
+        return jsonResponse(req, { error: 'Failed to assign admin role' }, 500)
       }
 
       const { error: linkError } = await supabaseAdmin
@@ -173,7 +173,7 @@ Deno.serve(async (req) => {
       if (linkError) {
         console.error('restaurant link error', linkError)
         await supabaseAdmin.auth.admin.deleteUser(newUserId)
-        return jsonResponse({ error: 'Failed to link admin to restaurant' }, 500)
+        return jsonResponse(req, { error: 'Failed to link admin to restaurant' }, 500)
       }
 
       // Optionally link phone number at creation time
@@ -187,29 +187,29 @@ Deno.serve(async (req) => {
         if (phoneError) console.error('phone link error (non-fatal)', phoneError)
       }
 
-      return jsonResponse({ userId: newUserId, email: created.user.email })
+      return jsonResponse(req, { userId: newUserId, email: created.user.email })
     }
 
     // ── delete_restaurant_admin_user ─────────────────────────────────────────
     if (body.action === 'delete_restaurant_admin_user') {
-      if (!isValidUUID(body.userId)) return jsonResponse({ error: 'userId must be a valid UUID' }, 400)
+      if (!isValidUUID(body.userId)) return jsonResponse(req, { error: 'userId must be a valid UUID' }, 400)
 
       const { error } = await supabaseAdmin.auth.admin.deleteUser(body.userId)
       if (error) {
         console.error('delete user error', error)
-        return jsonResponse({ error: error.message }, 500)
+        return jsonResponse(req, { error: error.message }, 500)
       }
 
-      return jsonResponse({ success: true })
+      return jsonResponse(req, { success: true })
     }
 
     // ── set_owner_phone ──────────────────────────────────────────────────────
     if (body.action === 'set_owner_phone') {
       if (!isValidUUID(body.restaurantId) || typeof body.phoneNumber !== 'string') {
-        return jsonResponse({ error: 'restaurantId (UUID) and phoneNumber are required' }, 400)
+        return jsonResponse(req, { error: 'restaurantId (UUID) and phoneNumber are required' }, 400)
       }
       const phone = body.phoneNumber.trim()
-      if (!phone || phone.length > 20) return jsonResponse({ error: 'Invalid phone number' }, 400)
+      if (!phone || phone.length > 20) return jsonResponse(req, { error: 'Invalid phone number' }, 400)
 
       const { error } = await supabaseAdmin
         .from('phone_restaurant_links')
@@ -220,27 +220,27 @@ Deno.serve(async (req) => {
 
       if (error) {
         console.error('set_owner_phone error', error)
-        return jsonResponse({ error: error.message }, 500)
+        return jsonResponse(req, { error: error.message }, 500)
       }
 
-      return jsonResponse({ success: true })
+      return jsonResponse(req, { success: true })
     }
 
     // ── remove_owner_phone ───────────────────────────────────────────────────
     if (body.action === 'remove_owner_phone') {
-      if (!isValidUUID(body.restaurantId)) return jsonResponse({ error: 'restaurantId must be a valid UUID' }, 400)
+      if (!isValidUUID(body.restaurantId)) return jsonResponse(req, { error: 'restaurantId must be a valid UUID' }, 400)
 
       await supabaseAdmin
         .from('phone_restaurant_links')
         .delete()
         .eq('restaurant_id', body.restaurantId)
 
-      return jsonResponse({ success: true })
+      return jsonResponse(req, { success: true })
     }
 
-    return jsonResponse({ error: 'Unknown action' }, 400)
+    return jsonResponse(req, { error: 'Unknown action' }, 400)
   } catch (err) {
     console.error('admin-management error', err)
-    return jsonResponse({ error: 'Internal server error' }, 500)
+    return jsonResponse(req, { error: 'Internal server error' }, 500)
   }
 })

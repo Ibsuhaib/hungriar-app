@@ -33,14 +33,3 @@ export function getCorsHeaders(req: Request): Record<string, string> {
     'Vary': 'Origin',
   }
 }
-
-/**
- * Static fallback used by helpers that don't have the request in scope.
- * Resolves to the configured primary origin (or "*" when unset).
- */
-export const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': resolveAllowOrigin(null),
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Vary': 'Origin',
-}

@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse } from '../_shared/utils.ts'
 
 const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')!
@@ -34,28 +34,28 @@ function fmtTime(iso: string) {
  * so it never blocks the collection flow on the client.
  */
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
+  if (req.method !== 'POST') return jsonResponse(req, { error: 'Method not allowed' }, 405)
 
   const jwt = (req.headers.get('Authorization') ?? '').replace('Bearer ', '').trim()
-  if (!jwt) return jsonResponse({ error: 'Missing authorization' }, 401)
+  if (!jwt) return jsonResponse(req, { error: 'Missing authorization' }, 401)
 
   const { data: userData, error: userError } = await adminClient.auth.getUser(jwt)
-  if (userError || !userData?.user) return jsonResponse({ error: 'Invalid session' }, 401)
+  if (userError || !userData?.user) return jsonResponse(req, { error: 'Invalid session' }, 401)
   const userId = userData.user.id
 
   let body: Record<string, unknown>
   try {
     body = await req.json()
   } catch {
-    return jsonResponse({ error: 'Invalid JSON' }, 400)
+    return jsonResponse(req, { error: 'Invalid JSON' }, 400)
   }
 
   const restaurantId = String(body.restaurantId ?? '')
-  if (!UUID_RE.test(restaurantId)) return jsonResponse({ error: 'Valid restaurantId is required' }, 400)
+  if (!UUID_RE.test(restaurantId)) return jsonResponse(req, { error: 'Valid restaurantId is required' }, 400)
 
   const amount = Number(body.amount)
-  if (!Number.isFinite(amount) || amount <= 0) return jsonResponse({ error: 'Valid amount is required' }, 400)
+  if (!Number.isFinite(amount) || amount <= 0) return jsonResponse(req, { error: 'Valid amount is required' }, 400)
 
   // Authorize: caller must own this restaurant (or be super admin).
   const { data: roleRow } = await adminClient
@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
     const { data: adminRow } = await adminClient
       .from('restaurant_admins').select('id')
       .eq('user_id', userId).eq('restaurant_id', restaurantId).maybeSingle()
-    if (!adminRow) return jsonResponse({ error: 'Not authorized for this restaurant' }, 403)
+    if (!adminRow) return jsonResponse(req, { error: 'Not authorized for this restaurant' }, 403)
   }
 
   const restaurantName = String(body.restaurantName ?? 'Restaurant')
@@ -79,12 +79,12 @@ Deno.serve(async (req) => {
   const { data: phoneRow } = await adminClient
     .from('phone_restaurant_links').select('phone_number')
     .eq('restaurant_id', restaurantId).maybeSingle()
-  if (!phoneRow?.phone_number) return jsonResponse({ skipped: true, reason: 'No owner phone linked' })
+  if (!phoneRow?.phone_number) return jsonResponse(req, { skipped: true, reason: 'No owner phone linked' })
 
   const { data: tgRow } = await adminClient
     .from('telegram_accounts').select('chat_id')
     .eq('phone_number', phoneRow.phone_number).maybeSingle()
-  if (!tgRow?.chat_id) return jsonResponse({ skipped: true, reason: 'Owner has not linked Telegram' })
+  if (!tgRow?.chat_id) return jsonResponse(req, { skipped: true, reason: 'Owner has not linked Telegram' })
 
   const lines: string[] = []
   lines.push('💰 *Money Collected*')
@@ -105,8 +105,8 @@ Deno.serve(async (req) => {
 
   if (!tgRes.ok) {
     console.error('Telegram sendMessage failed', await tgRes.text())
-    return jsonResponse({ error: 'Failed to send Telegram message' }, 500)
+    return jsonResponse(req, { error: 'Failed to send Telegram message' }, 500)
   }
 
-  return jsonResponse({ success: true })
+  return jsonResponse(req, { success: true })
 })

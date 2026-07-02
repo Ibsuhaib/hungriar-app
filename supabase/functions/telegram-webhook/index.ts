@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
   try {
     body = await req.json()
   } catch {
-    return jsonResponse({ error: 'Invalid JSON' }, 400)
+    return jsonResponse(req, { error: 'Invalid JSON' }, 400)
   }
 
   const message = (body?.message ?? body?.edited_message) as Record<string, unknown> | undefined

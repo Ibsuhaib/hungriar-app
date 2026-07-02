@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse, checkRateLimit } from '../_shared/utils.ts'
 import { signTableToken } from '../_shared/tableToken.ts'
 
@@ -13,37 +13,37 @@ const TABLE_TOKEN_SECRET = Deno.env.get('TABLE_TOKEN_SECRET')!
  * Returns { token, restaurantSlug, tableNumber }
  */
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
+  if (req.method !== 'POST') return jsonResponse(req, { error: 'Method not allowed' }, 405)
 
   try {
     if (!TABLE_TOKEN_SECRET) {
       console.error('TABLE_TOKEN_SECRET is not configured')
-      return jsonResponse({ error: 'Server misconfiguration' }, 500)
+      return jsonResponse(req, { error: 'Server misconfiguration' }, 500)
     }
 
     const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
     const authHeader = req.headers.get('Authorization') ?? ''
     const jwt = authHeader.replace('Bearer ', '').trim()
-    if (!jwt) return jsonResponse({ error: 'Missing authorization' }, 401)
+    if (!jwt) return jsonResponse(req, { error: 'Missing authorization' }, 401)
 
     const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(jwt)
-    if (userError || !userData?.user) return jsonResponse({ error: 'Invalid session' }, 401)
+    if (userError || !userData?.user) return jsonResponse(req, { error: 'Invalid session' }, 401)
     const userId = userData.user.id
 
     const rateLimit = await checkRateLimit(supabaseAdmin, userId, 'admin', 120)
     if (!rateLimit.allowed) {
-      return jsonResponse({ error: 'Too many requests' }, 429, { 'Retry-After': String(rateLimit.retryAfter) })
+      return jsonResponse(req, { error: 'Too many requests' }, 429, { 'Retry-After': String(rateLimit.retryAfter) })
     }
 
     const body = await req.json().catch(() => null)
     if (!body || typeof body.restaurantId !== 'string' || typeof body.tableId !== 'string') {
-      return jsonResponse({ error: 'restaurantId and tableId are required' }, 400)
+      return jsonResponse(req, { error: 'restaurantId and tableId are required' }, 400)
     }
     const { restaurantId, tableId } = body
     if (restaurantId.length > 64 || tableId.length > 64) {
-      return jsonResponse({ error: 'Invalid identifiers' }, 400)
+      return jsonResponse(req, { error: 'Invalid identifiers' }, 400)
     }
 
     const { data: roleRow } = await supabaseAdmin
@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
         .eq('restaurant_id', restaurantId)
         .maybeSingle()
 
-      if (!adminRow) return jsonResponse({ error: 'Not authorized for this restaurant' }, 403)
+      if (!adminRow) return jsonResponse(req, { error: 'Not authorized for this restaurant' }, 403)
     }
 
     const { data: tableRow, error: tableError } = await supabaseAdmin
@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
       .eq('restaurant_id', restaurantId)
       .maybeSingle()
 
-    if (tableError || !tableRow) return jsonResponse({ error: 'Table not found' }, 404)
+    if (tableError || !tableRow) return jsonResponse(req, { error: 'Table not found' }, 404)
 
     const { data: restaurant, error: restaurantError } = await supabaseAdmin
       .from('restaurants')
@@ -79,17 +79,17 @@ Deno.serve(async (req) => {
       .eq('id', restaurantId)
       .maybeSingle()
 
-    if (restaurantError || !restaurant) return jsonResponse({ error: 'Restaurant not found' }, 404)
+    if (restaurantError || !restaurant) return jsonResponse(req, { error: 'Restaurant not found' }, 404)
 
     const token = await signTableToken(restaurantId, tableId, TABLE_TOKEN_SECRET)
 
-    return jsonResponse({
+    return jsonResponse(req, {
       token,
       restaurantSlug: restaurant.slug,
       tableNumber: tableRow.table_number,
     })
   } catch (err) {
     console.error('generate-table-token error', err)
-    return jsonResponse({ error: 'Internal server error' }, 500)
+    return jsonResponse(req, { error: 'Internal server error' }, 500)
   }
 })

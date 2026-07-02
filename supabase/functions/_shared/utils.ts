@@ -1,9 +1,9 @@
-import { corsHeaders } from './cors.ts'
+import { getCorsHeaders } from './cors.ts'
 
-export function jsonResponse(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+export function jsonResponse(req: Request, body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json', ...extraHeaders },
+    headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json', ...extraHeaders },
   })
 }
 

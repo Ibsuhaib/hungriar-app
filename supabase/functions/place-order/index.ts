@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse, getClientIp, checkRateLimit } from '../_shared/utils.ts'
 import { verifyTableToken } from '../_shared/tableToken.ts'
 
@@ -28,13 +28,13 @@ interface RequestedItem {
  * is written.
  */
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
+  if (req.method !== 'POST') return jsonResponse(req, { error: 'Method not allowed' }, 405)
 
   try {
     if (!TABLE_TOKEN_SECRET) {
       console.error('TABLE_TOKEN_SECRET is not configured')
-      return jsonResponse({ error: 'Server misconfiguration' }, 500)
+      return jsonResponse(req, { error: 'Server misconfiguration' }, 500)
     }
 
     const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
@@ -42,23 +42,23 @@ Deno.serve(async (req) => {
 
     const rateLimit = await checkRateLimit(supabaseAdmin, ip, 'customer', 60)
     if (!rateLimit.allowed) {
-      return jsonResponse({ error: 'Too many requests, please slow down' }, 429, { 'Retry-After': String(rateLimit.retryAfter) })
+      return jsonResponse(req, { error: 'Too many requests, please slow down' }, 429, { 'Retry-After': String(rateLimit.retryAfter) })
     }
 
     const body = await req.json().catch(() => null)
     if (!body || typeof body.token !== 'string' || !Array.isArray(body.items) || body.items.length === 0) {
-      return jsonResponse({ error: 'Invalid order payload' }, 400)
+      return jsonResponse(req, { error: 'Invalid order payload' }, 400)
     }
 
     if (body.items.length > MAX_ITEMS) {
-      return jsonResponse({ error: 'Too many distinct items in order' }, 400)
+      return jsonResponse(req, { error: 'Too many distinct items in order' }, 400)
     }
 
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId : null
 
     const tokenResult = await verifyTableToken(body.token, TABLE_TOKEN_SECRET)
     if (!tokenResult.valid) {
-      return jsonResponse({ error: 'Invalid QR code. Please rescan the QR code.' }, 401)
+      return jsonResponse(req, { error: 'Invalid QR code. Please rescan the QR code.' }, 401)
     }
 
     const restaurantId = tokenResult.restaurantId!
@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
       .maybeSingle()
 
     if (restaurantError || !restaurant || restaurant.subscription_status === 'inactive') {
-      return jsonResponse({ error: 'This restaurant is currently unavailable.' }, 403)
+      return jsonResponse(req, { error: 'This restaurant is currently unavailable.' }, 403)
     }
 
     const { data: table, error: tableError } = await supabaseAdmin
@@ -82,12 +82,12 @@ Deno.serve(async (req) => {
       .maybeSingle()
 
     if (tableError || !table) {
-      return jsonResponse({ error: 'Table not found.' }, 404)
+      return jsonResponse(req, { error: 'Table not found.' }, 404)
     }
 
     // Reject stale sessions — bill was settled and session rotated
     if (sessionId && table.session_id !== sessionId) {
-      return jsonResponse({ error: 'session_ended', message: 'This table\'s bill has been settled. Please rescan the QR code to start a new order.' }, 401)
+      return jsonResponse(req, { error: 'session_ended', message: 'This table\'s bill has been settled. Please rescan the QR code to start a new order.' }, 401)
     }
 
     // Sanitize + dedupe requested items (sum quantities for duplicate ids)
@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
     }
 
     if (requested.size === 0) {
-      return jsonResponse({ error: 'No valid items in order' }, 400)
+      return jsonResponse(req, { error: 'No valid items in order' }, 400)
     }
 
     const menuItemIds = Array.from(requested.keys())
@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
 
     if (menuError) {
       console.error('menu lookup error', menuError)
-      return jsonResponse({ error: 'Failed to validate menu items' }, 500)
+      return jsonResponse(req, { error: 'Failed to validate menu items' }, 500)
     }
 
     const menuById = new Map((menuItems ?? []).map((m) => [m.id as string, m]))
@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
     }
 
     if (orderItemsPayload.length === 0) {
-      return jsonResponse({ error: 'None of the requested items are currently available' }, 400)
+      return jsonResponse(req, { error: 'None of the requested items are currently available' }, 400)
     }
 
     const taxPercentage = Number(restaurant.tax_percentage) || 0
@@ -160,7 +160,7 @@ Deno.serve(async (req) => {
 
     if (orderError || !order) {
       console.error('order insert error', orderError)
-      return jsonResponse({ error: 'Failed to place order' }, 500)
+      return jsonResponse(req, { error: 'Failed to place order' }, 500)
     }
 
     const itemsToInsert = orderItemsPayload.map((item) => ({ ...item, order_id: order.id }))
@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
     if (itemsError) {
       console.error('order_items insert error', itemsError)
       await supabaseAdmin.from('orders').delete().eq('id', order.id)
-      return jsonResponse({ error: 'Failed to place order' }, 500)
+      return jsonResponse(req, { error: 'Failed to place order' }, 500)
     }
 
     // Send push notifications (fire-and-forget — never blocks the response)
@@ -179,7 +179,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    return jsonResponse(
+    return jsonResponse(req, 
       {
         orderId: order.id,
         status: order.status,
@@ -190,7 +190,7 @@ Deno.serve(async (req) => {
     )
   } catch (err) {
     console.error('place-order error', err)
-    return jsonResponse({ error: 'Internal server error' }, 500)
+    return jsonResponse(req, { error: 'Internal server error' }, 500)
   }
 })
 

@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse, checkRateLimit } from '../_shared/utils.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -114,27 +114,27 @@ function sanitizeFileName(name: string): string {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
+  if (req.method !== 'POST') return jsonResponse(req, { error: 'Method not allowed' }, 405)
 
   try {
     if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME || !R2_PUBLIC_URL) {
-      return jsonResponse({ error: 'Cloudflare R2 is not configured on the server' }, 500)
+      return jsonResponse(req, { error: 'Cloudflare R2 is not configured on the server' }, 500)
     }
 
     const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
     const authHeader = req.headers.get('Authorization') ?? ''
     const jwt = authHeader.replace('Bearer ', '').trim()
-    if (!jwt) return jsonResponse({ error: 'Missing authorization' }, 401)
+    if (!jwt) return jsonResponse(req, { error: 'Missing authorization' }, 401)
 
     const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(jwt)
-    if (userError || !userData?.user) return jsonResponse({ error: 'Invalid session' }, 401)
+    if (userError || !userData?.user) return jsonResponse(req, { error: 'Invalid session' }, 401)
     const userId = userData.user.id
 
     const rateLimit = await checkRateLimit(supabaseAdmin, userId, 'admin', 120)
     if (!rateLimit.allowed) {
-      return jsonResponse({ error: 'Too many requests' }, 429, { 'Retry-After': String(rateLimit.retryAfter) })
+      return jsonResponse(req, { error: 'Too many requests' }, 429, { 'Retry-After': String(rateLimit.retryAfter) })
     }
 
     const body = await req.json().catch(() => null)
@@ -145,13 +145,13 @@ Deno.serve(async (req) => {
       typeof body.fileName !== 'string' ||
       typeof body.fileType !== 'string'
     ) {
-      return jsonResponse({ error: 'restaurantId, folder, fileName and fileType are required' }, 400)
+      return jsonResponse(req, { error: 'restaurantId, folder, fileName and fileType are required' }, 400)
     }
 
     const { restaurantId, folder, fileName, fileType } = body
 
-    if (!ALLOWED_FOLDERS.has(folder)) return jsonResponse({ error: 'Invalid folder' }, 400)
-    if (!ALLOWED_TYPES.has(fileType)) return jsonResponse({ error: 'Unsupported file type' }, 400)
+    if (!ALLOWED_FOLDERS.has(folder)) return jsonResponse(req, { error: 'Invalid folder' }, 400)
+    if (!ALLOWED_TYPES.has(fileType)) return jsonResponse(req, { error: 'Unsupported file type' }, 400)
 
     const { data: roleRow } = await supabaseAdmin
       .from('user_roles')
@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
         .eq('restaurant_id', restaurantId)
         .maybeSingle()
 
-      if (!adminRow) return jsonResponse({ error: 'Not authorized for this restaurant' }, 403)
+      if (!adminRow) return jsonResponse(req, { error: 'Not authorized for this restaurant' }, 403)
     }
 
     const key = `${restaurantId}/${folder}/${crypto.randomUUID()}-${sanitizeFileName(fileName)}`
@@ -184,9 +184,9 @@ Deno.serve(async (req) => {
 
     const publicUrl = `${R2_PUBLIC_URL.replace(/\/+$/, '')}/${key}`
 
-    return jsonResponse({ uploadUrl, publicUrl, key })
+    return jsonResponse(req, { uploadUrl, publicUrl, key })
   } catch (err) {
     console.error('r2-presign error', err)
-    return jsonResponse({ error: 'Internal server error' }, 500)
+    return jsonResponse(req, { error: 'Internal server error' }, 500)
   }
 })

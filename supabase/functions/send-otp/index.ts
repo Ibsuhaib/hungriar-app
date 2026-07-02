@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse, getClientIp, checkRateLimit } from '../_shared/utils.ts'
 
 const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')!
@@ -13,26 +13,26 @@ function generateOTP(): string {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
+  if (req.method !== 'POST') return jsonResponse(req, { error: 'Method not allowed' }, 405)
 
   let phone_number: string
   try {
     const body = await req.json()
     phone_number = (body?.phone_number ?? '').trim()
   } catch {
-    return jsonResponse({ error: 'Invalid JSON' }, 400)
+    return jsonResponse(req, { error: 'Invalid JSON' }, 400)
   }
 
-  if (!phone_number) return jsonResponse({ error: 'phone_number is required' }, 400)
-  if (phone_number.length > 20) return jsonResponse({ error: 'Invalid phone number' }, 400)
+  if (!phone_number) return jsonResponse(req, { error: 'phone_number is required' }, 400)
+  if (phone_number.length > 20) return jsonResponse(req, { error: 'Invalid phone number' }, 400)
 
   // Per-IP rate limit — the per-phone cap below stops targeting one number,
   // this stops a single client spraying OTPs across many numbers.
   const ip = getClientIp(req)
   const ipLimit = await checkRateLimit(supabase, `otp-send-ip:${ip}`, 'customer', 10)
   if (!ipLimit.allowed) {
-    return jsonResponse({ error: 'Too many requests. Please slow down.' }, 429, {
+    return jsonResponse(req, { error: 'Too many requests. Please slow down.' }, 429, {
       'Retry-After': String(ipLimit.retryAfter),
     })
   }
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     .limit(1)
 
   if (!links?.length) {
-    return jsonResponse({ error: 'Phone number not registered. Contact support.' }, 404)
+    return jsonResponse(req, { error: 'Phone number not registered. Contact support.' }, 404)
   }
 
   // Check Telegram is linked
@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     .maybeSingle()
 
   if (!telegramRow) {
-    return jsonResponse({ error: 'telegram_not_linked' }, 403)
+    return jsonResponse(req, { error: 'telegram_not_linked' }, 403)
   }
 
   // Rate limit: max 3 OTPs per phone per 10 minutes
@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     .gte('created_at', tenMinutesAgo)
 
   if ((count ?? 0) >= 3) {
-    return jsonResponse({ error: 'Too many OTP requests. Try again in 10 minutes.' }, 429)
+    return jsonResponse(req, { error: 'Too many OTP requests. Try again in 10 minutes.' }, 429)
   }
 
   const code = generateOTP()
@@ -89,8 +89,8 @@ Deno.serve(async (req) => {
   if (!tgRes.ok) {
     const err = await tgRes.text()
     console.error('Telegram sendMessage failed', err)
-    return jsonResponse({ error: 'Failed to send OTP via Telegram.' }, 500)
+    return jsonResponse(req, { error: 'Failed to send OTP via Telegram.' }, 500)
   }
 
-  return jsonResponse({ success: true })
+  return jsonResponse(req, { success: true })
 })

@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse, getClientIp, checkRateLimit } from '../_shared/utils.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -10,8 +10,8 @@ const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
+  if (req.method !== 'POST') return jsonResponse(req, { error: 'Method not allowed' }, 405)
 
   let phone_number: string, code: string
   try {
@@ -19,14 +19,14 @@ Deno.serve(async (req) => {
     phone_number = (body?.phone_number ?? '').trim()
     code = (body?.code ?? '').trim()
   } catch {
-    return jsonResponse({ error: 'Invalid JSON' }, 400)
+    return jsonResponse(req, { error: 'Invalid JSON' }, 400)
   }
 
   if (!phone_number || !code) {
-    return jsonResponse({ error: 'phone_number and code are required' }, 400)
+    return jsonResponse(req, { error: 'phone_number and code are required' }, 400)
   }
-  if (phone_number.length > 20) return jsonResponse({ error: 'Invalid phone number' }, 400)
-  if (!/^\d{6}$/.test(code)) return jsonResponse({ error: 'Code must be 6 digits' }, 400)
+  if (phone_number.length > 20) return jsonResponse(req, { error: 'Invalid phone number' }, 400)
+  if (!/^\d{6}$/.test(code)) return jsonResponse(req, { error: 'Code must be 6 digits' }, 400)
 
   // Brute-force protection: cap verification attempts. Without this a 6-digit
   // code (1e6 combos) could be exhausted within the 5-minute validity window.
@@ -34,13 +34,13 @@ Deno.serve(async (req) => {
   const ip = getClientIp(req)
   const phoneLimit = await checkRateLimit(adminClient, `otp-verify:${phone_number}`, 'customer', 8)
   if (!phoneLimit.allowed) {
-    return jsonResponse({ error: 'Too many attempts. Please request a new code.' }, 429, {
+    return jsonResponse(req, { error: 'Too many attempts. Please request a new code.' }, 429, {
       'Retry-After': String(phoneLimit.retryAfter),
     })
   }
   const ipLimit = await checkRateLimit(adminClient, `otp-verify-ip:${ip}`, 'customer', 30)
   if (!ipLimit.allowed) {
-    return jsonResponse({ error: 'Too many attempts. Please slow down.' }, 429, {
+    return jsonResponse(req, { error: 'Too many attempts. Please slow down.' }, 429, {
       'Retry-After': String(ipLimit.retryAfter),
     })
   }
@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     .select('id')
 
   if (updateError || !updated?.length) {
-    return jsonResponse({ error: 'Invalid or expired code.' }, 401)
+    return jsonResponse(req, { error: 'Invalid or expired code.' }, 401)
   }
 
   // Get all restaurants linked to this phone
@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
     .eq('phone_number', phone_number)
 
   if (!links?.length) {
-    return jsonResponse({ error: 'No restaurants found for this phone.' }, 404)
+    return jsonResponse(req, { error: 'No restaurants found for this phone.' }, 404)
   }
 
   // Get the admin email for each restaurant
@@ -96,5 +96,5 @@ Deno.serve(async (req) => {
     })
   }
 
-  return jsonResponse({ restaurants })
+  return jsonResponse(req, { restaurants })
 })
