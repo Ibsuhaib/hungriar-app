@@ -372,10 +372,10 @@ export default function StaffPanel() {
                   </div>
                   <ul className="space-y-1">
                     {(order.order_items ?? [])
-                      .filter((it) => it.status !== 'cancelled')
+                      .filter((it) => !it.cancelled)
                       .map((it) => (
                         <li key={it.id} className="flex justify-between text-sm text-gray-600">
-                          <span>{it.quantity}× {it.menu_item_name}</span>
+                          <span>{it.quantity}× {it.item_name}</span>
                           <span className="font-medium">{formatCurrency(it.unit_price * it.quantity, currency)}</span>
                         </li>
                       ))
