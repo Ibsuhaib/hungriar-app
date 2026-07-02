@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Receipt, CheckCircle2, Printer, AlertCircle, TriangleAlert, Banknote, CreditCard, Smartphone, Wallet, WifiOff, RefreshCw, Plus, Minus, Trash2, Search } from 'lucide-react'
@@ -280,6 +280,7 @@ export default function Billing() {
   // just hides the already-settled card in the meantime.
   const [queuedBillTableIds, setQueuedBillTableIds] = useState([])
   const [syncing, setSyncing] = useState(false)
+  const syncingRef = useRef(false)  // re-entrancy lock so overlapping drains can't run at once
   const [offlineOrders, setOfflineOrders] = useState([])
   const [menuItems, setMenuItems] = useState([])
   const [busyItemId, setBusyItemId] = useState(null)
@@ -421,50 +422,67 @@ export default function Billing() {
     setQueuedBillTableIds(mine.map((b) => b.tableId))
     if (!navigator.onLine || mine.length === 0) return
 
+    // #3: guard against overlapping drains (mount + `online` event + "Sync now"
+    // can all fire near-simultaneously). A ref flips synchronously, unlike state.
+    if (syncingRef.current) return
+    syncingRef.current = true
     setSyncing(true)
-    let synced = 0
-    for (const bill of mine) {
-      try {
-        // Complete any pending offline orders for this table first
-        const offlineOrders = await getQueuedOrders()
-        for (const order of offlineOrders.filter((o) => o.tableId === bill.tableId)) {
-          // p_order_id keeps this idempotent so it never duplicates an order the
-          // TakeOrder page may have already synced from the same queue.
-          const { error } = await supabase.rpc(order.rpc || 'admin_place_order', {
-            p_restaurant_id: order.restaurantId,
-            p_table_id:      order.tableId,
-            p_items:         order.items,
-            p_order_id:      order.orderId,
+    try {
+      let synced = 0
+      for (const bill of mine) {
+        try {
+          // Place this table's queued orders (idempotent via p_order_id)
+          const queuedOrders = await getQueuedOrders()
+          for (const order of queuedOrders.filter((o) => o.tableId === bill.tableId)) {
+            const { error } = await supabase.rpc(order.rpc || 'admin_place_order', {
+              p_restaurant_id: order.restaurantId,
+              p_table_id:      order.tableId,
+              p_items:         order.items,
+              p_order_id:      order.orderId,
+            })
+            if (!error) await removeQueuedOrder(order.id)
+          }
+
+          // #2: complete ONLY the orders this bill actually covers, so orders
+          // added to the same table after it was settled offline are left
+          // pending and not swept into this bill (with its discount). reset_table_billing
+          // then archives just the completed (i.e. snapshot) orders.
+          let completeQuery = supabase.from('orders')
+            .update({ status: 'completed' })
+            .in('status', ['pending', 'preparing', 'served'])
+          if (Array.isArray(bill.orderIds) && bill.orderIds.length > 0) {
+            completeQuery = completeQuery.in('id', bill.orderIds)
+          } else {
+            // Legacy bill queued before snapshots existed — fall back to whole table.
+            completeQuery = completeQuery
+              .eq('restaurant_id', bill.restaurantId)
+              .eq('table_id', bill.tableId)
+          }
+          await completeQuery
+
+          const { error } = await supabase.rpc('reset_table_billing', {
+            p_restaurant_id:  bill.restaurantId,
+            p_table_id:       bill.tableId,
+            p_payment_method: bill.paymentMethod,
+            p_discount:       bill.discountAmt,
+            p_round_off:      bill.roundOffAmt,
           })
-          if (!error) await removeQueuedOrder(order.id)
-        }
-        // Auto-complete any still-pending orders for this table
-        await supabase.from('orders')
-          .update({ status: 'completed' })
-          .eq('restaurant_id', bill.restaurantId)
-          .eq('table_id', bill.tableId)
-          .in('status', ['pending', 'preparing', 'served'])
-        // Settle the bill
-        const { error } = await supabase.rpc('reset_table_billing', {
-          p_restaurant_id:  bill.restaurantId,
-          p_table_id:       bill.tableId,
-          p_payment_method: bill.paymentMethod,
-          p_discount:       bill.discountAmt,
-          p_round_off:      bill.roundOffAmt,
-        })
-        if (!error) { await removeQueuedBill(bill.id); synced++ }
-      } catch { /* keep in queue, retry later */ }
+          if (!error) { await removeQueuedBill(bill.id); synced++ }
+        } catch { /* keep in queue, retry later */ }
+      }
+      if (synced > 0) {
+        toast.success(`${synced} offline bill${synced > 1 ? 's' : ''} synced!`)
+        fetchTables()
+        await loadOfflineOrders()  // synced orders were dequeued — refresh so their card stays gone
+      }
+      const remaining = await getQueuedBills()
+      const remainingMine = remaining.filter((b) => b.restaurantId === restaurant.id)
+      setPendingBills(remainingMine.length)
+      setQueuedBillTableIds(remainingMine.map((b) => b.tableId))
+    } finally {
+      syncingRef.current = false
+      setSyncing(false)
     }
-    if (synced > 0) {
-      toast.success(`${synced} offline bill${synced > 1 ? 's' : ''} synced!`)
-      fetchTables()
-      await loadOfflineOrders()  // synced orders were dequeued — refresh so their card stays gone
-    }
-    const remaining = await getQueuedBills()
-    const remainingMine = remaining.filter((b) => b.restaurantId === restaurant.id)
-    setPendingBills(remainingMine.length)
-    setQueuedBillTableIds(remainingMine.map((b) => b.tableId))
-    setSyncing(false)
   }, [restaurant?.id, fetchTables, loadOfflineOrders])
 
   useEffect(() => {
@@ -574,6 +592,13 @@ export default function Billing() {
         })
       }
       hideBill()
+      // Snapshot exactly which orders this bill covers: the already-completed DB
+      // orders plus this table's queued offline orders (whose DB id == orderId,
+      // since we place them with p_order_id). The sync settles only these.
+      const snapshotOrderIds = [
+        ...tableOrderIds,
+        ...offlineOrders.filter((o) => o.tableId === tableId).map((o) => o.orderId).filter(Boolean),
+      ]
       await enqueueBill({
         restaurantId:  restaurant.id,
         tableId,
@@ -582,6 +607,7 @@ export default function Billing() {
         discountAmt,
         roundOffAmt,
         finalTotal,
+        orderIds:      snapshotOrderIds,
       })
       setPendingBills((c) => c + 1)
       toast.success(`Bill saved offline for Table ${confirmTable.table_number} — will sync when online`, { duration: 5000 })
