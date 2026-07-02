@@ -1,5 +1,4 @@
 import sharp from 'sharp'
-import toIco from 'to-ico'
 import { readFileSync, writeFileSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
@@ -30,10 +29,18 @@ for (const { out, size } of pngs) {
   console.log(`✓ ${out} (${size}×${size})`)
 }
 
-// favicon.ico — multi-size (16, 32, 48)
-const ico48 = await sharp(svg, { density: 120 }).resize(48, 48).png().toBuffer()
-const icoData = await toIco([pngBuffers[16], pngBuffers[32], ico48])
-writeFileSync(resolve(root, 'public/favicon.ico'), icoData)
-console.log('✓ public/favicon.ico (16×16 + 32×32 + 48×48)')
+// favicon.ico — multi-size (16, 32, 48).
+// `to-ico` pulls in a large, vulnerable dependency tree (jimp/request/form-data),
+// so it is NOT a declared dependency. Install it ad-hoc (`npm i -D to-ico`) only
+// when regenerating the .ico; the step is skipped gracefully when it is absent.
+try {
+  const { default: toIco } = await import('to-ico')
+  const ico48 = await sharp(svg, { density: 120 }).resize(48, 48).png().toBuffer()
+  const icoData = await toIco([pngBuffers[16], pngBuffers[32], ico48])
+  writeFileSync(resolve(root, 'public/favicon.ico'), icoData)
+  console.log('✓ public/favicon.ico (16×16 + 32×32 + 48×48)')
+} catch {
+  console.log('⚠ Skipped favicon.ico — run `npm i -D to-ico` first to regenerate it.')
+}
 
 console.log('\nDone.')
