@@ -401,10 +401,13 @@ export default function Billing() {
         // Complete any pending offline orders for this table first
         const offlineOrders = await getQueuedOrders()
         for (const order of offlineOrders.filter((o) => o.tableId === bill.tableId)) {
-          const { error } = await supabase.rpc('admin_place_order', {
+          // p_order_id keeps this idempotent so it never duplicates an order the
+          // TakeOrder page may have already synced from the same queue.
+          const { error } = await supabase.rpc(order.rpc || 'admin_place_order', {
             p_restaurant_id: order.restaurantId,
             p_table_id:      order.tableId,
             p_items:         order.items,
+            p_order_id:      order.orderId,
           })
           if (!error) await removeQueuedOrder(order.id)
         }

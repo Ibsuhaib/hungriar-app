@@ -251,10 +251,13 @@ export default function TakeOrder() {
     let synced = 0
     for (const order of mine) {
       try {
-        const { error } = await supabase.rpc('admin_place_order', {
+        // p_order_id makes replay idempotent — re-syncing an already-placed
+        // order is a server-side no-op instead of a duplicate.
+        const { error } = await supabase.rpc(order.rpc || 'admin_place_order', {
           p_restaurant_id: order.restaurantId,
           p_table_id:      order.tableId,
           p_items:         order.items,
+          p_order_id:      order.orderId,
         })
         if (!error) { await removeQueuedOrder(order.id); synced++ }
       } catch { /* keep in queue, retry next time */ }
@@ -287,6 +290,10 @@ export default function TakeOrder() {
     if (!selectedTableId || entries.length === 0 || placing) return
     setPlacing(true)
 
+    // Stable client-generated id so an offline order that later syncs (via this
+    // page or the Billing page) can never be inserted twice.
+    const orderId = crypto.randomUUID()
+
     const tax = Math.round(subtotal * taxPercentage) / 100
     const totalAmount = subtotal + tax
 
@@ -306,9 +313,9 @@ export default function TakeOrder() {
       notes: notes || '',
     }))
 
-    // Build a local order object for KOT (no server ID needed)
+    // Build a local order object for KOT
     const kotOrder = {
-      id: `local-${Date.now()}`,
+      id: orderId,
       order_time: new Date().toISOString(),
       total_amount: totalAmount,
       tables: { table_number: selectedTableNumber },
@@ -318,6 +325,8 @@ export default function TakeOrder() {
     if (!navigator.onLine) {
       try {
         await enqueueOrder({
+          orderId,                    // stable id → idempotent replay
+          rpc:           'admin_place_order',
           restaurantId:  restaurant.id,
           tableId:       selectedTableId,
           tableNumber:   selectedTableNumber,
@@ -342,6 +351,7 @@ export default function TakeOrder() {
         p_restaurant_id: restaurant.id,
         p_table_id:      selectedTableId,
         p_items:         items,
+        p_order_id:      orderId,
       })
       if (error) throw error
       printKOT(kotOrder, restaurant?.name)

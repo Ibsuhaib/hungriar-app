@@ -4,12 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ConciergeBell, ChevronLeft, Plus, Minus, ShoppingCart,
   X, ClipboardList, Clock, CheckCircle2, XCircle, Loader2,
-  LogOut, Search,
+  LogOut, Search, WifiOff, RefreshCw,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
+import { enqueueOrder, getQueuedOrders, removeQueuedOrder } from '../../utils/offlineQueue'
 
 // ─── Cart hook (same shape as TakeOrder) ──────────────────────────────────────
 function useCart() {
@@ -62,6 +63,9 @@ export default function StaffPanel() {
   const [search,          setSearch]          = useState('')
   const [cartOpen,        setCartOpen]        = useState(false)
   const [placing,         setPlacing]         = useState(false)
+  const [isOnline,        setIsOnline]        = useState(navigator.onLine)
+  const [pendingCount,    setPendingCount]    = useState(0)
+  const [syncing,         setSyncing]         = useState(false)
 
   const { cart, entries, totalQty, subtotal, add, remove, clear } = useCart()
 
@@ -104,24 +108,102 @@ export default function StaffPanel() {
     return list
   }, [menuItems, selectedCatId, search])
 
+  // ── Online / offline tracking ─────────────────────────────────────────────
+  useEffect(() => {
+    const on  = () => setIsOnline(true)
+    const off = () => setIsOnline(false)
+    window.addEventListener('online',  on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
+
+  // Replay any orders queued while offline. p_order_id makes each replay
+  // idempotent, so a lost response or a double-fire can never duplicate an order.
+  const syncQueue = useCallback(async () => {
+    if (!restaurant?.id) return
+    const queued = await getQueuedOrders()
+    const mine = queued.filter((o) => o.restaurantId === restaurant.id)
+    setPendingCount(mine.length)
+    if (!navigator.onLine || mine.length === 0) return
+
+    setSyncing(true)
+    let synced = 0
+    for (const order of mine) {
+      try {
+        const { error } = await supabase.rpc(order.rpc || 'staff_place_order', {
+          p_restaurant_id: order.restaurantId,
+          p_table_id:      order.tableId,
+          p_items:         order.items,
+          p_order_id:      order.orderId,
+        })
+        if (!error) { await removeQueuedOrder(order.id); synced++ }
+      } catch { /* keep in queue, retry next time */ }
+    }
+    if (synced > 0) { toast.success(`${synced} queued order${synced > 1 ? 's' : ''} synced!`); refetch({ silent: true }) }
+    const remaining = await getQueuedOrders()
+    setPendingCount(remaining.filter((o) => o.restaurantId === restaurant.id).length)
+    setSyncing(false)
+  }, [restaurant?.id, refetch])
+
+  useEffect(() => {
+    syncQueue()
+    window.addEventListener('online', syncQueue)
+    return () => window.removeEventListener('online', syncQueue)
+  }, [syncQueue])
+
   // ── Place order ──────────────────────────────────────────────────────────
   const handlePlaceOrder = async () => {
     if (!entries.length || !selectedTableId || placing) return
     setPlacing(true)
-    try {
-      const items = entries.map((e) => ({ menu_item_id: e.item.id, quantity: e.quantity, notes: '' }))
-      const { error } = await supabase.rpc('staff_place_order', {
-        p_restaurant_id: restaurant.id,
-        p_table_id: selectedTableId,
-        p_items: items,
-      })
-      if (error) throw error
-      toast.success('Order placed!')
+
+    // Stable client id → offline replay is idempotent (see migration 28).
+    const orderId = crypto.randomUUID()
+    const tableNumber = tables.find((t) => t.id === selectedTableId)?.table_number
+    const items = entries.map((e) => ({ menu_item_id: e.item.id, quantity: e.quantity, notes: '' }))
+    const richItems = entries.map((e) => ({
+      menu_item_id: e.item.id, item_name: e.item.name, unit_price: e.item.price, quantity: e.quantity, notes: '',
+    }))
+
+    const resetAfterPlace = () => {
       clear()
       setCartOpen(false)
       setSelectedTableId('')
       setSelectedCatId('all')
       setSearch('')
+    }
+
+    // ── Offline: queue on-device, sync when the connection returns ──────────
+    if (!navigator.onLine) {
+      try {
+        await enqueueOrder({
+          orderId,
+          rpc:          'staff_place_order',
+          restaurantId: restaurant.id,
+          tableId:      selectedTableId,
+          tableNumber,
+          items,
+          richItems,
+        })
+        setPendingCount((c) => c + 1)
+        toast.success(`Order saved offline for Table ${tableNumber} — will sync when online`, { duration: 5000 })
+        resetAfterPlace()
+      } catch {
+        toast.error('Failed to save order offline')
+      }
+      setPlacing(false)
+      return
+    }
+
+    try {
+      const { error } = await supabase.rpc('staff_place_order', {
+        p_restaurant_id: restaurant.id,
+        p_table_id:      selectedTableId,
+        p_items:         items,
+        p_order_id:      orderId,
+      })
+      if (error) throw error
+      toast.success('Order placed!')
+      resetAfterPlace()
       setTab('active')
       refetch({ silent: true })
     } catch (err) {
@@ -204,6 +286,35 @@ export default function StaffPanel() {
       </header>
 
       <div className="flex-1 max-w-3xl mx-auto w-full px-4 py-4">
+
+        {/* Offline banner */}
+        {!isOnline && (
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-4">
+            <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-amber-800">You are offline</p>
+              <p className="text-xs text-amber-600">Orders are saved on this device and synced when internet returns.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Pending sync banner */}
+        {isOnline && pendingCount > 0 && (
+          <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 mb-4">
+            <RefreshCw className={`w-4 h-4 text-blue-600 flex-shrink-0 ${syncing ? 'animate-spin' : ''}`} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-blue-800">
+                {syncing ? 'Syncing orders…' : `${pendingCount} order${pendingCount > 1 ? 's' : ''} pending sync`}
+              </p>
+              <p className="text-xs text-blue-600">Taken while offline — syncing to the server now.</p>
+            </div>
+            {!syncing && (
+              <button type="button" onClick={syncQueue} className="text-xs font-bold text-blue-600 bg-blue-100 rounded-xl px-3 py-1.5 hover:bg-blue-200 transition-colors flex-shrink-0">
+                Sync now
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── NEW ORDER TAB ───────────────────────────────────────────────── */}
         {tab === 'order' && (
@@ -446,8 +557,8 @@ export default function StaffPanel() {
                 className="btn-primary w-full py-3 gap-2"
               >
                 {placing
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Placing…</>
-                  : `Place Order (${totalQty} item${totalQty !== 1 ? 's' : ''})`}
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> {isOnline ? 'Placing…' : 'Saving offline…'}</>
+                  : `${isOnline ? 'Place Order' : 'Save Offline'} (${totalQty} item${totalQty !== 1 ? 's' : ''})`}
               </button>
             </motion.div>
           </>
