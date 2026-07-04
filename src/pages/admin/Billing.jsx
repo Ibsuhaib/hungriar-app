@@ -127,7 +127,7 @@ function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod,
     ${roundOffAmt !== 0 ? `<tr class="sub-row ro-row"><td>Round Off</td><td class="r">${roundOffAmt >= 0 ? '+' : '-'}${fmt(Math.abs(roundOffAmt))}</td></tr>` : ''}
     ${packageChargeAmt > 0 ? `<tr class="sub-row pkg-row"><td>Package Charge</td><td class="r">+${fmt(packageChargeAmt)}</td></tr>` : ''}
     ${hasAdj ? `<tr><td colspan="2"><div class="dash" style="margin:3px 0"></div></td></tr>` : ''}
-    <tr class="total-row"><td>TOTAL</td><td class="r">${fmt(displayTotal)}</td></tr>
+    <tr class="total-bar"><td>TOTAL</td><td class="r">${fmt(displayTotal)}</td></tr>
   `
 
   const html = `<!DOCTYPE html>
@@ -140,29 +140,31 @@ function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod,
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: Arial, 'Courier New', Courier, monospace;
-      font-size: 13px; font-weight: 700; color: #000; width: 72mm;
+      font-size: 15px; font-weight: 700; color: #000; width: 72mm;
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
     .c  { text-align: center; }
     .r  { text-align: right; }
     .b  { font-weight: bold; }
-    .sm { font-size: 11px; font-weight: 700; color: #000; }
-    .dash { border-top: 1px dashed #000; margin: 5px 0; }
-    .solid { border-top: 1px solid #000; margin: 5px 0; }
+    .sm { font-size: 13px; font-weight: 700; color: #000; }
+    .dash { border-top: 2px dashed #000; margin: 6px 0; }
+    .solid { border-top: 3px solid #000; margin: 6px 0; }
     table { width: 100%; border-collapse: collapse; }
-    td { padding: 2px 0; vertical-align: top; }
+    td { padding: 3px 0; vertical-align: top; }
     td:last-child { white-space: nowrap; padding-left: 6px; }
-    .order-hdr td { font-size: 11px; font-weight: 700; color: #000; padding-top: 5px; }
-    .total-row td { font-size: 14px; font-weight: bold; padding-top: 3px; }
-    .sub-row td { font-size: 11px; font-weight: 700; color: #000; }
-    .b-row td { font-weight: 700; color: #000; }
+    .order-hdr td { font-size: 13px; font-weight: 900; color: #000; padding-top: 6px; letter-spacing: 0.5px; }
+    .total-bar { background: #000; margin: 6px 0; }
+    .total-bar td { color: #fff; font-size: 19px; font-weight: 900; padding: 7px 4px; }
+    .sub-row td { font-size: 13px; font-weight: 700; color: #000; }
+    .b-row td { font-weight: 900; color: #000; }
     .disc-row td { font-weight: 700; color: #145214; }
     .ro-row td { font-weight: 700; color: #0d2b5c; }
     .pkg-row td { font-weight: 700; color: #6b3d0f; }
+    .bill-name { font-size: 20px; font-weight: 900; letter-spacing: 0.5px; }
   </style>
 </head>
 <body>
-  <div class="c b" style="font-size:15px">${name}</div>
+  <div class="c bill-name">${name}</div>
   ${headerLines}
 
   <div class="dash" style="margin-top:7px"></div>
@@ -186,7 +188,7 @@ function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod,
 
   <div class="dash"></div>
 
-  <div>Payment: <strong>${pm}</strong></div>
+  <div style="font-size:16px">Payment: <strong>${pm}</strong></div>
 
   <div class="solid" style="margin-top:10px"></div>
   <div class="c sm" style="margin-top:6px">Thank you for dining with us!</div>
