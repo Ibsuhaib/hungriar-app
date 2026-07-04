@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Clock, CheckCircle2, Bell, BellOff, XCircle } from 'lucide-react'
+import { Clock, CheckCircle2, Bell, BellOff } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -140,13 +140,6 @@ export default function Orders() {
     [orders],
   )
 
-  const cancelledOrders = useMemo(
-    () => orders
-      .filter((o) => o.status === 'cancelled')
-      .sort((a, b) => new Date(b.order_time) - new Date(a.order_time)),
-    [orders],
-  )
-
   const completedToday = useMemo(() => {
     const todayKey = new Date().toDateString()
     const active = orders.filter(
@@ -262,28 +255,6 @@ export default function Orders() {
         </AnimatePresence>
       )}
 
-      {/* Cancelled orders section */}
-      {cancelledOrders.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 pt-2">
-            <XCircle className="w-4 h-4 text-red-300" />
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-              Cancelled ({cancelledOrders.length})
-            </p>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 opacity-60">
-            {cancelledOrders.map((order) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                onStatusChange={handleStatusChange}
-                currency={restaurant?.currency}
-                restaurantName={restaurant?.name}
-              />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

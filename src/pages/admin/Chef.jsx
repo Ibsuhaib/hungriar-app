@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChefHat, Lock, Bell, CheckCircle2, Clock, XCircle, Printer } from 'lucide-react'
+import { ChefHat, Lock, Bell, CheckCircle2, Clock, Printer } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -216,13 +216,6 @@ function ChefOrdersView({ onLock }) {
     [orders],
   )
 
-  const cancelledOrders = useMemo(
-    () => orders
-      .filter((o) => o.status === 'cancelled')
-      .sort((a, b) => new Date(b.order_time) - new Date(a.order_time)),
-    [orders],
-  )
-
   const handleStatusChange = async (orderId, newStatus) => {
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) return
@@ -362,28 +355,6 @@ function ChefOrdersView({ onLock }) {
           </AnimatePresence>
         )}
 
-        {/* Cancelled orders */}
-        {cancelledOrders.length > 0 && (
-          <div className="space-y-3 mt-4">
-            <div className="flex items-center gap-2">
-              <XCircle className="w-4 h-4 text-red-300" />
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                Cancelled ({cancelledOrders.length})
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 opacity-60">
-              {cancelledOrders.map((order) => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  onStatusChange={handleStatusChange}
-                  currency={restaurant?.currency}
-                  restaurantName={restaurant?.name}
-                />
-              ))}
-            </div>
-          </div>
-        )}
       </main>
     </div>
   )
