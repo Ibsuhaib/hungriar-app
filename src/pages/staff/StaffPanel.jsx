@@ -4,12 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ConciergeBell, ChevronLeft, Plus, Minus, ShoppingCart,
   X, ClipboardList, Clock, CheckCircle2, XCircle, Loader2,
-  LogOut, Search, WifiOff, RefreshCw,
+  LogOut, Search, WifiOff, RefreshCw, Printer,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
+import { printKOT } from '../../utils/kotPrint'
 import { enqueueOrder, getQueuedOrders, removeQueuedOrder, isNetworkError } from '../../utils/offlineQueue'
 import { pageCache } from '../../utils/pageCache'
 
@@ -96,7 +97,7 @@ export default function StaffPanel() {
   useEffect(() => { fetchData() }, [fetchData])
 
   // ── Active orders (realtime) ─────────────────────────────────────────────
-  const { orders, loading: ordersLoading, refetch } = useRealtimeOrders({
+  const { orders, loading: ordersLoading, refetch, patchOrder } = useRealtimeOrders({
     restaurantId: restaurant?.id,
     pollInterval: 5000,
   })
@@ -241,6 +242,19 @@ export default function StaffPanel() {
     } else {
       toast.success('Order cancelled')
       refetch({ silent: true })
+    }
+  }
+
+  // ── Complete order — same direct status update Chef/Admin already use ────
+  const handleCompleteOrder = async (orderId) => {
+    const prevStatus = orders.find((o) => o.id === orderId)?.status
+    patchOrder(orderId, { status: 'completed' })
+    const { error } = await supabase.from('orders').update({ status: 'completed' }).eq('id', orderId)
+    if (error) {
+      toast.error('Failed to complete order')
+      if (prevStatus) patchOrder(orderId, { status: prevStatus })
+    } else {
+      toast.success('Order completed')
     }
   }
 
@@ -511,9 +525,29 @@ export default function StaffPanel() {
                       ))
                     }
                   </ul>
-                  <p className="text-xs text-gray-400 mt-2">
-                    {new Date(order.order_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                  </p>
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-50">
+                    <p className="text-xs text-gray-400">
+                      {new Date(order.order_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => printKOT(order, restaurant?.name)}
+                        title="Print KOT"
+                        className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-2.5 py-1.5 rounded-lg transition-colors"
+                      >
+                        <Printer className="w-3.5 h-3.5" /> KOT
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCompleteOrder(order.id)}
+                        title="Mark this order completed"
+                        className="flex items-center gap-1 text-xs font-bold text-green-600 hover:text-green-700 hover:bg-green-50 px-2.5 py-1.5 rounded-lg transition-colors"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Complete
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ))
             )}
