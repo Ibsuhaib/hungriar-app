@@ -244,8 +244,8 @@ function ConfirmDialog({ table, activeCount, onConfirm, onCancel, loading }) {
           <div className="flex gap-3 mt-5">
             <button type="button" onClick={onCancel} className="btn-outline flex-1">Cancel</button>
             <button type="button" onClick={onConfirm} disabled={loading} className="btn-secondary flex-1 gap-1.5">
-              <Printer className="w-4 h-4" />
-              {loading ? 'Settling…' : 'Print & Settle'}
+              <CheckCircle2 className="w-4 h-4" />
+              {loading ? 'Settling…' : 'Settle'}
             </button>
           </div>
         </div>
@@ -607,23 +607,9 @@ export default function Billing() {
     const restoreBill = () => tableOrderIds.forEach((id) => patchOrder(id, { status: 'completed' }))
 
     // ── Offline path — no real bill number can be reserved without a server
-    // round-trip, so the printed receipt shows "PREVIEW" until it syncs ───────
+    // round-trip; the Print button (with billNumber: null) is how the admin
+    // gets a "PREVIEW" receipt if they need one before it syncs ──────────────
     const saveOffline = async () => {
-      if (billData) {
-        printReceipt({
-          tableOrders: billData.orders,
-          table:        confirmTable,
-          total:        billData.total,
-          taxPercentage,
-          paymentMethod,
-          restaurant,
-          discountAmt,
-          roundOffAmt,
-          packageChargeAmt,
-          finalTotal,
-          billNumber:   null,
-        })
-      }
       hideBill()
       // Snapshot exactly which orders this bill covers: the already-completed DB
       // orders plus this table's queued offline orders (whose DB id == orderId,
@@ -682,21 +668,6 @@ export default function Billing() {
         restoreBill()
         toast.error('No completed orders to settle')
         return
-      }
-      if (billData) {
-        printReceipt({
-          tableOrders: billData.orders,
-          table:        confirmTable,
-          total:        billData.total,
-          taxPercentage,
-          paymentMethod,
-          restaurant,
-          discountAmt,
-          roundOffAmt,
-          packageChargeAmt,
-          finalTotal,
-          billNumber:   data[0].bill_number,
-        })
       }
       toast.success('Bill settled!')
       // Realtime DELETE events from the RPC will remove the orders from allOrders automatically
@@ -1117,13 +1088,13 @@ export default function Billing() {
                       type="button"
                       onClick={() => handleClickSettle(table)}
                       disabled={settlingTableId === table.id || !chosen}
-                      title={!chosen ? 'Select a payment method first' : isOnline ? 'Print receipt and settle the bill' : 'Print receipt and save bill offline'}
+                      title={!chosen ? 'Select a payment method first' : isOnline ? 'Settle the bill' : 'Save bill offline — will settle when back online'}
                       className="btn-secondary flex-1 gap-1.5 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      <Printer className="w-3.5 h-3.5" />
+                      <CheckCircle2 className="w-3.5 h-3.5" />
                       {settlingTableId === table.id
                         ? 'Settling…'
-                        : isOnline ? 'Print & Settle' : 'Print & Save Offline'}
+                        : isOnline ? 'Settle' : 'Save Offline'}
                     </button>
                   </div>
                 </div>

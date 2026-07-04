@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShoppingCart, Plus, Minus, X, ConciergeBell, ChevronLeft, Search, WifiOff, RefreshCw } from 'lucide-react'
+import { ShoppingCart, Plus, Minus, X, ConciergeBell, ChevronLeft, Search, WifiOff, RefreshCw, PenLine } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
@@ -72,6 +72,76 @@ function ItemCard({ item, qty, onAdd, onRemove, currency }) {
         )}
       </div>
     </div>
+  )
+}
+
+// ─── Open Order modal ─────────────────────────────────────────────────────────
+// For one-off customer requests that aren't in the menu — a custom name +
+// price goes straight into the cart. Never written to menu_items.
+
+function OpenOrderModal({ currency, onClose, onAdd }) {
+  const [name, setName]   = useState('')
+  const [price, setPrice] = useState('')
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    const trimmedName = name.trim()
+    const numericPrice = Number(price)
+    if (!trimmedName || !numericPrice || numericPrice <= 0) return
+    onAdd({ id: `open-${crypto.randomUUID()}`, name: trimmedName, price: numericPrice, isOpenItem: true })
+    onClose()
+  }
+
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      >
+        <div className="bg-white rounded-2xl shadow-2xl p-5 max-w-sm w-full">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-base font-bold text-gray-900">Open Order Item</h3>
+              <p className="text-xs text-gray-400 mt-0.5">A custom item just for this order — not added to the menu</p>
+            </div>
+            <button type="button" onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 flex-shrink-0">
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Item Name</label>
+              <input
+                type="text" autoFocus value={name} onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Special combo, Custom cake…" maxLength={80} required
+                className="input w-full"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Price ({currency})</label>
+              <input
+                type="number" min="0.01" step="0.01" value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0.00" required
+                className="input w-full"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!name.trim() || !price || Number(price) <= 0}
+              className="w-full bg-primary-600 hover:bg-primary-500 text-white py-2.5 rounded-2xl text-sm font-bold transition-colors disabled:opacity-40"
+            >
+              Add to Cart
+            </button>
+          </form>
+        </div>
+      </motion.div>
+    </>
   )
 }
 
@@ -200,6 +270,7 @@ export default function TakeOrder() {
   const [selectedCatId, setSelectedCatId]     = useState('all')
   const [search, setSearch]                   = useState('')
   const [cartOpen, setCartOpen]               = useState(false)
+  const [openOrderModalOpen, setOpenOrderModalOpen] = useState(false)
   const [placing, setPlacing]                 = useState(false)
   const [isOnline, setIsOnline]               = useState(navigator.onLine)
   const [pendingCount, setPendingCount]       = useState(0)
@@ -297,16 +368,17 @@ export default function TakeOrder() {
     const tax = Math.round(subtotal * taxPercentage) / 100
     const totalAmount = subtotal + tax
 
-    // items for Supabase RPC
-    const items = entries.map(({ item, quantity, notes }) => ({
-      menu_item_id: item.id,
-      quantity,
-      notes: notes || '',
-    }))
+    // items for Supabase RPC — open-order items send a custom name/price
+    // instead of a menu_item_id, so the RPC never touches menu_items for them.
+    const items = entries.map(({ item, quantity, notes }) => (
+      item.isOpenItem
+        ? { custom_name: item.name, custom_price: item.price, quantity, notes: notes || '' }
+        : { menu_item_id: item.id, quantity, notes: notes || '' }
+    ))
 
     // richItems includes name + price for offline display in Billing page
     const richItems = entries.map(({ item, quantity, notes }) => ({
-      menu_item_id: item.id,
+      menu_item_id: item.isOpenItem ? null : item.id,
       item_name:    item.name,
       unit_price:   item.price,
       quantity,
@@ -466,6 +538,15 @@ export default function TakeOrder() {
                 className="input pl-9 w-full"
               />
             </div>
+
+            <button
+              type="button"
+              onClick={() => setOpenOrderModalOpen(true)}
+              title="Add a custom item not in the menu"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-primary-300 bg-primary-50 text-sm font-semibold text-primary-600 hover:bg-primary-100 transition-colors flex-shrink-0"
+            >
+              <PenLine className="w-4 h-4" /> Open Order
+            </button>
           </div>
 
           {/* Category grid — every category visible at once, no side scroll */}
@@ -559,6 +640,17 @@ export default function TakeOrder() {
             onPlace={handlePlaceOrder}
             placing={placing}
             selectedTable={selectedTableNumber}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Open Order modal */}
+      <AnimatePresence>
+        {openOrderModalOpen && (
+          <OpenOrderModal
+            currency={currency}
+            onClose={() => setOpenOrderModalOpen(false)}
+            onAdd={add}
           />
         )}
       </AnimatePresence>
