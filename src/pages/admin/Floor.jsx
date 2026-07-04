@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Plus, Minus, Search, ShoppingCart, Loader2, Clock,
-  Receipt, ConciergeBell, WifiOff, RefreshCw, CheckCircle2,
+  Receipt, ConciergeBell, WifiOff, RefreshCw, CheckCircle2, Printer,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -12,9 +11,10 @@ import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
 import { printKOT } from '../../utils/kotPrint'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
-import { enqueueOrder, getQueuedOrders, removeQueuedOrder, isNetworkError } from '../../utils/offlineQueue'
+import { enqueueOrder, enqueueBill, getQueuedOrders, isNetworkError, removeQueuedOrder } from '../../utils/offlineQueue'
 import { pageCache } from '../../utils/pageCache'
 import OrderCard from '../../components/OrderCard'
+import { computeFinals, EMPTY_ADJ, PAYMENT_METHODS, printReceipt } from './Billing'
 
 // ─── Cart hook (same shape as TakeOrder / StaffPanel) ────────────────────────
 function useCart() {
@@ -340,13 +340,261 @@ function OrderSummaryPanel({
   )
 }
 
+// ─── Bill panel — slides in from the left on larger screens (table grid stays
+// visible), full-screen on mobile since discount/round-off/package
+// charge/payment/cash-tendered is too much to cram into a short sheet ─────────
+
+function BillPanel({ table, tableOrders, currency, taxPercentage, restaurant, isOnline, checkAdminLimit, userId, onClose, onSettled }) {
+  const [adj, setAdj] = useState(EMPTY_ADJ)
+  const [paymentMethod, setPaymentMethod] = useState(null)
+  const [cashTendered, setCashTendered] = useState('')
+  const [settling, setSettling] = useState(false)
+
+  const total = tableOrders.reduce((s, o) => s + Number(o.total_amount), 0)
+  const { discountAmt, roundOffAmt, packageChargeAmt, finalTotal } = computeFinals(total, adj)
+  const hasAdj = discountAmt > 0 || roundOffAmt !== 0 || packageChargeAmt > 0
+  const cur = currency
+
+  const patchAdj = (patch) => setAdj((prev) => ({ ...prev, ...patch }))
+
+  const tendered = Number(cashTendered) || 0
+  const changeDue = Math.max(0, tendered - finalTotal)
+
+  const handlePrint = () => printReceipt({
+    tableOrders, table, total, taxPercentage, paymentMethod: paymentMethod || 'other',
+    restaurant, discountAmt, roundOffAmt, packageChargeAmt, finalTotal, billNumber: null,
+  })
+
+  const handleSettle = async () => {
+    if (!paymentMethod || settling) return
+    const allowed = navigator.onLine ? await checkAdminLimit(userId) : true
+    if (!allowed) return
+    setSettling(true)
+
+    const tableId = table.id
+    const orderIds = tableOrders.map((o) => o.id)
+
+    const saveOffline = async () => {
+      await enqueueBill({
+        restaurantId: restaurant.id, tableId, tableNumber: table.table_number,
+        paymentMethod, discountAmt, roundOffAmt, packageChargeAmt, finalTotal,
+        orderIds,
+      })
+      toast.success(`Bill saved offline for Table ${table.table_number} — will sync when online`, { duration: 5000 })
+      onSettled()
+    }
+
+    if (!navigator.onLine) {
+      try { await saveOffline() } catch { toast.error('Failed to save bill offline') }
+      setSettling(false)
+      return
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('reset_table_billing', {
+        p_restaurant_id:  restaurant.id,
+        p_table_id:       tableId,
+        p_payment_method: paymentMethod,
+        p_discount:       discountAmt,
+        p_round_off:      roundOffAmt,
+        p_package_charge: packageChargeAmt,
+      })
+      if (error) throw error
+      if (!data || data.length === 0) {
+        toast.error('No completed orders to settle')
+        setSettling(false)
+        return
+      }
+      toast.success('Bill settled!')
+      onSettled()
+    } catch (err) {
+      if (isNetworkError(err)) {
+        try { await saveOffline() } catch { toast.error('Failed to save bill offline') }
+      } else {
+        toast.error(err.message || 'Failed to settle bill')
+      }
+    } finally {
+      setSettling(false)
+    }
+  }
+
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/40 sm:bg-black/10 z-[65]" onClick={onClose}
+      />
+      <motion.div
+        initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
+        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        className="fixed inset-y-0 left-0 z-[70] bg-white shadow-2xl overflow-y-auto w-full sm:w-[420px]"
+      >
+        <div className="p-5 pb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-gray-900">Bill — Table {table?.table_number}</h3>
+            <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100">
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
+          </div>
+
+          <div className="space-y-1.5 mb-4">
+            {tableOrders.flatMap((o) => (o.order_items || []).filter((i) => !i.cancelled)).map((it) => (
+              <div key={it.id} className="flex justify-between text-sm text-gray-700">
+                <span>{it.quantity}× {it.item_name}</span>
+                <span className="font-medium">{formatCurrency(it.unit_price * it.quantity, cur)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-gray-100 pt-3 mb-4">
+            <div className="flex justify-between text-sm font-semibold text-gray-800">
+              <span>Subtotal</span>
+              <span>{formatCurrency(total, cur)}</span>
+            </div>
+          </div>
+
+          <div className="space-y-4 mb-4">
+            {/* Discount */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Discount</p>
+              <div className="flex gap-1.5">
+                <button
+                  type="button" onClick={() => patchAdj({ discountType: 'amount', discountValue: '' })}
+                  className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border-2 transition-all flex-shrink-0
+                    ${adj.discountType === 'amount' ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-400 hover:border-gray-300'}`}
+                >
+                  {cur}
+                </button>
+                <button
+                  type="button" onClick={() => patchAdj({ discountType: 'percent', discountValue: '' })}
+                  className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border-2 transition-all flex-shrink-0
+                    ${adj.discountType === 'percent' ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-400 hover:border-gray-300'}`}
+                >
+                  %
+                </button>
+                <input
+                  type="number" min="0" step="0.01"
+                  placeholder={adj.discountType === 'percent' ? 'e.g. 10' : 'e.g. 50'}
+                  value={adj.discountValue}
+                  onChange={(e) => patchAdj({ discountValue: e.target.value })}
+                  className="input text-sm py-1.5 flex-1 min-w-0"
+                />
+              </div>
+            </div>
+
+            {/* Round-off */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Round Off</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const afterDiscount = total - discountAmt
+                    const rounded = Math.floor(afterDiscount / 5) * 5
+                    const ro = rounded - afterDiscount
+                    patchAdj({ roundOff: ro === 0 ? '' : ro.toFixed(2) })
+                  }}
+                  className="text-[10px] text-primary-500 font-semibold hover:underline"
+                >
+                  Auto
+                </button>
+              </div>
+              <input
+                type="number" step="0.01" placeholder="e.g. -0.50"
+                value={adj.roundOff}
+                onChange={(e) => patchAdj({ roundOff: e.target.value })}
+                className="input text-sm py-1.5 w-full"
+              />
+            </div>
+
+            {/* Package charge */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Package Charge</p>
+              <input
+                type="number" min="0" step="0.01" placeholder="e.g. 10 (takeaway packaging)"
+                value={adj.packageCharge}
+                onChange={(e) => patchAdj({ packageCharge: e.target.value })}
+                className="input text-sm py-1.5 w-full"
+              />
+            </div>
+          </div>
+
+          {hasAdj && (
+            <div className="space-y-0.5 pb-2 mb-2 border-t border-dashed border-gray-200 pt-2">
+              {discountAmt > 0 && <div className="flex justify-between text-xs text-rose-500"><span>Discount</span><span>− {formatCurrency(discountAmt, cur)}</span></div>}
+              {roundOffAmt !== 0 && <div className="flex justify-between text-xs text-blue-500"><span>Round Off</span><span>{roundOffAmt >= 0 ? '+' : '−'} {formatCurrency(Math.abs(roundOffAmt), cur)}</span></div>}
+              {packageChargeAmt > 0 && <div className="flex justify-between text-xs text-amber-600"><span>Package Charge</span><span>+ {formatCurrency(packageChargeAmt, cur)}</span></div>}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mb-5">
+            <span className="text-sm font-semibold text-gray-600">{hasAdj ? 'Final Total' : 'Total Due'}</span>
+            <span className="text-xl font-bold text-primary-600">{formatCurrency(finalTotal, cur)}</span>
+          </div>
+
+          {/* Payment method */}
+          <div className="space-y-2 mb-4">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Payment method</p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {PAYMENT_METHODS.map((m) => (
+                <button
+                  key={m.id} type="button" onClick={() => setPaymentMethod(m.id)}
+                  className={`flex flex-col items-center gap-1.5 py-2.5 rounded-xl border-2 transition-all text-[11px] font-semibold
+                    ${paymentMethod === m.id ? m.active : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300 hover:text-gray-600'}`}
+                >
+                  <m.icon className="w-4 h-4" />
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cash tendered + change */}
+          {paymentMethod === 'cash' && (
+            <div className="space-y-1.5 mb-5 bg-gray-50 rounded-xl p-3">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-xs font-semibold text-gray-500 flex-shrink-0">Cash Tendered</label>
+                <input
+                  type="number" min="0" step="0.01" placeholder="0.00"
+                  value={cashTendered} onChange={(e) => setCashTendered(e.target.value)}
+                  className="input text-sm py-1.5 text-right w-32"
+                />
+              </div>
+              {tendered > 0 && (
+                <div className="flex justify-between text-sm font-bold text-gray-800 pt-1 border-t border-dashed border-gray-200">
+                  <span>Change Due</span>
+                  <span>{formatCurrency(changeDue, cur)}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button type="button" onClick={handlePrint} className="btn-outline gap-1.5 text-sm px-3">
+              <Printer className="w-3.5 h-3.5" /> Print
+            </button>
+            <button
+              type="button" onClick={handleSettle}
+              disabled={!paymentMethod || settling}
+              className="btn-secondary flex-1 gap-1.5 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {settling ? 'Settling…' : isOnline ? 'Settle & Close' : 'Save Offline'}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Floor() {
   const { restaurant, user } = useAuth()
   const { checkAdminLimit } = useRateLimit()
-  const navigate = useNavigate()
   const currency = restaurant?.currency || '₹'
+  const taxPercentage = Number(restaurant?.tax_percentage) || 0
 
   const cacheKey = `floor-${restaurant?.id}`
   const cache = pageCache.get(cacheKey) || {}
@@ -357,6 +605,7 @@ export default function Floor() {
 
   const [menuTableId, setMenuTableId] = useState(null)
   const [summaryTableId, setSummaryTableId] = useState(null)
+  const [billTableId, setBillTableId] = useState(null)
   const [selectedCatId, setSelectedCatId] = useState('all')
   const [search, setSearch] = useState('')
   const [cartOpen, setCartOpen] = useState(false)
@@ -441,6 +690,10 @@ export default function Floor() {
     }
     return map
   }, [orders])
+
+  // Completed orders are what the bill is actually built from — they've
+  // already dropped out of ordersByTable above by the time they're billable.
+  const completedOrders = useMemo(() => orders.filter((o) => o.status === 'completed'), [orders])
 
   const filteredItems = useMemo(() => {
     let list = selectedCatId === 'all' ? menuItems : menuItems.filter((i) => i.category_id === selectedCatId)
@@ -560,6 +813,8 @@ export default function Floor() {
   const menuTable = tables.find((t) => t.id === menuTableId)
   const summaryTable = tables.find((t) => t.id === summaryTableId)
   const summaryOrders = summaryTableId ? (ordersByTable[summaryTableId] || []) : []
+  const billTable = tables.find((t) => t.id === billTableId)
+  const billOrders = billTableId ? completedOrders.filter((o) => o.table_id === billTableId) : []
 
   if (dataLoading) {
     return (
@@ -657,10 +912,22 @@ export default function Floor() {
             restaurantName={restaurant?.name}
             onClose={() => setSummaryTableId(null)}
             onAddItems={() => { setSummaryTableId(null); openMenuFor(summaryTableId) }}
-            onGoToBilling={() => navigate('/admin/billing')}
+            onGoToBilling={() => { setBillTableId(summaryTableId); setSummaryTableId(null) }}
             onStatusChange={handleStatusChange}
             onCancelItem={handleCancelItem}
             onCancelOrder={handleCancelOrder}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {billTableId && (
+          <BillPanel
+            table={billTable} tableOrders={billOrders} currency={currency}
+            taxPercentage={taxPercentage} restaurant={restaurant} isOnline={isOnline}
+            checkAdminLimit={checkAdminLimit} userId={user?.id}
+            onClose={() => setBillTableId(null)}
+            onSettled={() => setBillTableId(null)}
           />
         )}
       </AnimatePresence>

@@ -29,7 +29,7 @@ function buildOfflineBill(queuedOrders, table, taxPercentage) {
   return { table, orders: tableOrders, total, isOffline: true, queuedOrders }
 }
 
-const PAYMENT_METHODS = [
+export const PAYMENT_METHODS = [
   { id: 'cash',  label: 'Cash',  icon: Banknote,   active: 'border-green-500 bg-green-50 text-green-700' },
   { id: 'upi',   label: 'UPI',   icon: Smartphone, active: 'border-purple-500 bg-purple-50 text-purple-700' },
   { id: 'card',  label: 'Card',  icon: CreditCard, active: 'border-blue-500 bg-blue-50 text-blue-700' },
@@ -45,7 +45,7 @@ export const PAYMENT_BADGE = {
 
 const PM_LABELS = { cash: 'Cash', upi: 'UPI', card: 'Card', other: 'Other' }
 
-const EMPTY_ADJ = { discountType: 'amount', discountValue: '', roundOff: '', packageCharge: '' }
+export const EMPTY_ADJ = { discountType: 'amount', discountValue: '', roundOff: '', packageCharge: '' }
 
 // Recompute a tax-inclusive order total from its (non-cancelled) items —
 // used for optimistic UI updates before the server round-trip confirms.
@@ -54,7 +54,7 @@ function computeOrderTotal(items, taxPercentage) {
   return Math.round(subtotal * (1 + taxPercentage / 100) * 100) / 100
 }
 
-function computeFinals(total, adj) {
+export function computeFinals(total, adj) {
   const dv = Math.max(0, Number(adj.discountValue) || 0)  // Bug 2: clamp negative inputs to 0
   const discountAmt = adj.discountType === 'percent'
     ? Math.min(total, Math.round(total * dv) / 100)        // total × dv% rounded to 2dp
@@ -73,7 +73,7 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
 }
 
-function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod, restaurant, discountAmt = 0, roundOffAmt = 0, packageChargeAmt = 0, finalTotal = null, billNumber = null }) {
+export function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod, restaurant, discountAmt = 0, roundOffAmt = 0, packageChargeAmt = 0, finalTotal = null, billNumber = null }) {
   const cur = restaurant?.currency || '₹'
   const fmt = (v) => `${cur}${Number(v).toFixed(2)}`
   const name = escapeHtml(restaurant?.name || 'Restaurant')
