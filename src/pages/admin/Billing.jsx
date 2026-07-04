@@ -45,7 +45,7 @@ export const PAYMENT_BADGE = {
 
 const PM_LABELS = { cash: 'Cash', upi: 'UPI', card: 'Card', other: 'Other' }
 
-const EMPTY_ADJ = { discountType: 'amount', discountValue: '', roundOff: '' }
+const EMPTY_ADJ = { discountType: 'amount', discountValue: '', roundOff: '', packageCharge: '' }
 
 // Recompute a tax-inclusive order total from its (non-cancelled) items —
 // used for optimistic UI updates before the server round-trip confirms.
@@ -61,8 +61,9 @@ function computeFinals(total, adj) {
     : Math.min(total, dv)
   const afterDiscount = total - discountAmt
   const roundOffAmt = Number(adj.roundOff) || 0
-  const finalTotal = Math.max(0, Math.round((afterDiscount + roundOffAmt) * 100) / 100)
-  return { discountAmt, roundOffAmt, finalTotal }
+  const packageChargeAmt = Math.max(0, Number(adj.packageCharge) || 0)
+  const finalTotal = Math.max(0, Math.round((afterDiscount + roundOffAmt + packageChargeAmt) * 100) / 100)
+  return { discountAmt, roundOffAmt, packageChargeAmt, finalTotal }
 }
 
 function escapeHtml(str) {
@@ -72,7 +73,7 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
 }
 
-function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod, restaurant, discountAmt = 0, roundOffAmt = 0, finalTotal = null, billNumber = null }) {
+function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod, restaurant, discountAmt = 0, roundOffAmt = 0, packageChargeAmt = 0, finalTotal = null, billNumber = null }) {
   const cur = restaurant?.currency || '₹'
   const fmt = (v) => `${cur}${Number(v).toFixed(2)}`
   const name = escapeHtml(restaurant?.name || 'Restaurant')
@@ -87,7 +88,7 @@ function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod,
   const halfTaxPct = parseFloat((taxPercentage / 2).toFixed(2))
   const halfTaxAmt = taxAmt / 2
   const displayTotal = finalTotal !== null ? finalTotal : total
-  const hasAdj = discountAmt > 0 || roundOffAmt !== 0
+  const hasAdj = discountAmt > 0 || roundOffAmt !== 0 || packageChargeAmt > 0
 
   const headerLines = [
     restaurant?.address          ? `<div class="c sm">${escapeHtml(restaurant.address)}</div>` : '',
@@ -124,6 +125,7 @@ function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod,
     ` : ''}
     ${discountAmt > 0 ? `<tr class="sub-row disc-row"><td>Discount</td><td class="r">-${fmt(discountAmt)}</td></tr>` : ''}
     ${roundOffAmt !== 0 ? `<tr class="sub-row ro-row"><td>Round Off</td><td class="r">${roundOffAmt >= 0 ? '+' : '-'}${fmt(Math.abs(roundOffAmt))}</td></tr>` : ''}
+    ${packageChargeAmt > 0 ? `<tr class="sub-row pkg-row"><td>Package Charge</td><td class="r">+${fmt(packageChargeAmt)}</td></tr>` : ''}
     ${hasAdj ? `<tr><td colspan="2"><div class="dash" style="margin:3px 0"></div></td></tr>` : ''}
     <tr class="total-row"><td>TOTAL</td><td class="r">${fmt(displayTotal)}</td></tr>
   `
@@ -136,22 +138,27 @@ function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod,
   <style>
     @page { size: 80mm auto; margin: 4mm 4mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Courier New', Courier, monospace; font-size: 11.5px; color: #000; width: 72mm; }
+    body {
+      font-family: Arial, 'Courier New', Courier, monospace;
+      font-size: 13px; font-weight: 700; color: #000; width: 72mm;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
     .c  { text-align: center; }
     .r  { text-align: right; }
     .b  { font-weight: bold; }
-    .sm { font-size: 10px; color: #444; }
+    .sm { font-size: 11px; font-weight: 700; color: #000; }
     .dash { border-top: 1px dashed #000; margin: 5px 0; }
     .solid { border-top: 1px solid #000; margin: 5px 0; }
     table { width: 100%; border-collapse: collapse; }
     td { padding: 2px 0; vertical-align: top; }
     td:last-child { white-space: nowrap; padding-left: 6px; }
-    .order-hdr td { font-size: 10px; color: #555; padding-top: 5px; }
-    .total-row td { font-size: 13px; font-weight: bold; padding-top: 3px; }
-    .sub-row td { font-size: 10px; color: #444; }
-    .b-row td { font-weight: 600; color: #222; }
-    .disc-row td { color: #1a7a1a; }
-    .ro-row td { color: #1a3d7a; }
+    .order-hdr td { font-size: 11px; font-weight: 700; color: #000; padding-top: 5px; }
+    .total-row td { font-size: 14px; font-weight: bold; padding-top: 3px; }
+    .sub-row td { font-size: 11px; font-weight: 700; color: #000; }
+    .b-row td { font-weight: 700; color: #000; }
+    .disc-row td { font-weight: 700; color: #145214; }
+    .ro-row td { font-weight: 700; color: #0d2b5c; }
+    .pkg-row td { font-weight: 700; color: #6b3d0f; }
   </style>
 </head>
 <body>
@@ -474,6 +481,7 @@ export default function Billing() {
             p_payment_method: bill.paymentMethod,
             p_discount:       bill.discountAmt,
             p_round_off:      bill.roundOffAmt,
+            p_package_charge: bill.packageChargeAmt || 0,
           })
           if (!error) { await removeQueuedBill(bill.id); synced++ }
         } catch { /* keep in queue, retry later */ }
@@ -588,7 +596,7 @@ export default function Billing() {
     const tableId = confirmTable.id
     const billData = bills.find((b) => b.table.id === tableId)
     const adj = getAdj(tableId)
-    const { discountAmt, roundOffAmt, finalTotal } = computeFinals(billData?.total || 0, adj)
+    const { discountAmt, roundOffAmt, packageChargeAmt, finalTotal } = computeFinals(billData?.total || 0, adj)
     const paymentMethod = selectedPayments[tableId] || 'other'
 
     // Real (already-synced) orders backing this bill, if any — hidden optimistically
@@ -611,6 +619,7 @@ export default function Billing() {
           restaurant,
           discountAmt,
           roundOffAmt,
+          packageChargeAmt,
           finalTotal,
           billNumber:   null,
         })
@@ -630,6 +639,7 @@ export default function Billing() {
         paymentMethod,
         discountAmt,
         roundOffAmt,
+        packageChargeAmt,
         finalTotal,
         orderIds:      snapshotOrderIds,
       })
@@ -665,6 +675,7 @@ export default function Billing() {
         p_payment_method: paymentMethod,
         p_discount:       discountAmt,
         p_round_off:      roundOffAmt,
+        p_package_charge: packageChargeAmt,
       })
       if (error) throw error
       if (!data || data.length === 0) {
@@ -682,6 +693,7 @@ export default function Billing() {
           restaurant,
           discountAmt,
           roundOffAmt,
+          packageChargeAmt,
           finalTotal,
           billNumber:   data[0].bill_number,
         })
@@ -761,8 +773,8 @@ export default function Billing() {
           {bills.map(({ table, orders: tableOrders, total, isOffline: isBillOffline }) => {
             const chosen = selectedPayments[table.id] || null
             const adj = getAdj(table.id)
-            const { discountAmt, roundOffAmt, finalTotal } = computeFinals(total, adj)
-            const hasAdj = discountAmt > 0 || roundOffAmt !== 0
+            const { discountAmt, roundOffAmt, packageChargeAmt, finalTotal } = computeFinals(total, adj)
+            const hasAdj = discountAmt > 0 || roundOffAmt !== 0 || packageChargeAmt > 0
 
             return (
               <motion.div
@@ -1028,6 +1040,20 @@ export default function Billing() {
                     />
                   </div>
 
+                  {/* Package charge */}
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Package Charge</p>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="e.g. 10  (takeaway packaging)"
+                      value={adj.packageCharge}
+                      onChange={(e) => patchAdj(table.id, { packageCharge: e.target.value })}
+                      className="input text-sm py-1.5 w-full"
+                    />
+                  </div>
+
                   {/* Total breakdown */}
                   <div className="space-y-1 pt-1 border-t border-dashed border-gray-200">
                     {hasAdj && (
@@ -1055,6 +1081,12 @@ export default function Billing() {
                             </span>
                           </div>
                         )}
+                        {packageChargeAmt > 0 && (
+                          <div className="flex justify-between text-xs font-semibold text-amber-600">
+                            <span>Package Charge</span>
+                            <span>+{cur}{packageChargeAmt.toFixed(2)}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                     <div className="flex items-center justify-between">
@@ -1074,7 +1106,7 @@ export default function Billing() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod: chosen, restaurant, discountAmt, roundOffAmt, finalTotal, billNumber: null })}
+                      onClick={() => printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod: chosen, restaurant, discountAmt, roundOffAmt, packageChargeAmt, finalTotal, billNumber: null })}
                       title="Print receipt without settling"
                       className="btn-outline gap-1.5 text-sm px-3"
                     >

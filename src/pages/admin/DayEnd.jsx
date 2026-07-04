@@ -175,6 +175,7 @@ export default function DayEnd() {
   const [activeOrders,  setActiveOrders]  = useState(0)
   const [totalDiscount, setTotalDiscount] = useState(0)
   const [totalRoundOff, setTotalRoundOff] = useState(0)
+  const [totalPackageCharge, setTotalPackageCharge] = useState(0)
   const [billEditsAdded,   setBillEditsAdded]   = useState(0)
   const [billEditsRemoved, setBillEditsRemoved] = useState(0)
   const [registerBalance,  setRegisterBalance]  = useState(0)
@@ -198,7 +199,7 @@ export default function DayEnd() {
       // Collections: all bills settled since session started
       supabase
         .from('billing_history')
-        .select('payment_method, total_amount, discount_amount, round_off')
+        .select('payment_method, total_amount, discount_amount, round_off, package_charge')
         .eq('restaurant_id', restaurant.id)
         .gte('bill_date', sessionStart),
       // Expenses: all expenses added since session started
@@ -224,7 +225,7 @@ export default function DayEnd() {
 
     if (!collRes.error) {
       const map = {}
-      let disc = 0; let roff = 0
+      let disc = 0; let roff = 0; let pkg = 0
       for (const row of collRes.data || []) {
         const m = (row.payment_method || 'cash').toLowerCase()
         if (!map[m]) map[m] = { payment_method: m, count: 0, total: 0 }
@@ -232,10 +233,12 @@ export default function DayEnd() {
         map[m].total += Number(row.total_amount)
         disc += Number(row.discount_amount) || 0
         roff += Number(row.round_off) || 0
+        pkg  += Number(row.package_charge) || 0
       }
       setCollections(Object.values(map).sort((a, b) => b.total - a.total))
       setTotalDiscount(disc)
       setTotalRoundOff(roff)
+      setTotalPackageCharge(pkg)
     }
     if (!expRes.error) {
       // 'collection' rows are money the owner physically took out of the
@@ -382,6 +385,7 @@ export default function DayEnd() {
           totalExpenses,
           totalDiscount,
           totalRoundOff,
+          totalPackageCharge,
           billEditsAdded,
           billEditsRemoved,
           netTotal,

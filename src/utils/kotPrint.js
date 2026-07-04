@@ -30,25 +30,28 @@ export function printKOT(order, restaurantName = 'Restaurant') {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 13px;
+      font-family: Arial, 'Courier New', Courier, monospace;
+      font-size: 14px;
+      font-weight: 700;
       width: 80mm;
       padding: 6mm 4mm;
       color: #000;
       background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     .center  { text-align: center; }
     .bold    { font-weight: 700; }
     .divider { border-top: 1px dashed #000; margin: 6px 0; }
     .solid   { border-top: 2px solid #000; margin: 6px 0; }
-    .header  { font-size: 16px; font-weight: 700; text-align: center; margin-bottom: 2px; }
-    .sub     { font-size: 11px; text-align: center; margin-bottom: 6px; }
-    .meta    { display: flex; justify-content: space-between; font-size: 12px; margin: 3px 0; }
+    .header  { font-size: 18px; font-weight: 700; text-align: center; margin-bottom: 2px; }
+    .sub     { font-size: 12px; font-weight: 700; text-align: center; margin-bottom: 6px; }
+    .meta    { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; margin: 3px 0; }
     table    { width: 100%; border-collapse: collapse; }
-    .qty     { width: 28px; font-weight: 700; vertical-align: top; padding: 3px 4px 3px 0; font-size: 14px; }
-    .item    { padding: 3px 0; vertical-align: top; font-size: 13px; line-height: 1.4; }
-    .note    { font-size: 11px; color: #333; margin-top: 1px; font-style: italic; }
-    .kot-id  { text-align: center; font-size: 11px; margin-top: 8px; color: #444; }
+    .qty     { width: 30px; font-weight: 700; vertical-align: top; padding: 3px 4px 3px 0; font-size: 15px; }
+    .item    { padding: 3px 0; vertical-align: top; font-size: 14px; font-weight: 700; line-height: 1.4; }
+    .note    { font-size: 12px; font-weight: 700; color: #000; margin-top: 1px; font-style: italic; }
+    .kot-id  { text-align: center; font-size: 12px; font-weight: 700; margin-top: 8px; color: #000; }
     @media print {
       @page { margin: 0; size: 80mm auto; }
       body  { padding: 3mm 4mm; }

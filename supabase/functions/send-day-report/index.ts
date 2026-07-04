@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
   const {
     restaurantId, restaurantName, currency = '₹', collections, expenses, ownerCollections = [],
     netMap, totalCollected, totalExpenses, totalCollectedByOwner = 0, totalDiscount = 0, totalRoundOff = 0,
-    billEditsAdded = 0, billEditsRemoved = 0, netTotal, carryoverFromPrevDays = 0, closedAt,
+    totalPackageCharge = 0, billEditsAdded = 0, billEditsRemoved = 0, netTotal, carryoverFromPrevDays = 0, closedAt,
   } = body as {
     restaurantId: string
     restaurantName: string
@@ -62,6 +62,7 @@ Deno.serve(async (req) => {
     totalCollectedByOwner: number
     totalDiscount: number
     totalRoundOff: number
+    totalPackageCharge: number
     billEditsAdded: number
     billEditsRemoved: number
     netTotal: number
@@ -114,7 +115,7 @@ Deno.serve(async (req) => {
   }
   lines.push('')
 
-  if (totalDiscount > 0 || totalRoundOff !== 0) {
+  if (totalDiscount > 0 || totalRoundOff !== 0 || totalPackageCharge > 0) {
     lines.push(`🏷️ *Adjustments*`)
     if (totalDiscount > 0) {
       lines.push(`  Discounts Given: − ${fmt(totalDiscount, currency)}`)
@@ -122,6 +123,9 @@ Deno.serve(async (req) => {
     if (totalRoundOff !== 0) {
       const sign = totalRoundOff > 0 ? '+ ' : '− '
       lines.push(`  Round Off: ${sign}${fmt(Math.abs(totalRoundOff), currency)}`)
+    }
+    if (totalPackageCharge > 0) {
+      lines.push(`  Package Charges: + ${fmt(totalPackageCharge, currency)}`)
     }
     lines.push('')
   }

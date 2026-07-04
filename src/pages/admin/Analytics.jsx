@@ -253,9 +253,10 @@ export default function Analytics() {
   const paymentBreakdown    = data.payment_breakdown    || []
   const expenseBreakdown    = data.expense_breakdown    || []
   const collectionBreakdown = data.collection_breakdown || []
-  const totalDiscount       = Number(data.total_discount    || 0)
-  const totalRoundOff       = Number(data.total_round_off   || 0)
-  const discountCount       = Number(data.discount_count    || 0)
+  const totalDiscount       = Number(data.total_discount       || 0)
+  const totalRoundOff       = Number(data.total_round_off      || 0)
+  const totalPackageCharge  = Number(data.total_package_charge || 0)
+  const discountCount       = Number(data.discount_count       || 0)
 
   const collectedByMethod  = Object.fromEntries(paymentBreakdown.map((r) => [r.payment_method, r]))
   const expenseByMethod    = Object.fromEntries(expenseBreakdown.map((r) => [r.payment_method, r.total]))
@@ -485,18 +486,18 @@ export default function Analytics() {
           )}
 
           {/* Discount + Round-off */}
-          <div className="border-t border-gray-100 grid grid-cols-2 divide-x divide-gray-100">
-            <div className="px-4 py-3 flex items-center gap-3">
+          <div className="border-t border-gray-100 grid grid-cols-3 divide-x divide-gray-100">
+            <div className="px-3 py-3 flex items-center gap-2">
               <div className="w-8 h-8 flex-shrink-0 rounded-xl flex items-center justify-center bg-gradient-to-br from-rose-400 to-rose-600 shadow-sm">
                 <Tag className="w-3.5 h-3.5 text-white" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-gray-500">Total Discount</p>
+                <p className="text-xs text-gray-500">Discount</p>
                 <p className="text-sm font-bold text-rose-600 tabular-nums">− {formatCurrency(totalDiscount, currency)}</p>
                 {discountCount > 0 && <p className="text-[11px] text-gray-400">{discountCount} bills</p>}
               </div>
             </div>
-            <div className="px-4 py-3 flex items-center gap-3">
+            <div className="px-3 py-3 flex items-center gap-2">
               <div className="w-8 h-8 flex-shrink-0 rounded-xl flex items-center justify-center bg-gradient-to-br from-amber-400 to-amber-600 shadow-sm">
                 <RotateCcw className="w-3.5 h-3.5 text-white" />
               </div>
@@ -506,6 +507,15 @@ export default function Analytics() {
                   {totalRoundOff >= 0 ? '' : '− '}{formatCurrency(Math.abs(totalRoundOff), currency)}
                 </p>
                 <p className="text-[11px] text-gray-400">{totalRoundOff <= 0 ? 'saved for customers' : 'added'}</p>
+              </div>
+            </div>
+            <div className="px-3 py-3 flex items-center gap-2">
+              <div className="w-8 h-8 flex-shrink-0 rounded-xl flex items-center justify-center bg-gradient-to-br from-orange-400 to-orange-600 shadow-sm">
+                <Wallet className="w-3.5 h-3.5 text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500">Package Charge</p>
+                <p className="text-sm font-bold text-orange-600 tabular-nums">+ {formatCurrency(totalPackageCharge, currency)}</p>
               </div>
             </div>
           </div>
