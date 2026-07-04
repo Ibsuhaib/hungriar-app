@@ -40,6 +40,7 @@ const History        = lazy(() => import('./pages/admin/History'))
 const Analytics      = lazy(() => import('./pages/admin/Analytics'))
 const TakeOrder      = lazy(() => import('./pages/admin/TakeOrder'))
 const DayEnd         = lazy(() => import('./pages/admin/DayEnd'))
+const Floor          = lazy(() => import('./pages/admin/Floor'))
 
 // Super-admin pages — lazy: only needed for super-admin
 const SuperAdminLogin       = lazy(() => import('./pages/superadmin/Login'))
@@ -106,6 +107,7 @@ export default function App() {
               <Route path="settings" element={<Settings />} />
               <Route path="take-order" element={<TakeOrder />} />
               <Route path="day-end" element={<DayEnd />} />
+              <Route path="floor" element={<Floor />} />
             </Route>
 
             <Route path="/station/:stationId" element={<StationLogin />} />
