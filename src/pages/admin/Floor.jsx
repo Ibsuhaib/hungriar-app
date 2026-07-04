@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Plus, Minus, Search, ShoppingCart, Loader2, Clock,
-  Receipt, ConciergeBell, WifiOff, RefreshCw, CheckCircle2, Printer,
+  Receipt, ConciergeBell, WifiOff, RefreshCw, CheckCircle2, Printer, PenLine,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -42,10 +42,11 @@ function useCart() {
 // whether the kitchen still has work to do.
 const STATUS_PRIORITY = ['pending', 'preparing', 'ready', 'served']
 const STATUS_META = {
-  pending:   { label: 'Pending',   color: 'text-amber-700 bg-amber-100' },
-  preparing: { label: 'Preparing', color: 'text-blue-700  bg-blue-100'  },
-  ready:     { label: 'Ready',     color: 'text-green-700 bg-green-100' },
-  served:    { label: 'Served',    color: 'text-gray-600  bg-gray-100'  },
+  pending:   { label: 'Pending',       color: 'text-amber-700 bg-amber-100' },
+  preparing: { label: 'Preparing',     color: 'text-blue-700  bg-blue-100'  },
+  ready:     { label: 'Ready',         color: 'text-green-700 bg-green-100' },
+  served:    { label: 'Served',        color: 'text-gray-600  bg-gray-100'  },
+  completed: { label: 'Ready to Bill', color: 'text-secondary-700 bg-secondary-100' },
 }
 function tableOverallStatus(tableOrders) {
   for (const s of STATUS_PRIORITY) {
@@ -104,11 +105,81 @@ function OccupiedTableBlock({ table, orders, currency, onClick }) {
   )
 }
 
+// ─── Open Order modal ─────────────────────────────────────────────────────────
+// For one-off customer requests that aren't in the menu — a custom name +
+// price goes straight into the cart. Never written to menu_items.
+
+function OpenOrderModal({ currency, onClose, onAdd }) {
+  const [name, setName] = useState('')
+  const [price, setPrice] = useState('')
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    const trimmedName = name.trim()
+    const numericPrice = Number(price)
+    if (!trimmedName || !numericPrice || numericPrice <= 0) return
+    onAdd({ id: `open-${crypto.randomUUID()}`, name: trimmedName, price: numericPrice, isOpenItem: true })
+    onClose()
+  }
+
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[55] bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+        className="fixed inset-0 z-[56] flex items-center justify-center p-4"
+      >
+        <div className="bg-white rounded-2xl shadow-2xl p-5 max-w-sm w-full">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-base font-bold text-gray-900">Open Order Item</h3>
+              <p className="text-xs text-gray-400 mt-0.5">A custom item just for this order — not added to the menu</p>
+            </div>
+            <button type="button" onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 flex-shrink-0">
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Item Name</label>
+              <input
+                type="text" autoFocus value={name} onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Special combo, Custom cake…" maxLength={80} required
+                className="input w-full"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Price ({currency})</label>
+              <input
+                type="number" min="0.01" step="0.01" value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0.00" required
+                className="input w-full"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!name.trim() || !price || Number(price) <= 0}
+              className="w-full bg-primary-600 hover:bg-primary-500 text-white py-2.5 rounded-2xl text-sm font-bold transition-colors disabled:opacity-40"
+            >
+              Add to Cart
+            </button>
+          </form>
+        </div>
+      </motion.div>
+    </>
+  )
+}
+
 // ─── Menu overlay (opens for a free table, or "Add Items" on an occupied one) ─
 
 function MenuOverlay({
   table, categories, items, cart, search, onSearch, selectedCatId, onSelectCat,
-  onAdd, onRemove, totalQty, subtotal, currency, onClose, onOpenCart,
+  onAdd, onRemove, totalQty, subtotal, currency, onClose, onOpenCart, onOpenOrder,
 }) {
   return (
     <motion.div
@@ -135,12 +206,21 @@ function MenuOverlay({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        <div className="relative mb-3">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="search" value={search} onChange={(e) => onSearch(e.target.value)}
-            placeholder="Search items…" className="input pl-9 w-full"
-          />
+        <div className="flex gap-2 mb-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="search" value={search} onChange={(e) => onSearch(e.target.value)}
+              placeholder="Search items…" className="input pl-9 w-full"
+            />
+          </div>
+          <button
+            type="button" onClick={onOpenOrder}
+            title="Add a custom item not in the menu"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-primary-300 bg-primary-50 text-sm font-semibold text-primary-600 hover:bg-primary-100 transition-colors flex-shrink-0"
+          >
+            <PenLine className="w-4 h-4" /> Open Order
+          </button>
         </div>
 
         <div className="flex flex-wrap gap-2 mb-4">
@@ -609,6 +689,7 @@ export default function Floor() {
   const [selectedCatId, setSelectedCatId] = useState('all')
   const [search, setSearch] = useState('')
   const [cartOpen, setCartOpen] = useState(false)
+  const [openOrderModalOpen, setOpenOrderModalOpen] = useState(false)
   const [placing, setPlacing] = useState(false)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [pendingCount, setPendingCount] = useState(0)
@@ -681,18 +762,21 @@ export default function Floor() {
     }
   }
 
+  // A table stays occupied until its bill is actually settled — not just
+  // when the kitchen marks the order completed. Completed orders remain
+  // here (and only leave once reset_table_billing deletes them at
+  // settlement), so the table block only turns green again after billing.
   const ordersByTable = useMemo(() => {
     const map = {}
     for (const o of orders) {
-      if (o.status === 'completed' || o.status === 'cancelled') continue
+      if (o.status === 'cancelled') continue
       if (!map[o.table_id]) map[o.table_id] = []
       map[o.table_id].push(o)
     }
     return map
   }, [orders])
 
-  // Completed orders are what the bill is actually built from — they've
-  // already dropped out of ordersByTable above by the time they're billable.
+  // Completed orders are what the bill is actually built from.
   const completedOrders = useMemo(() => orders.filter((o) => o.status === 'completed'), [orders])
 
   const filteredItems = useMemo(() => {
@@ -758,9 +842,16 @@ export default function Floor() {
 
     const orderId = crypto.randomUUID()
     const table = tables.find((t) => t.id === menuTableId)
-    const items = entries.map((e) => ({ menu_item_id: e.item.id, quantity: e.quantity, notes: '' }))
+    // Open-order items send a custom name/price instead of a menu_item_id,
+    // so the RPC never touches menu_items for them (see migration 31).
+    const items = entries.map((e) => (
+      e.item.isOpenItem
+        ? { custom_name: e.item.name, custom_price: e.item.price, quantity: e.quantity, notes: '' }
+        : { menu_item_id: e.item.id, quantity: e.quantity, notes: '' }
+    ))
     const richItems = entries.map((e) => ({
-      menu_item_id: e.item.id, item_name: e.item.name, unit_price: e.item.price, quantity: e.quantity, notes: '',
+      menu_item_id: e.item.isOpenItem ? null : e.item.id,
+      item_name: e.item.name, unit_price: e.item.price, quantity: e.quantity, notes: '',
     }))
     const kotOrder = {
       id: orderId,
@@ -890,6 +981,17 @@ export default function Floor() {
             onAdd={add} onRemove={remove}
             totalQty={totalQty} subtotal={subtotal} currency={currency}
             onClose={closeMenu} onOpenCart={() => setCartOpen(true)}
+            onOpenOrder={() => setOpenOrderModalOpen(true)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {openOrderModalOpen && (
+          <OpenOrderModal
+            currency={currency}
+            onClose={() => setOpenOrderModalOpen(false)}
+            onAdd={add}
           />
         )}
       </AnimatePresence>
