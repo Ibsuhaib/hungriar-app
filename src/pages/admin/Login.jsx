@@ -15,7 +15,7 @@ const FEATURES = [
 const BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME ?? 'HungriARBot'
 
 export default function Login() {
-  const { user, role, signIn } = useAuth()
+  const { user, role, signIn, loading } = useAuth()
   const navigate = useNavigate()
 
   // step: 'phone' | 'telegram' | 'otp' | 'restaurants' | 'password'
@@ -30,7 +30,23 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
+  // Wait for the session to actually resolve before deciding what to show —
+  // otherwise a still-loading session looks identical to "logged out" and
+  // this page shows the phone-entry form even though a valid session exists.
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 animate-pulse" />
+          <div className="skeleton h-2 w-24 rounded-full" />
+        </div>
+      </div>
+    )
+  }
+
   if (user && role === 'admin') return <Navigate to="/admin" replace />
+  if (user && role === 'chef')  return <Navigate to="/admin/chef" replace />
+  if (user && role === 'staff') return <Navigate to="/staff" replace />
 
   // ── Step 1: send OTP ──────────────────────────────────────────────────────
   const handleSendOtp = async (e) => {

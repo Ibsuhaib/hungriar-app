@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { motion, useInView, useScroll, useTransform } from 'framer-motion'
 import {
   Check, X, ArrowRight, ChevronDown,
   Smartphone, ChefHat, QrCode, BarChart3,
   Box, Receipt, Bell, Zap, Star,
 } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
+
+const ROLE_HOME = { admin: '/admin', chef: '/admin/chef', staff: '/staff' }
 
 const SUPPORT_EMAIL = 'hungriar.app@gmail.com'
 
@@ -284,9 +287,14 @@ const PLANS = [
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Home() {
+  const { user, role, loading } = useAuth()
   const heroRef = useRef(null)
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] })
   const heroY = useTransform(scrollYProgress, [0, 1], ['0%', '30%'])
+
+  // Already signed in (e.g. reopening the app after closing it) — go straight
+  // to the right panel instead of showing the marketing landing page.
+  if (!loading && user && ROLE_HOME[role]) return <Navigate to={ROLE_HOME[role]} replace />
 
   return (
     <div className="flex min-h-screen flex-col bg-navy-800 text-white font-sans">
