@@ -4,15 +4,17 @@ import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Plus, Minus, Search, ShoppingCart, Loader2, Clock,
-  ClipboardList, Receipt, ConciergeBell, WifiOff, RefreshCw,
+  Receipt, ConciergeBell, WifiOff, RefreshCw, CheckCircle2,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
 import { printKOT } from '../../utils/kotPrint'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { enqueueOrder, getQueuedOrders, removeQueuedOrder, isNetworkError } from '../../utils/offlineQueue'
 import { pageCache } from '../../utils/pageCache'
+import OrderCard from '../../components/OrderCard'
 
 // ─── Cart hook (same shape as TakeOrder / StaffPanel) ────────────────────────
 function useCart() {
@@ -268,11 +270,14 @@ function CartSheet({ entries, subtotal, currency, onAdd, onRemove, onClose, onPl
 
 // ─── Order summary panel (Phase 1: read-only + bridges to Orders/Billing) ─────
 
-function OrderSummaryPanel({ table, orders, currency, onClose, onAddItems, onGoToOrders, onGoToBilling }) {
-  const allItems = orders.flatMap((o) => (o.order_items || []).filter((i) => !i.cancelled))
-  const subtotal = orders.reduce((s, o) => s + Number(o.total_amount), 0)
-  const status = tableOverallStatus(orders)
-  const meta = STATUS_META[status] ?? STATUS_META.pending
+function OrderSummaryPanel({
+  table, orders, currency, restaurantName, onClose, onAddItems, onGoToBilling,
+  onStatusChange, onCancelItem, onCancelOrder,
+}) {
+  // canBill is vacuously true on an empty array — correct here: once every
+  // order on this table has been completed, they drop out of `orders`
+  // (the active-orders filter excludes completed/cancelled), leaving nothing
+  // left to block billing.
   const canBill = orders.every((o) => o.status === 'completed')
 
   return (
@@ -284,31 +289,36 @@ function OrderSummaryPanel({ table, orders, currency, onClose, onAddItems, onGoT
       <motion.div
         initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="fixed bottom-0 inset-x-0 z-[60] bg-white rounded-t-3xl shadow-2xl p-5 max-h-[80vh] overflow-y-auto"
+        className="fixed bottom-0 inset-x-0 z-[60] bg-white rounded-t-3xl shadow-2xl p-5 max-h-[85vh] overflow-y-auto"
       >
-        <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-gray-900">Table {table?.table_number}</h3>
           <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100">
             <X className="w-4 h-4 text-gray-400" />
           </button>
         </div>
-        <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-full mb-4 ${meta.color}`}>{meta.label}</span>
 
-        <div className="space-y-1.5 mb-4">
-          {allItems.map((it) => (
-            <div key={it.id} className="flex justify-between text-sm text-gray-700">
-              <span>{it.quantity}× {it.item_name}</span>
-              <span className="font-medium">{formatCurrency(it.unit_price * it.quantity, currency)}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="border-t border-gray-100 pt-3 mb-5">
-          <div className="flex justify-between text-sm font-bold text-gray-900">
-            <span>Subtotal</span>
-            <span>{formatCurrency(subtotal, currency)}</span>
+        {orders.length === 0 ? (
+          <div className="text-center py-8 mb-4 bg-green-50 rounded-2xl border border-green-100">
+            <CheckCircle2 className="w-8 h-8 text-green-400 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-green-700">All orders completed</p>
+            <p className="text-xs text-green-600 mt-0.5">Ready to bill</p>
           </div>
-        </div>
+        ) : (
+          <div className="space-y-3 mb-4">
+            {orders.map((order) => (
+              <OrderCard
+                key={order.id}
+                order={order}
+                onStatusChange={onStatusChange}
+                onCancelItem={onCancelItem}
+                onCancelOrder={onCancelOrder}
+                currency={currency}
+                restaurantName={restaurantName}
+              />
+            ))}
+          </div>
+        )}
 
         <div className="space-y-2">
           <button
@@ -316,12 +326,6 @@ function OrderSummaryPanel({ table, orders, currency, onClose, onAddItems, onGoT
             className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-primary-50 text-primary-700 text-sm font-bold border border-primary-100 hover:bg-primary-100 transition-colors"
           >
             <Plus className="w-4 h-4" /> Add Items
-          </button>
-          <button
-            type="button" onClick={onGoToOrders}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-gray-50 text-gray-700 text-sm font-bold border border-gray-200 hover:bg-gray-100 transition-colors"
-          >
-            <ClipboardList className="w-4 h-4" /> View Kitchen Status
           </button>
           <button
             type="button" onClick={onGoToBilling} disabled={!canBill}
@@ -339,7 +343,8 @@ function OrderSummaryPanel({ table, orders, currency, onClose, onAddItems, onGoT
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Floor() {
-  const { restaurant } = useAuth()
+  const { restaurant, user } = useAuth()
+  const { checkAdminLimit } = useRateLimit()
   const navigate = useNavigate()
   const currency = restaurant?.currency || '₹'
 
@@ -385,7 +390,47 @@ export default function Floor() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const { orders, refetch } = useRealtimeOrders({ restaurantId: restaurant?.id, pollInterval: 5000 })
+  const { orders, refetch, patchOrder } = useRealtimeOrders({ restaurantId: restaurant?.id, pollInterval: 5000 })
+
+  // Same handlers as Orders.jsx / Chef.jsx — kept identical so behavior (and
+  // the RPCs/tables they touch) doesn't diverge between the two views.
+  const handleStatusChange = async (orderId, newStatus) => {
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    const prevStatus = orders.find((o) => o.id === orderId)?.status
+    patchOrder(orderId, { status: newStatus })
+    const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId)
+    if (error) {
+      toast.error('Failed to update order status')
+      if (prevStatus) patchOrder(orderId, { status: prevStatus })
+    }
+  }
+
+  const handleCancelItem = async (orderId, itemId, itemName) => {
+    if (!window.confirm(`Cancel "${itemName}" from this order?`)) return
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    const { error } = await supabase.rpc('cancel_order_item', { p_item_id: itemId })
+    if (error) {
+      toast.error('Failed to cancel item')
+    } else {
+      toast.success(`${itemName} cancelled`)
+      refetch({ silent: true })
+    }
+  }
+
+  const handleCancelOrder = async (orderId) => {
+    if (!window.confirm('Cancel this entire order? This cannot be undone.')) return
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    const { error } = await supabase.rpc('cancel_order', { p_order_id: orderId })
+    if (error) {
+      toast.error('Failed to cancel order')
+    } else {
+      toast.success('Order cancelled')
+      refetch({ silent: true })
+    }
+  }
 
   const ordersByTable = useMemo(() => {
     const map = {}
@@ -609,10 +654,13 @@ export default function Floor() {
         {summaryTableId && (
           <OrderSummaryPanel
             table={summaryTable} orders={summaryOrders} currency={currency}
+            restaurantName={restaurant?.name}
             onClose={() => setSummaryTableId(null)}
             onAddItems={() => { setSummaryTableId(null); openMenuFor(summaryTableId) }}
-            onGoToOrders={() => navigate('/admin/orders')}
             onGoToBilling={() => navigate('/admin/billing')}
+            onStatusChange={handleStatusChange}
+            onCancelItem={handleCancelItem}
+            onCancelOrder={handleCancelOrder}
           />
         )}
       </AnimatePresence>
