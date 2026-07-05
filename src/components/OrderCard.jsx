@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Clock, ChefHat, Utensils, CheckCircle2, CheckCheck, XCircle, X, Printer } from 'lucide-react'
+import { Clock, ChefHat, Utensils, CheckCircle2, CheckCheck, XCircle, X, Printer, Plus, Minus, Trash2 } from 'lucide-react'
 import {
   ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
@@ -24,7 +24,7 @@ const STATUS_BG = {
   cancelled: 'from-gray-300 to-gray-400',
 }
 
-export default function OrderCard({ order, onStatusChange, onCancelItem, onCancelOrder, currency = '₹', restaurantName = '' }) {
+export default function OrderCard({ order, onStatusChange, onQuantityChange, onCancelItem, onCancelOrder, busyItemId, currency = '₹', restaurantName = '' }) {
   const items = order.order_items || []
   const StatusIcon = STATUS_ICONS[order.status] || Clock
   const gradient = STATUS_BG[order.status] || 'from-gray-300 to-gray-400'
@@ -86,23 +86,49 @@ export default function OrderCard({ order, onStatusChange, onCancelItem, onCance
                 <li key={item.id} className="text-sm">
                   <div className="flex items-center justify-between gap-3">
                     <span className="min-w-0 flex-1 text-gray-600">
-                      <span className="font-medium text-gray-800">{item.quantity}×</span>{' '}
+                      {!(onQuantityChange && !isCompleted) && (
+                        <><span className="font-medium text-gray-800">{item.quantity}×</span>{' '}</>
+                      )}
                       {item.item_name}
                     </span>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {onQuantityChange && !isCompleted ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => item.quantity === 1
+                              ? onCancelItem?.(order.id, item.id, item.item_name)
+                              : onQuantityChange(order, item, item.quantity - 1)}
+                            disabled={busyItemId === item.id}
+                            className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                          >
+                            {item.quantity === 1 ? <Trash2 className="w-3 h-3 text-red-400" /> : <Minus className="w-3 h-3" />}
+                          </button>
+                          <span className="w-5 text-center font-bold text-gray-800 text-xs">{item.quantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => onQuantityChange(order, item, item.quantity + 1)}
+                            disabled={busyItemId === item.id}
+                            className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        onCancelItem && !isCompleted && (
+                          <button
+                            type="button"
+                            onClick={() => onCancelItem(order.id, item.id, item.item_name)}
+                            className="text-gray-300 hover:text-red-400 transition-colors p-0.5 rounded"
+                            aria-label={`Cancel ${item.item_name}`}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )
+                      )}
                       <span className="font-semibold text-gray-900 text-xs">
                         {formatCurrency(item.quantity * item.unit_price, currency)}
                       </span>
-                      {onCancelItem && !isCompleted && (
-                        <button
-                          type="button"
-                          onClick={() => onCancelItem(order.id, item.id, item.item_name)}
-                          className="text-gray-300 hover:text-red-400 transition-colors p-0.5 rounded"
-                          aria-label={`Cancel ${item.item_name}`}
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
                     </div>
                   </div>
                   {item.notes && (

@@ -9,6 +9,7 @@ import { supabase } from '../../lib/supabase'
 import OrderCard from '../../components/OrderCard'
 import { usePushNotifications, showNotification } from '../../hooks/usePushNotifications'
 import { printKOT } from '../../utils/kotPrint'
+import { computeOrderTotal } from './Billing'
 
 let _audioCtx = null
 
@@ -172,6 +173,8 @@ function ChefOrdersView({ onLock }) {
 
   const kotKey = restaurant?.id ? `hungriar_kot_auto_${restaurant.id}` : null
   const [autoPrintKOT, setAutoPrintKOT] = useState(() => kotKey ? localStorage.getItem(kotKey) === 'true' : false)
+  const [busyItemId, setBusyItemId] = useState(null)
+  const taxPercentage = Number(restaurant?.tax_percentage) || 0
 
   const toggleAutoPrint = () => {
     if (!kotKey) return
@@ -238,6 +241,25 @@ function ChefOrdersView({ onLock }) {
     } else {
       toast.success(`${itemName} cancelled`)
       refetch({ silent: true })
+    }
+  }
+
+  const handleQuantityChange = async (order, item, newQty) => {
+    if (busyItemId === item.id) return
+    if (!navigator.onLine) { toast.error('Editing needs an internet connection'); return }
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    setBusyItemId(item.id)
+    const newItems = order.order_items.map((i) => (i.id === item.id ? { ...i, quantity: newQty } : i))
+    patchOrder(order.id, { order_items: newItems, total_amount: computeOrderTotal(newItems, taxPercentage) })
+    try {
+      const { error } = await supabase.rpc('update_order_item_quantity', { p_item_id: item.id, p_quantity: newQty })
+      if (error) throw error
+    } catch (err) {
+      toast.error(err.message || 'Failed to update quantity')
+      refetch({ silent: true })
+    } finally {
+      setBusyItemId(null)
     }
   }
 
@@ -345,8 +367,10 @@ function ChefOrdersView({ onLock }) {
                   key={order.id}
                   order={order}
                   onStatusChange={handleStatusChange}
+                  onQuantityChange={handleQuantityChange}
                   onCancelItem={handleCancelItem}
                   onCancelOrder={handleCancelOrder}
+                  busyItemId={busyItemId}
                   currency={restaurant?.currency}
                   restaurantName={restaurant?.name}
                 />

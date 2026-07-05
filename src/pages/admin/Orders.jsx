@@ -8,6 +8,7 @@ import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
 import OrderCard from '../../components/OrderCard'
 import { usePushNotifications } from '../../hooks/usePushNotifications'
+import { computeOrderTotal } from './Billing'
 
 // Persistent AudioContext — must be created/resumed during a user gesture
 // because browsers block audio that starts without interaction.
@@ -98,6 +99,8 @@ export default function Orders() {
   const handleNewOrder = useCallback(() => { playBell() }, [])
   const { orders, loading, patchOrder, refetch } = useRealtimeOrders({ restaurantId: restaurant?.id, pollInterval: 3000, onInsert: handleNewOrder })
   const [settledTodayCount, setSettledTodayCount] = useState(0)
+  const [busyItemId, setBusyItemId] = useState(null)
+  const taxPercentage = Number(restaurant?.tax_percentage) || 0
 
   // Create AudioContext on mount (suspended) and resume on any user click.
   useEffect(() => {
@@ -173,6 +176,25 @@ export default function Orders() {
     }
   }
 
+  const handleQuantityChange = async (order, item, newQty) => {
+    if (busyItemId === item.id) return
+    if (!navigator.onLine) { toast.error('Editing needs an internet connection'); return }
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    setBusyItemId(item.id)
+    const newItems = order.order_items.map((i) => (i.id === item.id ? { ...i, quantity: newQty } : i))
+    patchOrder(order.id, { order_items: newItems, total_amount: computeOrderTotal(newItems, taxPercentage) })
+    try {
+      const { error } = await supabase.rpc('update_order_item_quantity', { p_item_id: item.id, p_quantity: newQty })
+      if (error) throw error
+    } catch (err) {
+      toast.error(err.message || 'Failed to update quantity')
+      refetch({ silent: true })
+    } finally {
+      setBusyItemId(null)
+    }
+  }
+
   const handleCancelOrder = async (orderId) => {
     if (!window.confirm('Cancel this entire order? This cannot be undone.')) return
     const allowed = await checkAdminLimit(user?.id)
@@ -245,8 +267,10 @@ export default function Orders() {
                 key={order.id}
                 order={order}
                 onStatusChange={handleStatusChange}
+                onQuantityChange={handleQuantityChange}
                 onCancelItem={handleCancelItem}
                 onCancelOrder={handleCancelOrder}
+                busyItemId={busyItemId}
                 currency={restaurant?.currency}
                 restaurantName={restaurant?.name}
               />

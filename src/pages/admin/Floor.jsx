@@ -352,12 +352,10 @@ function CartSheet({ entries, subtotal, currency, onAdd, onRemove, onClose, onPl
 
 function OrderSummaryPanel({
   table, orders, currency, restaurantName, onClose, onAddItems, onGoToBilling,
-  onStatusChange, onCancelItem, onCancelOrder,
+  onStatusChange, onQuantityChange, onCancelItem, onCancelOrder, busyItemId,
 }) {
-  // canBill is vacuously true on an empty array — correct here: once every
-  // order on this table has been completed, they drop out of `orders`
-  // (the active-orders filter excludes completed/cancelled), leaving nothing
-  // left to block billing.
+  // canBill is vacuously true on an empty array too — orders only leave this
+  // list (and the table itself) once the bill is actually settled.
   const canBill = orders.every((o) => o.status === 'completed')
 
   return (
@@ -391,8 +389,10 @@ function OrderSummaryPanel({
                 key={order.id}
                 order={order}
                 onStatusChange={onStatusChange}
+                onQuantityChange={onQuantityChange}
                 onCancelItem={onCancelItem}
                 onCancelOrder={onCancelOrder}
+                busyItemId={busyItemId}
                 currency={currency}
                 restaurantName={restaurantName}
               />
@@ -912,6 +912,8 @@ export default function Floor() {
     }
   }
 
+  const [summaryBusyItemId, setSummaryBusyItemId] = useState(null)
+
   const handleCancelItem = async (orderId, itemId, itemName) => {
     if (!window.confirm(`Cancel "${itemName}" from this order?`)) return
     const allowed = await checkAdminLimit(user?.id)
@@ -922,6 +924,25 @@ export default function Floor() {
     } else {
       toast.success(`${itemName} cancelled`)
       refetch({ silent: true })
+    }
+  }
+
+  const handleQuantityChange = async (order, item, newQty) => {
+    if (summaryBusyItemId === item.id) return
+    if (!navigator.onLine) { toast.error('Editing needs an internet connection'); return }
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    setSummaryBusyItemId(item.id)
+    const newItems = order.order_items.map((i) => (i.id === item.id ? { ...i, quantity: newQty } : i))
+    patchOrder(order.id, { order_items: newItems, total_amount: computeOrderTotal(newItems, taxPercentage) })
+    try {
+      const { error } = await supabase.rpc('update_order_item_quantity', { p_item_id: item.id, p_quantity: newQty })
+      if (error) throw error
+    } catch (err) {
+      toast.error(err.message || 'Failed to update quantity')
+      refetch({ silent: true })
+    } finally {
+      setSummaryBusyItemId(null)
     }
   }
 
@@ -1192,8 +1213,10 @@ export default function Floor() {
             onAddItems={() => { setSummaryTableId(null); openMenuFor(summaryTableId) }}
             onGoToBilling={() => { setBillTableId(summaryTableId); setSummaryTableId(null) }}
             onStatusChange={handleStatusChange}
+            onQuantityChange={handleQuantityChange}
             onCancelItem={handleCancelItem}
             onCancelOrder={handleCancelOrder}
+            busyItemId={summaryBusyItemId}
           />
         )}
       </AnimatePresence>
