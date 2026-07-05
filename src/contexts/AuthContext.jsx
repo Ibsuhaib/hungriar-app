@@ -9,6 +9,19 @@ export const MAX_PASSWORD_LENGTH = 128
 // can restore it instead of failing every guard and bouncing to login.
 const PROFILE_CACHE_KEY = 'hungriar_profile_cache'
 
+// Matches the storageKey configured in lib/supabase.js. Used only to detect
+// "we should have a session" before deciding whether a blank first check is
+// worth retrying — never read as the session itself.
+const AUTH_STORAGE_KEY = 'hungriar-auth'
+
+function hasPersistedSession() {
+  try {
+    return !!localStorage.getItem(AUTH_STORAGE_KEY)
+  } catch {
+    return false
+  }
+}
+
 function cacheProfile(userId, role, restaurantAdmin) {
   try {
     localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ userId, role, restaurantAdmin }))
@@ -109,14 +122,32 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let mounted = true
+    let retryTimer = null
 
-    supabase.auth.getSession().then(async ({ data }) => {
+    // getSession() needs a network round-trip whenever the stored access
+    // token has expired (to refresh it) — and on a cold app launch (desktop
+    // PWA opening, waking from sleep) that first request can transiently
+    // fail before the OS network stack is fully up, coming back with no
+    // session even though a valid refresh token is sitting in storage. Retry
+    // a couple of times before concluding the user is actually logged out —
+    // but only when there's real evidence a session should exist, so a
+    // genuinely logged-out visitor never waits on these retries.
+    const loadSession = async (attempt = 0) => {
+      const { data } = await supabase.auth.getSession()
       if (!mounted) return
+
+      if (!data.session && attempt < 2 && hasPersistedSession()) {
+        retryTimer = setTimeout(() => loadSession(attempt + 1), 800 * (attempt + 1))
+        return
+      }
+
       setSession(data.session)
       setUser(data.session?.user ?? null)
       await loadProfile(data.session?.user ?? null)
       if (mounted) setLoading(false)
-    })
+    }
+
+    loadSession()
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
       setSession(newSession)
@@ -127,6 +158,7 @@ export function AuthProvider({ children }) {
 
     return () => {
       mounted = false
+      if (retryTimer) clearTimeout(retryTimer)
       listener.subscription.unsubscribe()
     }
   }, [loadProfile])
