@@ -49,7 +49,7 @@ export const EMPTY_ADJ = { discountType: 'amount', discountValue: '', roundOff: 
 
 // Recompute a tax-inclusive order total from its (non-cancelled) items —
 // used for optimistic UI updates before the server round-trip confirms.
-function computeOrderTotal(items, taxPercentage) {
+export function computeOrderTotal(items, taxPercentage) {
   const subtotal = items.filter((i) => !i.cancelled).reduce((s, i) => s + i.quantity * i.unit_price, 0)
   return Math.round(subtotal * (1 + taxPercentage / 100) * 100) / 100
 }

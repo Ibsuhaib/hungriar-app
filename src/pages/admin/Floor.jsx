@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Plus, Minus, Search, ShoppingCart, Loader2, Clock,
-  Receipt, ConciergeBell, WifiOff, RefreshCw, CheckCircle2, Printer, PenLine,
+  Receipt, ConciergeBell, WifiOff, RefreshCw, CheckCircle2, Printer, PenLine, Trash2,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -14,7 +14,7 @@ import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { enqueueOrder, enqueueBill, getQueuedOrders, isNetworkError, removeQueuedOrder } from '../../utils/offlineQueue'
 import { pageCache } from '../../utils/pageCache'
 import OrderCard from '../../components/OrderCard'
-import { computeFinals, EMPTY_ADJ, PAYMENT_METHODS, printReceipt } from './Billing'
+import { computeFinals, computeOrderTotal, EMPTY_ADJ, PAYMENT_METHODS, printReceipt } from './Billing'
 
 // ─── Cart hook (same shape as TakeOrder / StaffPanel) ────────────────────────
 function useCart() {
@@ -424,11 +424,97 @@ function OrderSummaryPanel({
 // visible), full-screen on mobile since discount/round-off/package
 // charge/payment/cash-tendered is too much to cram into a short sheet ─────────
 
-function BillPanel({ table, tableOrders, currency, taxPercentage, restaurant, isOnline, checkAdminLimit, userId, onClose, onSettled }) {
+function BillPanel({
+  table, tableOrders, currency, taxPercentage, restaurant, isOnline, checkAdminLimit, userId,
+  menuItems, patchOrder, refetch, onClose, onSettled,
+}) {
   const [adj, setAdj] = useState(EMPTY_ADJ)
   const [paymentMethod, setPaymentMethod] = useState(null)
   const [cashTendered, setCashTendered] = useState('')
   const [settling, setSettling] = useState(false)
+  const [busyItemId, setBusyItemId] = useState(null)
+  const [addItemOpen, setAddItemOpen] = useState(false)
+  const [addItemSearch, setAddItemSearch] = useState('')
+  const [addItemSelection, setAddItemSelection] = useState({ menuItemId: '', quantity: 1 })
+  const [addingItem, setAddingItem] = useState(false)
+
+  const filteredMenuItems = useMemo(() => {
+    const q = addItemSearch.trim().toLowerCase()
+    if (!q) return menuItems
+    return menuItems.filter((mi) => mi.name.toLowerCase().includes(q))
+  }, [menuItems, addItemSearch])
+
+  const closeAddItemPanel = () => {
+    setAddItemOpen(false)
+    setAddItemSelection({ menuItemId: '', quantity: 1 })
+    setAddItemSearch('')
+  }
+
+  const selectMenuItemForAdd = (mi) => {
+    setAddItemSelection((p) => ({ ...p, menuItemId: mi.id }))
+    setAddItemSearch(mi.name)
+  }
+
+  // Same handlers as Billing.jsx — identical RPCs (update_order_item_quantity,
+  // billing_remove_item, admin_add_billing_item), so edits made here log to
+  // bill_edit_log exactly the same way and Day End reports them identically
+  // regardless of which page the edit was made from.
+  const handleItemQtyChange = async (order, item, newQty) => {
+    if (busyItemId === item.id) return
+    if (!navigator.onLine) { toast.error('Editing needs an internet connection'); return }
+    setBusyItemId(item.id)
+    const newItems = order.order_items.map((i) => (i.id === item.id ? { ...i, quantity: newQty } : i))
+    patchOrder(order.id, { order_items: newItems, total_amount: computeOrderTotal(newItems, taxPercentage) })
+    try {
+      const { error } = await supabase.rpc('update_order_item_quantity', { p_item_id: item.id, p_quantity: newQty })
+      if (error) throw error
+    } catch (err) {
+      toast.error(err.message || 'Failed to update quantity')
+      refetch({ silent: true })
+    } finally {
+      setBusyItemId(null)
+    }
+  }
+
+  const handleDeleteItem = async (order, item) => {
+    if (busyItemId === item.id) return
+    if (!navigator.onLine) { toast.error('Editing needs an internet connection'); return }
+    setBusyItemId(item.id)
+    const newItems = order.order_items.map((i) => (i.id === item.id ? { ...i, cancelled: true } : i))
+    patchOrder(order.id, { order_items: newItems, total_amount: computeOrderTotal(newItems, taxPercentage) })
+    try {
+      const { error } = await supabase.rpc('billing_remove_item', { p_item_id: item.id })
+      if (error) throw error
+      toast.success(`${item.item_name} removed`)
+    } catch (err) {
+      toast.error(err.message || 'Failed to remove item')
+      refetch({ silent: true })
+    } finally {
+      setBusyItemId(null)
+    }
+  }
+
+  const handleAddItem = async () => {
+    if (!addItemSelection.menuItemId || addingItem) return
+    if (!navigator.onLine) { toast.error('Editing needs an internet connection'); return }
+    setAddingItem(true)
+    try {
+      const { error } = await supabase.rpc('admin_add_billing_item', {
+        p_restaurant_id: restaurant.id,
+        p_table_id:      table.id,
+        p_menu_item_id:  addItemSelection.menuItemId,
+        p_quantity:      Math.max(1, Math.min(50, Number(addItemSelection.quantity) || 1)),
+      })
+      if (error) throw error
+      toast.success('Item added to bill')
+      closeAddItemPanel()
+      refetch({ silent: true })
+    } catch (err) {
+      toast.error(err.message || 'Failed to add item')
+    } finally {
+      setAddingItem(false)
+    }
+  }
 
   const total = tableOrders.reduce((s, o) => s + Number(o.total_amount), 0)
   const { discountAmt, roundOffAmt, packageChargeAmt, finalTotal } = computeFinals(total, adj)
@@ -518,13 +604,103 @@ function BillPanel({ table, tableOrders, currency, taxPercentage, restaurant, is
           </div>
 
           <div className="space-y-1.5 mb-4">
-            {tableOrders.flatMap((o) => (o.order_items || []).filter((i) => !i.cancelled)).map((it) => (
-              <div key={it.id} className="flex justify-between text-sm text-gray-700">
-                <span>{it.quantity}× {it.item_name}</span>
-                <span className="font-medium">{formatCurrency(it.unit_price * it.quantity, cur)}</span>
-              </div>
+            {tableOrders.map((order) => (
+              (order.order_items || []).filter((i) => !i.cancelled).map((it) => (
+                <div key={it.id} className="flex items-center gap-2 text-sm text-gray-700">
+                  <span className="flex-1 min-w-0 truncate">{it.item_name}</span>
+                  {isOnline ? (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => it.quantity === 1
+                          ? handleDeleteItem(order, it)
+                          : handleItemQtyChange(order, it, it.quantity - 1)}
+                        disabled={busyItemId === it.id}
+                        className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+                      >
+                        {it.quantity === 1 ? <Trash2 className="w-3 h-3 text-red-400" /> : <Minus className="w-3 h-3" />}
+                      </button>
+                      <span className="w-5 text-center font-bold text-gray-800 text-xs">{it.quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleItemQtyChange(order, it, it.quantity + 1)}
+                        disabled={busyItemId === it.id}
+                        className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="font-medium text-gray-500 flex-shrink-0">{it.quantity}×</span>
+                  )}
+                  <span className="font-medium w-16 text-right flex-shrink-0">{formatCurrency(it.unit_price * it.quantity, cur)}</span>
+                </div>
+              ))
             ))}
           </div>
+
+          {/* Add a missed item */}
+          {isOnline && (
+            <div className="mb-4 pt-3 border-t border-dashed border-gray-200">
+              {addItemOpen ? (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                    <input
+                      type="text" autoFocus placeholder="Search menu items…"
+                      value={addItemSearch}
+                      onChange={(e) => { setAddItemSearch(e.target.value); setAddItemSelection((p) => ({ ...p, menuItemId: '' })) }}
+                      className="input text-sm py-1.5 pl-8 w-full"
+                    />
+                  </div>
+                  {addItemSearch && !addItemSelection.menuItemId && (
+                    <div className="max-h-32 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-50">
+                      {filteredMenuItems.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-gray-400">No items found</p>
+                      ) : (
+                        filteredMenuItems.map((mi) => (
+                          <button
+                            key={mi.id} type="button" onClick={() => selectMenuItemForAdd(mi)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs hover:bg-gray-50 transition-colors"
+                          >
+                            <span className="text-gray-700 truncate">{mi.name}</span>
+                            <span className="text-gray-400 flex-shrink-0">{cur}{Number(mi.price).toFixed(2)}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                  {addItemSelection.menuItemId && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500 flex-1 min-w-0 truncate">Qty</span>
+                      <input
+                        type="number" min="1" max="50" value={addItemSelection.quantity}
+                        onChange={(e) => setAddItemSelection((p) => ({ ...p, quantity: e.target.value }))}
+                        className="input text-sm py-1.5 w-20 flex-shrink-0"
+                      />
+                    </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    <button type="button" onClick={closeAddItemPanel} className="btn-outline text-xs py-1.5 flex-1">Cancel</button>
+                    <button
+                      type="button" onClick={handleAddItem}
+                      disabled={!addItemSelection.menuItemId || addingItem}
+                      className="btn-secondary text-xs py-1.5 flex-1 disabled:opacity-40"
+                    >
+                      {addingItem ? 'Adding…' : 'Add to Bill'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button" onClick={() => setAddItemOpen(true)}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-gray-300 text-gray-500 text-xs font-semibold hover:bg-gray-50 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add a missed item
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="border-t border-gray-100 pt-3 mb-4">
             <div className="flex justify-between text-sm font-semibold text-gray-800">
@@ -1028,6 +1204,7 @@ export default function Floor() {
             table={billTable} tableOrders={billOrders} currency={currency}
             taxPercentage={taxPercentage} restaurant={restaurant} isOnline={isOnline}
             checkAdminLimit={checkAdminLimit} userId={user?.id}
+            menuItems={menuItems} patchOrder={patchOrder} refetch={refetch}
             onClose={() => setBillTableId(null)}
             onSettled={() => setBillTableId(null)}
           />
