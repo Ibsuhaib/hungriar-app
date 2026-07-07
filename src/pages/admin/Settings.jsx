@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Building2, CreditCard, Lock, Camera, Eye, EyeOff, Users, Plus, Trash2, RotateCcw, QrCode, Copy, ChevronDown, ChevronUp, Shield } from 'lucide-react'
+import { Building2, CreditCard, Lock, Camera, Eye, EyeOff, Users, Plus, Trash2, RotateCcw, QrCode, Copy, ChevronDown, ChevronUp, Shield, Globe, ExternalLink } from 'lucide-react'
 import QRCodeStyling from 'qr-code-styling'
 import { useAuth, MAX_PASSWORD_LENGTH } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -13,10 +13,23 @@ import { savePinHash, clearPin } from '../../components/PinLockScreen'
 
 const TABS = [
   { id: 'profile',      label: 'Profile',      icon: Building2 },
+  { id: 'online',       label: 'Online Ordering', icon: Globe },
   { id: 'subscription', label: 'Subscription', icon: CreditCard },
   { id: 'security',     label: 'Security',     icon: Lock },
   { id: 'stations',     label: 'Stations',     icon: Users },
 ]
+
+const WEEK_DAYS = [
+  { key: 'mon', label: 'Monday' },
+  { key: 'tue', label: 'Tuesday' },
+  { key: 'wed', label: 'Wednesday' },
+  { key: 'thu', label: 'Thursday' },
+  { key: 'fri', label: 'Friday' },
+  { key: 'sat', label: 'Saturday' },
+  { key: 'sun', label: 'Sunday' },
+]
+
+const STOREFRONT_BASE_URL = import.meta.env.VITE_HUNGRIORDER_URL || 'https://hungriorder.com'
 
 export default function Settings() {
   const { restaurant, user, refreshProfile } = useAuth()
@@ -35,6 +48,18 @@ export default function Settings() {
   const [fssaiLicenseNo, setFssaiLicenseNo] = useState(restaurant?.fssai_license_no || '')
   const [savingProfile, setSavingProfile] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+
+  // ── Online Ordering state ────────────────────────────────────────────────
+  const [deliveryEnabled, setDeliveryEnabled]   = useState(!!restaurant?.delivery_enabled)
+  const [coverImageUrl, setCoverImageUrl]       = useState(restaurant?.cover_image_url || '')
+  const [description, setDescription]           = useState(restaurant?.description || '')
+  const [cuisineTags, setCuisineTags]           = useState((restaurant?.cuisine_tags || []).join(', '))
+  const [deliveryRadiusKm, setDeliveryRadiusKm] = useState(restaurant?.delivery_radius_km ?? 5)
+  const [minOrderAmount, setMinOrderAmount]     = useState(restaurant?.min_order_amount ?? 0)
+  const [deliveryFee, setDeliveryFee]           = useState(restaurant?.delivery_fee ?? 0)
+  const [openingHours, setOpeningHours]         = useState(restaurant?.opening_hours || {})
+  const [savingOnline, setSavingOnline]         = useState(false)
+  const [uploadingCover, setUploadingCover]     = useState(false)
 
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -111,6 +136,69 @@ export default function Settings() {
       setSavingProfile(false)
     }
   }
+
+  const handleCoverChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) { e.target.value = ''; return }
+    setUploadingCover(true)
+    try {
+      const url = await uploadAsset(restaurant.id, 'images', file)
+      const prev = coverImageUrl
+      setCoverImageUrl(url)
+      if (prev) await deleteAsset(prev)
+      toast.success('Cover image uploaded — click "Save Online Settings" to apply.')
+    } catch (err) {
+      toast.error(err.message || 'Failed to upload cover image')
+    } finally {
+      setUploadingCover(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleOnlineSubmit = async (e) => {
+    e.preventDefault()
+    if (savingOnline) return
+    const radius = Number(deliveryRadiusKm)
+    const minOrder = Number(minOrderAmount)
+    const fee = Number(deliveryFee)
+    if (Number.isNaN(radius) || radius < 0) { toast.error('Delivery radius must be 0 or more'); return }
+    if (Number.isNaN(minOrder) || minOrder < 0) { toast.error('Minimum order amount must be 0 or more'); return }
+    if (Number.isNaN(fee) || fee < 0) { toast.error('Delivery fee must be 0 or more'); return }
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    setSavingOnline(true)
+    try {
+      const tags = cuisineTags
+        .split(',')
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean)
+        .slice(0, 10)
+      const hours = Object.fromEntries(
+        Object.entries(openingHours).map(([k, v]) => [k, String(v).trim()]).filter(([, v]) => v),
+      )
+      const { error } = await supabase.from('restaurants').update({
+        delivery_enabled: deliveryEnabled,
+        cover_image_url: coverImageUrl || null,
+        description: description.trim() || null,
+        cuisine_tags: tags,
+        delivery_radius_km: Math.round(radius),
+        min_order_amount: minOrder,
+        delivery_fee: fee,
+        opening_hours: hours,
+      }).eq('id', restaurant.id)
+      if (error) throw error
+      await refreshProfile()
+      toast.success('Online ordering settings updated')
+    } catch (err) {
+      toast.error(err.message || 'Failed to save settings')
+    } finally {
+      setSavingOnline(false)
+    }
+  }
+
+  const storefrontUrl = `${STOREFRONT_BASE_URL}/r/${restaurant?.slug}`
 
   const fetchStations = useCallback(async () => {
     if (!restaurant?.id) return
@@ -353,6 +441,145 @@ export default function Settings() {
                     Saving…
                   </span>
                 ) : 'Save Changes'}
+              </button>
+            </form>
+          </motion.section>
+        )}
+
+        {activeTab === 'online' && (
+          <motion.section
+            key="online"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="card space-y-5"
+          >
+            <div>
+              <h2 className="text-base font-bold text-gray-900 font-display">Online Ordering</h2>
+              <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                Give your restaurant an online storefront where customers place delivery and takeaway
+                orders. Orders arrive live on the Orders page under the Delivery/Takeaway tabs.
+              </p>
+            </div>
+
+            {/* Enable toggle */}
+            <label className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 px-4 py-3 cursor-pointer">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Enable Online Ordering</p>
+                <p className="text-xs text-gray-400 mt-0.5">Turn your public storefront on or off</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={deliveryEnabled}
+                onClick={() => setDeliveryEnabled((v) => !v)}
+                className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${deliveryEnabled ? 'bg-primary-600' : 'bg-gray-300'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${deliveryEnabled ? 'translate-x-5' : ''}`} />
+              </button>
+            </label>
+
+            {/* Storefront URL (slug is managed by the HungriAR team) */}
+            <div>
+              <label className="label">Your Store URL</label>
+              <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
+                <span className="text-xs text-gray-600 font-mono break-all flex-1">{storefrontUrl}</span>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(storefrontUrl).then(() => toast.success('Store URL copied!'))}
+                  className="shrink-0 text-gray-400 hover:text-primary-600"
+                  title="Copy URL"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+                <a href={storefrontUrl} target="_blank" rel="noreferrer" className="shrink-0 text-gray-400 hover:text-primary-600" title="Open storefront">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+              <p className="label-hint mt-1.5">
+                The URL name (<span className="font-mono">{restaurant?.slug}</span>) is set by the HungriAR team —
+                contact support to change it.
+              </p>
+            </div>
+
+            <form onSubmit={handleOnlineSubmit} className="space-y-4">
+              {/* Cover image */}
+              <div>
+                <label className="label">Cover Image</label>
+                {coverImageUrl && (
+                  <img src={coverImageUrl} alt="Storefront cover" className="w-full h-32 object-cover rounded-xl mb-2 ring-1 ring-gray-100" />
+                )}
+                <label className="btn-outline cursor-pointer text-sm gap-2 inline-flex">
+                  {uploadingCover ? (
+                    <><span className="w-3.5 h-3.5 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin" /> Uploading…</>
+                  ) : (
+                    <><Camera className="w-3.5 h-3.5" /> {coverImageUrl ? 'Change Cover' : 'Upload Cover'}</>
+                  )}
+                  <input type="file" accept="image/*" className="sr-only" onChange={handleCoverChange} disabled={uploadingCover} />
+                </label>
+              </div>
+
+              <div>
+                <label className="label" htmlFor="online-desc">Description</label>
+                <textarea id="online-desc" className="input resize-none" rows={3} maxLength={500}
+                  placeholder="Tell customers about your restaurant…"
+                  value={description} onChange={(e) => setDescription(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="label" htmlFor="online-tags">Cuisine Tags</label>
+                <input id="online-tags" className="input" maxLength={200}
+                  placeholder="e.g. north-indian, chinese, biryani (comma-separated)"
+                  value={cuisineTags} onChange={(e) => setCuisineTags(e.target.value)} />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="label" htmlFor="online-radius">Delivery Radius (km)</label>
+                  <input id="online-radius" type="number" min="0" step="1" className="input"
+                    value={deliveryRadiusKm} onChange={(e) => setDeliveryRadiusKm(e.target.value)} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="online-min">Min Order ({restaurant?.currency || '₹'})</label>
+                  <input id="online-min" type="number" min="0" step="0.01" className="input"
+                    value={minOrderAmount} onChange={(e) => setMinOrderAmount(e.target.value)} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="online-fee">Delivery Fee ({restaurant?.currency || '₹'})</label>
+                  <input id="online-fee" type="number" min="0" step="0.01" className="input"
+                    value={deliveryFee} onChange={(e) => setDeliveryFee(e.target.value)} />
+                </div>
+              </div>
+
+              {/* Opening hours */}
+              <div>
+                <label className="label">Opening Hours</label>
+                <p className="label-hint mb-2">Format: 09:00-22:00 · leave a day blank if hours vary or you're closed</p>
+                <div className="space-y-1.5">
+                  {WEEK_DAYS.map(({ key, label }) => (
+                    <div key={key} className="flex items-center gap-3">
+                      <span className="text-xs font-semibold text-gray-500 w-20 flex-shrink-0">{label}</span>
+                      <input
+                        type="text"
+                        className="input text-sm py-1.5 flex-1"
+                        placeholder="09:00-22:00"
+                        maxLength={11}
+                        value={openingHours[key] || ''}
+                        onChange={(e) => setOpeningHours((p) => ({ ...p, [key]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <button type="submit" disabled={savingOnline} className="btn-primary">
+                {savingOnline ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    Saving…
+                  </span>
+                ) : 'Save Online Settings'}
               </button>
             </form>
           </motion.section>
