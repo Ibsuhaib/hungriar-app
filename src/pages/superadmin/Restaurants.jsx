@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, X, ChevronDown, ChevronUp, KeyRound, Trash2, Edit2, Store, Phone, CheckCircle, AlertCircle, Copy, Link, Crown } from 'lucide-react'
+import { Plus, X, ChevronDown, ChevronUp, KeyRound, Trash2, Edit2, Store, Phone, CheckCircle, AlertCircle, Copy, Link, Crown, Globe } from 'lucide-react'
 import { useAuth, MAX_PASSWORD_LENGTH } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase, invokeEdgeFunction } from '../../lib/supabase'
@@ -20,6 +20,24 @@ const PLANS = [
   { key: 'standard',   label: 'Standard',   badgeClass: 'bg-blue-100 text-blue-700',    btnClass: 'border-blue-300 text-blue-700 hover:border-blue-500' },
   { key: 'ar_premium', label: 'AR Premium', badgeClass: 'bg-amber-100 text-amber-700',  btnClass: 'border-amber-300 text-amber-700 hover:border-amber-500' },
 ]
+
+// Online-ordering (hungriOrder) subscription tiers — separate from the POS plan above
+const ONLINE_TIERS = ['trial', 'starter', 'growth', 'pro']
+
+function OnlineToggle({ checked, onChange, disabled }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onChange}
+      className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 disabled:opacity-50 ${checked ? 'bg-primary-600' : 'bg-gray-300'}`}
+    >
+      <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-4' : ''}`} />
+    </button>
+  )
+}
 
 function PlanBadge({ plan }) {
   const cfg = PLANS.find((p) => p.key === plan)
@@ -244,6 +262,26 @@ export default function Restaurants() {
     } finally {
       planAssigningRef.current = false
       setAssigningPlan(null)
+    }
+  }
+
+  // Online ordering fields (subscription_tier / expiry / delivery_enabled /
+  // has_hungriar) — optimistic update, revert on failure. Super admin only:
+  // the protect_subscription_fields trigger blocks everyone else anyway.
+  const [savingOnlineId, setSavingOnlineId] = useState(null)
+  const handleOnlineUpdate = async (restaurantId, patch) => {
+    const prev = restaurants.find((r) => r.id === restaurantId)
+    setRestaurants((rs) => rs.map((r) => (r.id === restaurantId ? { ...r, ...patch } : r)))
+    setSavingOnlineId(restaurantId)
+    try {
+      const { error } = await supabase.from('restaurants').update(patch).eq('id', restaurantId)
+      if (error) throw error
+      toast.success('Online ordering settings updated')
+    } catch (err) {
+      if (prev) setRestaurants((rs) => rs.map((r) => (r.id === restaurantId ? prev : r)))
+      toast.error(err.message || 'Failed to update')
+    } finally {
+      setSavingOnlineId(null)
     }
   }
 
@@ -634,6 +672,65 @@ export default function Restaurants() {
                               {!restaurant.plan && (
                                 <p className="text-[11px] text-red-500 mt-2">⚠ No plan assigned — restaurant features are locked.</p>
                               )}
+                            </div>
+
+                            {/* ── Online Ordering (hungriOrder) ── */}
+                            <div className="rounded-xl bg-gray-50 px-4 py-3 space-y-3">
+                              <div className="flex items-center gap-2">
+                                <Globe className="w-3.5 h-3.5 text-primary-500" />
+                                <p className="text-xs font-semibold text-gray-700">Online Ordering (hungriOrder)</p>
+                                {savingOnlineId === restaurant.id && (
+                                  <span className="w-3 h-3 rounded-full border-2 border-primary-300 border-t-primary-600 animate-spin" />
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className="label text-xs" htmlFor={`ot-${restaurant.id}`}>Subscription Tier</label>
+                                  <select
+                                    id={`ot-${restaurant.id}`}
+                                    className="input text-sm py-1.5 capitalize"
+                                    value={restaurant.subscription_tier || 'trial'}
+                                    disabled={savingOnlineId === restaurant.id}
+                                    onChange={(e) => handleOnlineUpdate(restaurant.id, { subscription_tier: e.target.value })}
+                                  >
+                                    {ONLINE_TIERS.map((t) => <option key={t} value={t}>{t}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="label text-xs" htmlFor={`oe-${restaurant.id}`}>Subscription Expiry</label>
+                                  <input
+                                    id={`oe-${restaurant.id}`}
+                                    type="date"
+                                    className="input text-sm py-1.5"
+                                    value={restaurant.subscription_expiry ? String(restaurant.subscription_expiry).slice(0, 10) : ''}
+                                    disabled={savingOnlineId === restaurant.id}
+                                    onChange={(e) => handleOnlineUpdate(restaurant.id, {
+                                      subscription_expiry: e.target.value ? new Date(`${e.target.value}T23:59:59`).toISOString() : null,
+                                    })}
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-x-6 gap-y-2">
+                                <label className="flex items-center gap-2 text-xs font-medium text-gray-600">
+                                  <OnlineToggle
+                                    checked={!!restaurant.delivery_enabled}
+                                    disabled={savingOnlineId === restaurant.id}
+                                    onChange={() => handleOnlineUpdate(restaurant.id, { delivery_enabled: !restaurant.delivery_enabled })}
+                                  />
+                                  Online ordering enabled
+                                </label>
+                                <label className="flex items-center gap-2 text-xs font-medium text-gray-600">
+                                  <OnlineToggle
+                                    checked={restaurant.has_hungriar !== false}
+                                    disabled={savingOnlineId === restaurant.id}
+                                    onChange={() => handleOnlineUpdate(restaurant.id, { has_hungriar: restaurant.has_hungriar === false })}
+                                  />
+                                  Has hungriAR POS
+                                </label>
+                              </div>
+                              <p className="text-[11px] text-gray-400">
+                                "Has hungriAR POS" off = online-only restaurant using the standalone hungriOrder admin.
+                              </p>
                             </div>
 
                             <div className="flex gap-2">
