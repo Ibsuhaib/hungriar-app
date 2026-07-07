@@ -42,7 +42,7 @@ function printDailyReport(records, restaurant) {
     return `
       <tr>
         <td>${time}</td>
-        <td><strong>Table ${r.tables?.table_number ?? '-'}</strong>${itemSummary ? `<div class="items">${itemSummary}</div>` : ''}</td>
+        <td><strong>${r.order_type === 'delivery' ? `Delivery${r.customer_name ? ` — ${r.customer_name}` : ''}` : r.order_type === 'takeaway' ? `Takeaway${r.customer_name ? ` — ${r.customer_name}` : ''}` : `Table ${r.tables?.table_number ?? '-'}`}</strong>${itemSummary ? `<div class="items">${itemSummary}</div>` : ''}</td>
         <td class="center">${orderCount}</td>
         <td class="center">${pmLabel}</td>
         <td class="right">${formatCurrency(r.total_amount, currency)}</td>
@@ -260,7 +260,11 @@ export default function History() {
                       onClick={() => setExpanded(isExpanded ? null : record.id)}
                     >
                       <td className="text-gray-700 text-xs">{formatDateTime(record.bill_date)}</td>
-                      <td className="font-medium text-gray-800">Table {record.tables?.table_number ?? '-'}</td>
+                      <td className="font-medium text-gray-800">
+                        {record.order_type === 'delivery' || record.order_type === 'takeaway'
+                          ? `${record.order_type === 'delivery' ? 'Delivery' : 'Takeaway'}${record.customer_name ? ` — ${record.customer_name}` : ''}`
+                          : `Table ${record.tables?.table_number ?? '-'}`}
+                      </td>
                       <td className="text-gray-500">{orderCount}</td>
                       <td>
                         {record.payment_method

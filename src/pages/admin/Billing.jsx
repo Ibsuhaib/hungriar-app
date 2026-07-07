@@ -73,7 +73,7 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
 }
 
-export function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod, restaurant, discountAmt = 0, roundOffAmt = 0, packageChargeAmt = 0, finalTotal = null, billNumber = null }) {
+export function printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod, restaurant, discountAmt = 0, roundOffAmt = 0, packageChargeAmt = 0, deliveryFeeAmt = 0, finalTotal = null, billNumber = null }) {
   const cur = restaurant?.currency || '₹'
   const fmt = (v) => `${cur}${Number(v).toFixed(2)}`
   const name = escapeHtml(restaurant?.name || 'Restaurant')
@@ -83,12 +83,17 @@ export function printReceipt({ tableOrders, table, total, taxPercentage, payment
   const pm = PM_LABELS[paymentMethod] || paymentMethod || '—'
   const billNoLabel = billNumber != null ? String(billNumber).padStart(4, '0') : 'PREVIEW'
 
-  const subtotalPreTax = taxPercentage > 0 ? total / (1 + taxPercentage / 100) : total
-  const taxAmt = total - subtotalPreTax
+  // Delivery fee (online orders) sits outside the taxable items total
+  const itemsTotal = total - deliveryFeeAmt
+  const subtotalPreTax = taxPercentage > 0 ? itemsTotal / (1 + taxPercentage / 100) : itemsTotal
+  const taxAmt = itemsTotal - subtotalPreTax
   const halfTaxPct = parseFloat((taxPercentage / 2).toFixed(2))
   const halfTaxAmt = taxAmt / 2
   const displayTotal = finalTotal !== null ? finalTotal : total
-  const hasAdj = discountAmt > 0 || roundOffAmt !== 0 || packageChargeAmt > 0
+  const hasAdj = discountAmt > 0 || roundOffAmt !== 0 || packageChargeAmt > 0 || deliveryFeeAmt > 0
+  const deliveryRow = deliveryFeeAmt > 0
+    ? `<tr class="sub-row"><td>Delivery Fee</td><td class="r">+${fmt(deliveryFeeAmt)}</td></tr>`
+    : ''
 
   const headerLines = [
     restaurant?.address          ? `<div class="c sm">${escapeHtml(restaurant.address)}</div>` : '',
@@ -117,9 +122,12 @@ export function printReceipt({ tableOrders, table, total, taxPercentage, payment
       <tr class="sub-row"><td>Items</td><td class="r">${fmt(subtotalPreTax)}</td></tr>
       <tr class="sub-row"><td>CGST (${halfTaxPct}%)</td><td class="r">+${fmt(halfTaxAmt)}</td></tr>
       <tr class="sub-row"><td>SGST (${halfTaxPct}%)</td><td class="r">+${fmt(halfTaxAmt)}</td></tr>
+      ${deliveryRow}
       ${hasAdj ? `<tr class="sub-row b-row"><td>Subtotal</td><td class="r">${fmt(total)}</td></tr>` : ''}
       <tr><td colspan="2"><div class="dash" style="margin:3px 0"></div></td></tr>
     ` : hasAdj ? `
+      ${deliveryFeeAmt > 0 ? `<tr class="sub-row"><td>Items</td><td class="r">${fmt(itemsTotal)}</td></tr>` : ''}
+      ${deliveryRow}
       <tr class="sub-row"><td>Subtotal</td><td class="r">${fmt(total)}</td></tr>
       <tr><td colspan="2"><div class="dash" style="margin:3px 0"></div></td></tr>
     ` : ''}
@@ -174,7 +182,7 @@ export function printReceipt({ tableOrders, table, total, taxPercentage, payment
     <span>${dateStr}</span>
   </div>
   <div style="display:flex;justify-content:space-between">
-    <span>Table: <strong>${table.table_number}</strong></span>
+    <span>${table.isOnlineBill ? 'Order' : 'Table'}: <strong>${escapeHtml(table.table_number)}</strong></span>
     <span class="sm">${timeStr}</span>
   </div>
 
@@ -204,7 +212,7 @@ export function printReceipt({ tableOrders, table, total, taxPercentage, payment
   setTimeout(() => { win.print(); win.close() }, 400)
 }
 
-function ConfirmDialog({ table, activeCount, onConfirm, onCancel, loading }) {
+function ConfirmDialog({ table, activeCount, onConfirm, onCancel, loading, heading = null }) {
   return (
     <AnimatePresence>
       <motion.div
@@ -229,7 +237,7 @@ function ConfirmDialog({ table, activeCount, onConfirm, onCancel, loading }) {
             }
           </div>
           <h3 className="text-base font-bold text-gray-900 font-display">
-            Settle bill for Table {table.table_number}?
+            {heading || `Settle bill for Table ${table.table_number}?`}
           </h3>
           {activeCount > 0 && (
             <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
@@ -541,8 +549,27 @@ export default function Billing() {
         return buildOfflineBill(queuedOrders, fakeTable, taxPercentage)
       })
 
-    return [...onlineBills, ...offlineBills]
-  }, [tables, completedOrders, offlineOrders, taxPercentage, restaurant?.id, queuedBillTableIds])
+    // Delivery/takeaway orders — one bill card per order (no table to group by).
+    // They become billable once the kitchen flow finishes ('delivered' for the
+    // online chain, 'completed' for walk-in orders completed like dine-in).
+    const deliveryBills = allOrders
+      .filter((o) =>
+        (o.order_type === 'delivery' || o.order_type === 'takeaway') &&
+        (o.status === 'completed' || o.status === 'delivered'))
+      .map((o) => ({
+        table: {
+          id: o.id,
+          table_number: o.order_type === 'delivery' ? 'Delivery' : 'Takeaway',
+          isOnlineBill: true,
+        },
+        orders: [o],
+        total: Number(o.total_amount),
+        isOffline: false,
+        onlineOrder: o,
+      }))
+
+    return [...onlineBills, ...deliveryBills, ...offlineBills]
+  }, [tables, completedOrders, allOrders, offlineOrders, taxPercentage, restaurant?.id, queuedBillTableIds])
 
   const getAdj = (tableId) => adjustments[tableId] || EMPTY_ADJ
   // Bug 1 fix: read from `prev` inside the functional update, not from the outer `adjustments` closure
@@ -560,6 +587,17 @@ export default function Billing() {
     allOrders.filter((o) => o.table_id === tableId && o.status !== 'completed' && o.status !== 'cancelled' && o.status !== '_settling').length
 
   const handleClickSettle = async (table) => {
+    // Online (delivery/takeaway) bills are a single order — nothing else can
+    // still be in the kitchen for them.
+    if (table.isOnlineBill) {
+      if (!navigator.onLine) {
+        toast.error('Settling delivery/takeaway bills needs an internet connection')
+        return
+      }
+      setActiveOrdersCount(0)
+      setConfirmTable(table)
+      return
+    }
     // Offline: never block the dialog on a network round-trip — the local
     // realtime state is the best answer we have anyway.
     if (!navigator.onLine) {
@@ -600,6 +638,36 @@ export default function Billing() {
     const adj = getAdj(tableId)
     const { discountAmt, roundOffAmt, packageChargeAmt, finalTotal } = computeFinals(billData?.total || 0, adj)
     const paymentMethod = selectedPayments[tableId] || 'other'
+
+    // ── Delivery/takeaway bill: settle the single online order (no table to
+    // free) via settle_online_order. Online-only — no offline queue for these.
+    if (billData?.onlineOrder) {
+      const order = billData.onlineOrder
+      setConfirmTable(null)
+      setSettlingTableId(tableId)
+      patchOrder(order.id, { status: '_settling' })
+      setSelectedPayments((prev) => { const n = { ...prev }; delete n[tableId]; return n })
+      setAdjustments((prev) => { const n = { ...prev }; delete n[tableId]; return n })
+      try {
+        const { data, error } = await supabase.rpc('settle_online_order', {
+          p_order_id:       order.id,
+          p_payment_method: paymentMethod,
+          p_discount:       discountAmt,
+          p_round_off:      roundOffAmt,
+          p_package_charge: packageChargeAmt,
+        })
+        if (error) throw error
+        if (!data || data.length === 0) throw new Error('Order could not be settled')
+        toast.success('Bill settled!')
+        // Realtime DELETE removes the order from allOrders automatically
+      } catch (err) {
+        patchOrder(order.id, { status: order.status })
+        toast.error(err.message || 'Failed to settle bill')
+      } finally {
+        setSettlingTableId(null)
+      }
+      return
+    }
 
     // Real (already-synced) orders backing this bill, if any — hidden optimistically
     // regardless of whether the settle completes online or falls back to the queue,
@@ -743,11 +811,12 @@ export default function Billing() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <AnimatePresence mode="popLayout">
-          {bills.map(({ table, orders: tableOrders, total, isOffline: isBillOffline }) => {
+          {bills.map(({ table, orders: tableOrders, total, isOffline: isBillOffline, onlineOrder }) => {
             const chosen = selectedPayments[table.id] || null
             const adj = getAdj(table.id)
             const { discountAmt, roundOffAmt, packageChargeAmt, finalTotal } = computeFinals(total, adj)
             const hasAdj = discountAmt > 0 || roundOffAmt !== 0 || packageChargeAmt > 0
+            const onlineDeliveryFee = onlineOrder ? Number(onlineOrder.delivery_fee) || 0 : 0
 
             return (
               <motion.div
@@ -760,9 +829,16 @@ export default function Billing() {
               >
                 {/* Header */}
                 <div className="flex items-center justify-between gap-3 bg-gray-50 border-b border-gray-100 px-5 py-4">
-                  <div className="flex items-center gap-2">
-                    <Receipt className="w-4 h-4 text-gray-400" />
-                    <h2 className="text-base font-bold text-gray-900 font-display">Table {table.table_number}</h2>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Receipt className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <h2 className="text-base font-bold text-gray-900 font-display truncate">
+                      {onlineOrder ? table.table_number : `Table ${table.table_number}`}
+                    </h2>
+                    {onlineOrder && (
+                      <span className={`badge flex-shrink-0 ${onlineOrder.order_type === 'delivery' ? 'bg-purple-100 text-purple-700' : 'bg-teal-100 text-teal-700'}`}>
+                        🛵 Online
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {isBillOffline && (
@@ -775,6 +851,23 @@ export default function Billing() {
                     </span>
                   </div>
                 </div>
+
+                {/* Customer details for delivery/takeaway bills */}
+                {onlineOrder && (onlineOrder.customer_name || onlineOrder.customer_phone) && (
+                  <div className="flex items-center justify-between gap-2 px-5 py-2.5 border-b border-gray-100 text-sm">
+                    <span className="font-semibold text-gray-700 truncate">
+                      {onlineOrder.customer_name || 'Customer'}
+                    </span>
+                    {onlineOrder.customer_phone && (
+                      <a
+                        href={`tel:${onlineOrder.customer_phone}`}
+                        className="text-primary-600 font-semibold flex-shrink-0 hover:text-primary-700"
+                      >
+                        📞 {onlineOrder.customer_phone}
+                      </a>
+                    )}
+                  </div>
+                )}
 
                 {/* Orders */}
                 <div className="px-5 py-4">
@@ -794,7 +887,7 @@ export default function Billing() {
                                 {item.item_name}
                                 {item.notes && <span className="italic text-gray-300"> — {item.notes}</span>}
                               </span>
-                              {isBillOffline || !isOnline ? (
+                              {isBillOffline || !isOnline || onlineOrder ? (
                                 <span className="font-medium text-gray-500 flex-shrink-0">{item.quantity}×</span>
                               ) : (
                                 <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -830,8 +923,8 @@ export default function Billing() {
                     ))}
                   </ul>
 
-                  {/* Add a missed item */}
-                  {!isBillOffline && isOnline && (
+                  {/* Add a missed item (dine-in tables only) */}
+                  {!isBillOffline && isOnline && !onlineOrder && (
                     <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
                       {addItemTableId === table.id ? (
                         <div className="space-y-2">
@@ -1027,6 +1120,14 @@ export default function Billing() {
                     />
                   </div>
 
+                  {/* Delivery fee — fixed at order time, not editable */}
+                  {onlineDeliveryFee > 0 && (
+                    <div className="flex justify-between text-xs font-semibold text-purple-600">
+                      <span>Delivery Fee (included)</span>
+                      <span>+{cur}{onlineDeliveryFee.toFixed(2)}</span>
+                    </div>
+                  )}
+
                   {/* Total breakdown */}
                   <div className="space-y-1 pt-1 border-t border-dashed border-gray-200">
                     {hasAdj && (
@@ -1079,7 +1180,7 @@ export default function Billing() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod: chosen, restaurant, discountAmt, roundOffAmt, packageChargeAmt, finalTotal, billNumber: null })}
+                      onClick={() => printReceipt({ tableOrders, table, total, taxPercentage, paymentMethod: chosen, restaurant, discountAmt, roundOffAmt, packageChargeAmt, deliveryFeeAmt: onlineDeliveryFee, finalTotal, billNumber: null })}
                       title="Print receipt without settling"
                       className="btn-outline gap-1.5 text-sm px-3"
                     >
@@ -1114,6 +1215,7 @@ export default function Billing() {
           onConfirm={handleSettle}
           onCancel={() => setConfirmTable(null)}
           loading={!!settlingTableId}
+          heading={confirmTable.isOnlineBill ? `Settle this ${String(confirmTable.table_number).toLowerCase()} bill?` : null}
         />
       )}
     </div>
