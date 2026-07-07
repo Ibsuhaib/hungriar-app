@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShoppingCart, Plus, Minus, X, ConciergeBell, ChevronLeft, Search, WifiOff, RefreshCw, PenLine } from 'lucide-react'
+import { ShoppingCart, Plus, Minus, X, ConciergeBell, ChevronLeft, Search, WifiOff, RefreshCw, PenLine, Bike } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
@@ -145,6 +145,135 @@ function OpenOrderModal({ currency, onClose, onAdd }) {
   )
 }
 
+// ─── Walk-in Delivery / Takeaway modal ────────────────────────────────────────
+// Collects order type + customer details for orders without a table. Submits
+// into the same menu overlay used for table orders.
+
+function WalkInModal({ onClose, onStart }) {
+  const [orderType, setOrderType] = useState('delivery')
+  const [phone, setPhone]         = useState('')
+  const [name, setName]           = useState('')
+  const [address, setAddress]     = useState({ line1: '', line2: '', city: '', pincode: '' })
+
+  const cleanPhone = phone.replace(/\D/g, '').slice(0, 10)
+  const phoneValid = /^\d{10}$/.test(cleanPhone)
+  const addressValid = orderType === 'takeaway' || address.line1.trim().length > 0
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (!phoneValid || !addressValid) return
+    onStart({
+      orderType,
+      phone: cleanPhone,
+      name: name.trim(),
+      address: orderType === 'delivery'
+        ? Object.fromEntries(Object.entries(address).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v))
+        : null,
+    })
+    onClose()
+  }
+
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      >
+        <div className="bg-white rounded-2xl shadow-2xl p-5 max-w-sm w-full max-h-[85vh] overflow-y-auto">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-base font-bold text-gray-900">Walk-in Delivery / Takeaway</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Take an order without a table</p>
+            </div>
+            <button type="button" onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 flex-shrink-0">
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="flex gap-2">
+              {['delivery', 'takeaway'].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setOrderType(t)}
+                  className={`flex-1 py-2 rounded-xl text-sm font-bold capitalize border-2 transition-all
+                    ${orderType === t
+                      ? 'border-primary-500 bg-primary-50 text-primary-700'
+                      : 'border-gray-200 text-gray-400 hover:border-gray-300'
+                    }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Customer Phone *</label>
+              <input
+                type="tel" inputMode="numeric" autoFocus required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                placeholder="10-digit mobile number"
+                className="input w-full"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Customer Name</label>
+              <input
+                type="text" value={name} onChange={(e) => setName(e.target.value)}
+                placeholder="Optional" maxLength={80}
+                className="input w-full"
+              />
+            </div>
+            {orderType === 'delivery' && (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-500 block">Delivery Address *</label>
+                <input
+                  type="text" required value={address.line1}
+                  onChange={(e) => setAddress((p) => ({ ...p, line1: e.target.value }))}
+                  placeholder="Flat / house no., street" maxLength={200}
+                  className="input w-full"
+                />
+                <input
+                  type="text" value={address.line2}
+                  onChange={(e) => setAddress((p) => ({ ...p, line2: e.target.value }))}
+                  placeholder="Area / landmark" maxLength={120}
+                  className="input w-full"
+                />
+                <div className="flex gap-2">
+                  <input
+                    type="text" value={address.city}
+                    onChange={(e) => setAddress((p) => ({ ...p, city: e.target.value }))}
+                    placeholder="City" maxLength={80}
+                    className="input flex-1 min-w-0"
+                  />
+                  <input
+                    type="text" inputMode="numeric" value={address.pincode}
+                    onChange={(e) => setAddress((p) => ({ ...p, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                    placeholder="Pincode"
+                    className="input w-28 flex-shrink-0"
+                  />
+                </div>
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={!phoneValid || !addressValid}
+              className="w-full bg-primary-600 hover:bg-primary-500 text-white py-2.5 rounded-2xl text-sm font-bold transition-colors disabled:opacity-40"
+            >
+              Start Order
+            </button>
+          </form>
+        </div>
+      </motion.div>
+    </>
+  )
+}
+
 // ─── Cart sheet ───────────────────────────────────────────────────────────────
 
 function CartSheet({ entries, subtotal, taxPercentage, currency, onRemove, onAdd, onSetNote, onClose, onPlace, placing, selectedTable }) {
@@ -171,7 +300,7 @@ function CartSheet({ entries, subtotal, taxPercentage, currency, onRemove, onAdd
           <h2 className="text-base font-bold text-gray-900">Order Summary</h2>
           {selectedTable && (
             <span className="text-xs font-bold bg-primary-100 text-primary-700 px-3 py-1 rounded-full">
-              Table {selectedTable}
+              {selectedTable}
             </span>
           )}
           <button type="button" onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100">
@@ -267,6 +396,8 @@ export default function TakeOrder() {
   const [dataLoading, setDataLoading] = useState(!toCache.tables)
 
   const [selectedTableId, setSelectedTableId] = useState('')
+  const [walkIn, setWalkIn]                   = useState(null) // { orderType, phone, name, address }
+  const [walkInModalOpen, setWalkInModalOpen] = useState(false)
   const [selectedCatId, setSelectedCatId]     = useState('all')
   const [search, setSearch]                   = useState('')
   const [cartOpen, setCartOpen]               = useState(false)
@@ -357,7 +488,70 @@ export default function TakeOrder() {
 
   const selectedTableNumber = tables.find((t) => t.id === selectedTableId)?.table_number
 
+  // Label shown on the cart bar / cart sheet — "Table 5", "Delivery" or "Takeaway"
+  const sessionLabel = walkIn
+    ? (walkIn.orderType === 'delivery' ? 'Delivery' : 'Takeaway')
+    : (selectedTableNumber ? `Table ${selectedTableNumber}` : '')
+
+  // Walk-in delivery/takeaway orders go through admin_place_online_order.
+  // They need a live connection (no offline queue) — customer details and
+  // order type have no offline replay path.
+  const handlePlaceWalkInOrder = async () => {
+    if (!walkIn || entries.length === 0 || placing) return
+    if (!navigator.onLine) {
+      toast.error('Walk-in delivery/takeaway orders need an internet connection')
+      return
+    }
+    setPlacing(true)
+
+    const orderId = crypto.randomUUID()
+    const tax = Math.round(subtotal * taxPercentage) / 100
+    const totalAmount = subtotal + tax
+
+    const items = entries.map(({ item, quantity, notes }) => (
+      item.isOpenItem
+        ? { custom_name: item.name, custom_price: item.price, quantity, notes: notes || '' }
+        : { menu_item_id: item.id, quantity, notes: notes || '' }
+    ))
+
+    const kotOrder = {
+      id: orderId,
+      order_time: new Date().toISOString(),
+      total_amount: totalAmount,
+      order_type: walkIn.orderType,
+      customer_name: walkIn.name || null,
+      order_items: entries.map(({ item, quantity, notes }) => ({
+        item_name: item.name, unit_price: item.price, quantity, notes: notes || '', cancelled: false,
+      })),
+    }
+
+    try {
+      const { error } = await supabase.rpc('admin_place_online_order', {
+        p_restaurant_id:    restaurant.id,
+        p_order_type:       walkIn.orderType,
+        p_items:            items,
+        p_customer_phone:   walkIn.phone || null,
+        p_customer_name:    walkIn.name || null,
+        p_delivery_address: walkIn.address,
+        p_order_id:         orderId,
+      })
+      if (error) throw error
+      printKOT(kotOrder, restaurant?.name)
+      toast.success(`${sessionLabel} order placed!`)
+      clear()
+      setCartOpen(false)
+      setWalkIn(null)
+      setSelectedCatId('all')
+      setSearch('')
+    } catch (err) {
+      toast.error(err.message || 'Failed to place order')
+    } finally {
+      setPlacing(false)
+    }
+  }
+
   const handlePlaceOrder = async () => {
+    if (walkIn) return handlePlaceWalkInOrder()
     if (!selectedTableId || entries.length === 0 || placing) return
     setPlacing(true)
 
@@ -489,9 +683,18 @@ export default function TakeOrder() {
         </div>
       )}
 
-      {selectedTableId === '' ? (
+      {selectedTableId === '' && !walkIn ? (
         /* ── Step 1: pick a table ──────────────────────────────────────── */
         <>
+          {/* Walk-in delivery/takeaway entry point (no table needed) */}
+          <button
+            type="button"
+            onClick={() => setWalkInModalOpen(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-primary-300 bg-primary-50 text-sm font-bold text-primary-600 hover:bg-primary-100 transition-colors"
+          >
+            <Bike className="w-4 h-4" /> + Walk-in Delivery / Takeaway
+          </button>
+
           <div>
             <h2 className="text-base font-bold text-gray-900">Select a Table</h2>
             <p className="text-sm text-gray-400 mt-0.5">Tap a table to start taking its order</p>
@@ -523,10 +726,10 @@ export default function TakeOrder() {
           <div className="flex flex-wrap gap-3 items-center">
             <button
               type="button"
-              onClick={() => { setSelectedTableId(''); setSelectedCatId('all'); setSearch(''); clear() }}
+              onClick={() => { setSelectedTableId(''); setWalkIn(null); setSelectedCatId('all'); setSearch(''); clear() }}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors flex-shrink-0"
             >
-              <ChevronLeft className="w-4 h-4" /> Table {selectedTableNumber}
+              <ChevronLeft className="w-4 h-4" /> {sessionLabel}
             </button>
 
             <div className="relative flex-1 min-w-[180px]">
@@ -611,7 +814,7 @@ export default function TakeOrder() {
                 </div>
                 <span className="text-sm font-bold">
                   {totalQty} item{totalQty !== 1 ? 's' : ''}
-                  {selectedTableNumber && ` · Table ${selectedTableNumber}`}
+                  {sessionLabel && ` · ${sessionLabel}`}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -639,7 +842,7 @@ export default function TakeOrder() {
             onClose={() => setCartOpen(false)}
             onPlace={handlePlaceOrder}
             placing={placing}
-            selectedTable={selectedTableNumber}
+            selectedTable={sessionLabel}
           />
         )}
       </AnimatePresence>
@@ -651,6 +854,16 @@ export default function TakeOrder() {
             currency={currency}
             onClose={() => setOpenOrderModalOpen(false)}
             onAdd={add}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Walk-in Delivery / Takeaway modal */}
+      <AnimatePresence>
+        {walkInModalOpen && (
+          <WalkInModal
+            onClose={() => setWalkInModalOpen(false)}
+            onStart={(details) => { setWalkIn(details); setSelectedTableId('') }}
           />
         )}
       </AnimatePresence>
