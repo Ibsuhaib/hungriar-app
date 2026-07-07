@@ -13,12 +13,15 @@ before.
 
 | Piece | Location |
 |---|---|
-| Customer storefront (delivery/takeaway ordering, tracking) | `packages/hungriorder-customer` |
-| Standalone admin (online-only restaurants, `has_hungriar = false`) | `packages/hungriorder-admin` |
-| DB migration | `supabase/migrations/32_online_ordering.sql` |
-| Storage buckets for storefront images | `supabase/migrations/33_online_storage.sql` |
-| Order placement edge function (public) | `supabase/functions/place-online-order` |
-| Status transitions edge function (admins) | `supabase/functions/update-order-status` |
+| Customer storefront (delivery/takeaway ordering, tracking) | [`Ibsuhaib/hungriorder`](https://github.com/Ibsuhaib/hungriorder) → `packages/customer-app` |
+| Standalone admin (online-only restaurants, `has_hungriar = false`) | [`Ibsuhaib/hungriorder`](https://github.com/Ibsuhaib/hungriorder) → `packages/admin-app` |
+| DB migration | `supabase/migrations/32_online_ordering.sql` (this repo) |
+| Storage buckets for storefront images | `supabase/migrations/33_online_storage.sql` (this repo) |
+| Order placement edge function (public) | `supabase/functions/place-online-order` (this repo) |
+| Status transitions edge function (admins) | `supabase/functions/update-order-status` (this repo) |
+
+hungriOrder is a separate product with its own repo and Vercel hosting (the consumer side,
+like Zomato); this repo is the POS plus the **shared backend** — one Supabase project serves both.
 
 The existing `place-order` function (QR table orders) is untouched — the
 online flow deliberately lives under a different name.
@@ -35,22 +38,15 @@ online flow deliberately lives under a different name.
    ```
    They reuse the secrets already configured (`ALLOWED_ORIGINS` should gain the
    storefront/admin domains, e.g. `https://hungriorder.com`).
-3. **Storefront app** — `packages/hungriorder-customer`:
-   ```bash
-   cd packages/hungriorder-customer
-   cp .env.example .env   # fill in the goana-ar-app Supabase URL + anon key
-   npm install && npm run build
-   ```
-   Deploy `dist/` (Vercel config included) to e.g. `hungriorder.com`.
-4. **Standalone admin** — `packages/hungriorder-admin`: same steps, deploy to
-   e.g. `admin.hungriorder.com`. Only used by restaurants with
-   `has_hungriar = false`; POS restaurants are redirected to the main admin.
-5. **Main app env (optional)** — `VITE_HUNGRIORDER_URL` sets the storefront
+3. **Frontend apps** — live in the separate
+   [`Ibsuhaib/hungriorder`](https://github.com/Ibsuhaib/hungriorder) repo.
+   Create two Vercel projects from that repo (Root Directory
+   `packages/customer-app` and `packages/admin-app`) with
+   `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` pointing at this project.
+   See that repo's README for details.
+4. **Main app env (optional)** — `VITE_HUNGRIORDER_URL` sets the storefront
    base URL used by the sidebar "Online Store" link and the Settings tab
    (defaults to `https://hungriorder.com`).
-
-Each package is self-contained (own `npm install`); the main app's dependency
-tree is unchanged.
 
 ## How a restaurant goes online
 
