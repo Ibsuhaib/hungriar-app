@@ -214,7 +214,8 @@ function ChefOrdersView({ onLock }) {
 
   const pendingOrders = useMemo(
     () => orders
-      .filter((o) => o.status !== 'completed' && o.status !== 'cancelled')
+      // 'delivered' online orders are done in the kitchen — they wait in Billing
+      .filter((o) => o.status !== 'completed' && o.status !== 'cancelled' && o.status !== 'delivered')
       .sort((a, b) => new Date(a.order_time) - new Date(b.order_time)),
     [orders],
   )
