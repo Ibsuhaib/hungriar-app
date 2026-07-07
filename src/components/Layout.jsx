@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Menu, X, ChevronRight } from 'lucide-react'
+import { LogOut, Menu, X, ChevronRight, ExternalLink } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+
+const STOREFRONT_BASE_URL = import.meta.env.VITE_HUNGRIORDER_URL || 'https://hungriorder.com'
 
 export default function Layout({ title, navItems, signOutPath = '/admin/login', children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { signOut, user } = useAuth()
+  const { signOut, user, restaurant } = useAuth()
   const navigate = useNavigate()
 
   const handleSignOut = async () => {
@@ -97,6 +99,22 @@ export default function Layout({ title, navItems, signOutPath = '/admin/login', 
                     </NavLink>
                   )
                 })}
+
+                {/* Online storefront (hungriOrder) — external link, admin panel only */}
+                {restaurant?.slug && (
+                  <a
+                    href={`${STOREFRONT_BASE_URL}/r/${restaurant.slug}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => setSidebarOpen(false)}
+                    className="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/50 hover:bg-white/5 hover:text-white/80 border border-transparent transition-all duration-150"
+                  >
+                    <span className="flex-shrink-0 text-white/30 group-hover:text-white/60 transition-colors">
+                      <ExternalLink className="w-4 h-4" />
+                    </span>
+                    <span className="flex-1 leading-none">Online Store</span>
+                  </a>
+                )}
               </nav>
 
               {/* Footer */}
