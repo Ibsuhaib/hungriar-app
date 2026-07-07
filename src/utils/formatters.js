@@ -36,6 +36,11 @@ export const ORDER_STATUS_LABELS = {
   served: 'Served',
   completed: 'Completed',
   cancelled: 'Cancelled',
+  // Online (delivery/takeaway) order lifecycle
+  confirmed: 'Confirmed',
+  ready: 'Ready',
+  out_for_delivery: 'Out for Delivery',
+  delivered: 'Delivered',
 }
 
 export const ORDER_STATUS_COLORS = {
@@ -44,6 +49,11 @@ export const ORDER_STATUS_COLORS = {
   served: 'bg-secondary-100 text-secondary-800',
   completed: 'bg-gray-100 text-gray-600',
   cancelled: 'bg-red-100 text-red-700',
+  // Online (delivery/takeaway) order lifecycle
+  confirmed: 'bg-teal-100 text-teal-800',
+  ready: 'bg-indigo-100 text-indigo-800',
+  out_for_delivery: 'bg-purple-100 text-purple-800',
+  delivered: 'bg-green-100 text-green-700',
 }
 
 export const ORDER_STATUS_FLOW = ['pending', 'preparing', 'served', 'completed']

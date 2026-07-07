@@ -100,6 +100,7 @@ export default function Orders() {
   const { orders, loading, patchOrder, refetch } = useRealtimeOrders({ restaurantId: restaurant?.id, pollInterval: 3000, onInsert: handleNewOrder })
   const [settledTodayCount, setSettledTodayCount] = useState(0)
   const [busyItemId, setBusyItemId] = useState(null)
+  const [typeFilter, setTypeFilter] = useState('all')
   const taxPercentage = Number(restaurant?.tax_percentage) || 0
 
   // Create AudioContext on mount (suspended) and resume on any user click.
@@ -138,9 +139,27 @@ export default function Orders() {
 
   const pendingOrders = useMemo(
     () => orders
-      .filter((o) => o.status !== 'completed' && o.status !== 'cancelled')
+      // 'delivered' online orders are done in the kitchen — they move to Billing
+      .filter((o) => o.status !== 'completed' && o.status !== 'cancelled' && o.status !== 'delivered')
       .sort((a, b) => new Date(a.order_time) - new Date(b.order_time)),
     [orders],
+  )
+
+  // Order-type tabs (All | Dine-In | Delivery | Takeaway)
+  const typeCounts = useMemo(() => {
+    const counts = { all: pendingOrders.length, 'dine-in': 0, delivery: 0, takeaway: 0 }
+    for (const o of pendingOrders) {
+      const t = o.order_type || 'dine-in'
+      if (counts[t] !== undefined) counts[t] += 1
+    }
+    return counts
+  }, [pendingOrders])
+
+  const visibleOrders = useMemo(
+    () => typeFilter === 'all'
+      ? pendingOrders
+      : pendingOrders.filter((o) => (o.order_type || 'dine-in') === typeFilter),
+    [pendingOrders, typeFilter],
   )
 
   const completedToday = useMemo(() => {
@@ -242,6 +261,36 @@ export default function Orders() {
         </div>
       </div>
 
+      {/* Order-type tabs */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-2xl">
+        {[
+          { id: 'all', label: 'All' },
+          { id: 'dine-in', label: 'Dine-In' },
+          { id: 'delivery', label: 'Delivery' },
+          { id: 'takeaway', label: 'Takeaway' },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setTypeFilter(tab.id)}
+            className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-medium transition-all duration-150 ${
+              typeFilter === tab.id
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab.label}
+            {typeCounts[tab.id] > 0 && (
+              <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 ${
+                typeFilter === tab.id ? 'bg-primary-100 text-primary-700' : 'bg-gray-200 text-gray-500'
+              }`}>
+                {typeCounts[tab.id]}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
       {/* Active orders grid */}
       {loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -249,7 +298,7 @@ export default function Orders() {
             <div key={i} className="skeleton h-52 rounded-2xl" />
           ))}
         </div>
-      ) : pendingOrders.length === 0 ? (
+      ) : visibleOrders.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -262,7 +311,7 @@ export default function Orders() {
       ) : (
         <AnimatePresence>
           <motion.div layout className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {pendingOrders.map((order) => (
+            {visibleOrders.map((order) => (
               <OrderCard
                 key={order.id}
                 order={order}

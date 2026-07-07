@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Clock, ChefHat, Utensils, CheckCircle2, CheckCheck, XCircle, X, Printer, Plus, Minus, Trash2 } from 'lucide-react'
+import { Clock, ChefHat, Utensils, CheckCircle2, CheckCheck, XCircle, X, Printer, Plus, Minus, Trash2, Bike, ShoppingBag, Phone, MapPin } from 'lucide-react'
 import {
   ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
@@ -14,6 +14,11 @@ const STATUS_ICONS = {
   served: Utensils,
   completed: CheckCircle2,
   cancelled: XCircle,
+  // Online (delivery/takeaway) lifecycle
+  confirmed: CheckCheck,
+  ready: Utensils,
+  out_for_delivery: Bike,
+  delivered: CheckCircle2,
 }
 
 const STATUS_BG = {
@@ -22,6 +27,27 @@ const STATUS_BG = {
   served: 'from-secondary-400 to-secondary-600',
   completed: 'from-green-400 to-green-500',
   cancelled: 'from-gray-300 to-gray-400',
+  // Online (delivery/takeaway) lifecycle
+  confirmed: 'from-teal-400 to-teal-500',
+  ready: 'from-indigo-400 to-indigo-600',
+  out_for_delivery: 'from-purple-400 to-purple-600',
+  delivered: 'from-green-400 to-green-500',
+}
+
+// Next step in the online (delivery/takeaway) status chain shown on the
+// primary action button. Dine-in orders keep the one-tap Complete flow.
+function nextOnlineAction(order) {
+  switch (order.status) {
+    case 'pending':          return { status: 'confirmed', label: 'Accept Order' }
+    case 'confirmed':        return { status: 'preparing', label: 'Start Preparing' }
+    case 'preparing':        return { status: 'ready', label: 'Mark Ready' }
+    case 'ready':
+      return order.order_type === 'delivery'
+        ? { status: 'out_for_delivery', label: 'Out for Delivery' }
+        : { status: 'delivered', label: 'Picked Up' }
+    case 'out_for_delivery': return { status: 'delivered', label: 'Mark Delivered' }
+    default:                 return null
+  }
 }
 
 export default function OrderCard({ order, onStatusChange, onQuantityChange, onCancelItem, onCancelOrder, busyItemId, currency = '₹', restaurantName = '' }) {
@@ -30,6 +56,11 @@ export default function OrderCard({ order, onStatusChange, onQuantityChange, onC
   const gradient = STATUS_BG[order.status] || 'from-gray-300 to-gray-400'
   const isCompleted = order.status === 'completed'
   const isCancelled = order.status === 'cancelled'
+  const isOnline = order.order_type === 'delivery' || order.order_type === 'takeaway'
+  const isDelivered = order.status === 'delivered'
+  const OnlineIcon = order.order_type === 'delivery' ? Bike : ShoppingBag
+  const onlineAction = isOnline ? nextOnlineAction(order) : null
+  const addr = order.delivery_address
 
   return (
     <motion.div
@@ -45,8 +76,15 @@ export default function OrderCard({ order, onStatusChange, onQuantityChange, onC
           <StatusIcon className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-white leading-none">
-            Table {order.tables?.table_number ?? '-'}
+          <p className="text-sm font-bold text-white leading-none flex items-center gap-1.5">
+            {isOnline ? (
+              <>
+                <OnlineIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                {order.order_type === 'delivery' ? 'Delivery' : 'Takeaway'}
+              </>
+            ) : (
+              <>Table {order.tables?.table_number ?? '-'}</>
+            )}
           </p>
           <p className="text-xs text-white/70 mt-0.5">{formatTime(order.order_time)}</p>
         </div>
@@ -86,13 +124,13 @@ export default function OrderCard({ order, onStatusChange, onQuantityChange, onC
                 <li key={item.id} className="text-sm">
                   <div className="flex items-center justify-between gap-3">
                     <span className="min-w-0 flex-1 text-gray-600">
-                      {!(onQuantityChange && !isCompleted) && (
+                      {!(onQuantityChange && !isCompleted && !isOnline) && (
                         <><span className="font-medium text-gray-800">{item.quantity}×</span>{' '}</>
                       )}
                       {item.item_name}
                     </span>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {onQuantityChange && !isCompleted ? (
+                      {onQuantityChange && !isCompleted && !isOnline ? (
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
@@ -115,7 +153,7 @@ export default function OrderCard({ order, onStatusChange, onQuantityChange, onC
                           </button>
                         </div>
                       ) : (
-                        onCancelItem && !isCompleted && (
+                        onCancelItem && !isCompleted && !isOnline && (
                           <button
                             type="button"
                             onClick={() => onCancelItem(order.id, item.id, item.item_name)}
@@ -148,6 +186,38 @@ export default function OrderCard({ order, onStatusChange, onQuantityChange, onC
           )}
         </ul>
 
+        {/* Customer details for delivery/takeaway orders */}
+        {isOnline && (order.customer_name || order.customer_phone || addr || order.notes) && (
+          <div className="mt-3 pt-3 border-t border-dashed border-gray-100 space-y-1.5">
+            {(order.customer_name || order.customer_phone) && (
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-gray-700 truncate">
+                  {order.customer_name || 'Customer'}
+                </span>
+                {order.customer_phone && (
+                  <a
+                    href={`tel:${order.customer_phone}`}
+                    className="flex items-center gap-1 text-primary-600 font-semibold flex-shrink-0 hover:text-primary-700"
+                  >
+                    <Phone className="w-3 h-3" /> {order.customer_phone}
+                  </a>
+                )}
+              </div>
+            )}
+            {order.order_type === 'delivery' && addr && (
+              <p className="flex items-start gap-1 text-xs text-gray-500">
+                <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                {[addr.line1, addr.line2, addr.landmark, addr.city, addr.pincode].filter(Boolean).join(', ')}
+              </p>
+            )}
+            {order.notes && (
+              <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-1 italic">
+                {order.notes}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
           <span className="text-sm font-semibold text-gray-500">Total</span>
           <span className={`text-base font-bold ${isCancelled ? 'text-gray-300 line-through' : 'text-gray-900'}`}>
@@ -169,17 +239,22 @@ export default function OrderCard({ order, onStatusChange, onQuantityChange, onC
               <XCircle className="w-3.5 h-3.5" />
               Order cancelled
             </div>
+          ) : isOnline && isDelivered ? (
+            <div className="flex items-center gap-2 text-xs text-green-600 justify-center py-2 bg-green-50 rounded-xl">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Delivered — settle it from Billing
+            </div>
           ) : (
             <>
               <motion.button
                 type="button"
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.97 }}
-                onClick={() => onStatusChange(order.id, 'completed')}
+                onClick={() => onStatusChange(order.id, isOnline && onlineAction ? onlineAction.status : 'completed')}
                 className="w-full flex items-center justify-center gap-2 btn-primary py-2.5 text-sm bg-gradient-to-r from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 shadow-green-900/20"
               >
                 <CheckCheck className="w-4 h-4" />
-                Complete Order
+                {isOnline && onlineAction ? onlineAction.label : 'Complete Order'}
               </motion.button>
 
               {onCancelOrder && (

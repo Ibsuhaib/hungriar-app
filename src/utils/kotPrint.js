@@ -4,7 +4,10 @@
  */
 export function printKOT(order, restaurantName = 'Restaurant') {
   const items   = (order.order_items || []).filter((i) => !i.cancelled)
-  const tableNo = order.tables?.table_number ?? '?'
+  const isOnline = order.order_type === 'delivery' || order.order_type === 'takeaway'
+  const tableBar = isOnline
+    ? `${order.order_type.toUpperCase()}${order.customer_name ? ` — ${order.customer_name}` : ''}`
+    : `TABLE ${order.tables?.table_number ?? '?'}`
   const kotId   = order.id.slice(-6).toUpperCase()
   const time    = new Date(order.order_time).toLocaleTimeString('en-IN', {
     hour: '2-digit', minute: '2-digit', hour12: true,
@@ -69,7 +72,7 @@ export function printKOT(order, restaurantName = 'Restaurant') {
   <p class="sub">${restaurantName}</p>
   <div class="solid"></div>
 
-  <div class="table-bar">TABLE ${tableNo}</div>
+  <div class="table-bar">${tableBar}</div>
 
   <div class="meta"><span>Date</span><span>${date}</span></div>
   <div class="meta"><span>Time</span><span>${time}</span></div>
