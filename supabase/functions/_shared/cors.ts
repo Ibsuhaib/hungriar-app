@@ -12,9 +12,15 @@
  *
  * When ALLOWED_ORIGINS is unset (local development) we fall back to "*" so the
  * dev server on any localhost port keeps working.
+ *
+ * The hungriOrder storefront/admin domains live in a SEPARATE secret
+ * (`HUNGRIORDER_ALLOWED_ORIGINS`) that is merged in additively, so they can
+ * be added or changed without rewriting the main app's list.
  */
-const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
-  .split(',')
+const ALLOWED_ORIGINS = [
+  ...(Deno.env.get('ALLOWED_ORIGINS') ?? '').split(','),
+  ...(Deno.env.get('HUNGRIORDER_ALLOWED_ORIGINS') ?? '').split(','),
+]
   .map((o) => o.trim())
   .filter(Boolean)
 
