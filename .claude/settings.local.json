@@ -2,7 +2,26 @@
   "permissions": {
     "allow": [
       "PowerShell(ls d:\\\\goana-ar-app\\\\node_modules | Where-Object { $_.Name -in @\\('framer-motion', 'lucide-react'\\) } | Select-Object Name)",
-      "PowerShell(Get-ChildItem -Path \"d:\\\\goana-ar-app\" -Recurse -Exclude node_modules,dist | Select-Object FullName | ForEach-Object { $_.FullName.Substring\\(15\\) } | Sort-Object)"
+      "PowerShell(Get-ChildItem -Path \"d:\\\\goana-ar-app\" -Recurse -Exclude node_modules,dist | Select-Object FullName | ForEach-Object { $_.FullName.Substring\\(15\\) } | Sort-Object)",
+      "Bash(npm audit *)",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('metadata',{}\\),indent=1\\)\\); [print\\(k, v.get\\('severity'\\), v.get\\('range'\\), [x if isinstance\\(x,str\\) else x.get\\('title'\\) for x in v.get\\('via',[]\\)][:2]\\) for k,v in d.get\\('vulnerabilities',{}\\).items\\(\\)]\")",
+      "Bash(python *)",
+      "Bash(npm install *)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'Remove vulnerable dev-only to-ico dependency \\(clears 5 critical + 3 high npm audit findings\\) *)",
+      "Bash(git commit -q -m 'Harden security: restrict CORS, add response headers, OTP brute-force limits *)",
+      "Bash(git commit -q -m 'Fix broken Staff Panel ordering: correct order_items/orders column names *)",
+      "Bash(npm run *)",
+      "Bash(git commit -q -m 'Perf: split React/Supabase/framer-motion into cacheable vendor chunks *)",
+      "Bash(git commit -q --allow-empty -m 'Production hardening: zero-trust security, reliability fixes, and performance optimization *)",
+      "Bash(git push *)",
+      "Bash(supabase --version)",
+      "Bash(supabase functions *)",
+      "Bash(git commit -q -m 'Fix '\\\\''Failed to fetch'\\\\'' orders: fall back to offline queue on network error *)",
+      "Bash(git commit -q -m 'Add migration 29: drop duplicate pre-p_order_id order functions *)",
+      "Bash(git commit -q -m 'Make Chef/Staff/Admin panels usable offline \\(keep the order/bill queue\\) *)",
+      "Bash(git commit -q -m 'Fix offline-settled bills losing their orders on sync \\(data/revenue loss\\) *)",
+      "Bash(npx vite *)"
     ]
   }
 }
