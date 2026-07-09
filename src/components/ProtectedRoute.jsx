@@ -73,6 +73,11 @@ export default function ProtectedRoute() {
     return <Navigate to="/staff" replace />
   }
 
+  // ── Delivery station account ──────────────────────────────────────────────
+  if (role === 'delivery') {
+    return <Navigate to="/delivery" replace />
+  }
+
   if (role !== 'admin') {
     return <Navigate to="/admin/login" replace state={{ from: location }} />
   }

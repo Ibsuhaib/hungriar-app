@@ -48,7 +48,7 @@ function UploadZone({ label, hint, value, loading, accept, onChange, icon: Icon 
   )
 }
 
-function ItemCard({ item, onEdit, onDelete, onToggle, currency }) {
+function ItemCard({ item, onEdit, onDelete, onToggle, onToggleOnline, currency }) {
   return (
     <motion.div
       layout
@@ -89,6 +89,17 @@ function ItemCard({ item, onEdit, onDelete, onToggle, currency }) {
           >
             {item.available ? <ToggleRight className="w-3 h-3" /> : <ToggleLeft className="w-3 h-3" />}
             {item.available ? 'Available' : 'Hidden'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleOnline(item)}
+            title={item.online_available !== false ? 'Shown on your online store — click to hide' : 'Hidden from your online store — click to show'}
+            className={`badge badge-sm gap-1 cursor-pointer transition-colors ${
+              item.online_available !== false ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            {item.online_available !== false ? <ToggleRight className="w-3 h-3" /> : <ToggleLeft className="w-3 h-3" />}
+            {item.online_available !== false ? 'Online' : 'Not Online'}
           </button>
         </div>
         <div className="mt-2 flex gap-1.5">
@@ -243,6 +254,18 @@ export default function MenuManagement() {
     if (!allowed) return
     const { error } = await supabase.from('menu_items').update({ available: !item.available }).eq('id', item.id)
     if (error) { toast.error('Failed to update item'); return }
+    await fetchData()
+  }
+
+  // Hide/show a dish on the hungriOrder online store without touching its
+  // in-house availability.
+  const toggleOnline = async (item) => {
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    const next = !(item.online_available !== false)
+    const { error } = await supabase.from('menu_items').update({ online_available: next }).eq('id', item.id)
+    if (error) { toast.error('Failed to update item'); return }
+    toast.success(next ? 'Item is now visible on your online store' : 'Item hidden from your online store')
     await fetchData()
   }
 
@@ -460,6 +483,7 @@ export default function MenuManagement() {
                       onEdit={openEditForm}
                       onDelete={handleDelete}
                       onToggle={toggleAvailable}
+                      onToggleOnline={toggleOnline}
                       currency={restaurant?.currency}
                     />
                   ))}

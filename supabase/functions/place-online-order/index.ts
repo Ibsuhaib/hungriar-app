@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
     // ---- Recompute prices from the menu (never trust the client) ---------
     const { data: menuItems, error: mErr } = await supabaseAdmin
       .from('menu_items')
-      .select('id, name, price, available, restaurant_id')
+      .select('id, name, price, available, online_available, restaurant_id')
       .in('id', [...wanted.keys()])
       .eq('restaurant_id', restaurantId)
     if (mErr) {
@@ -142,7 +142,9 @@ Deno.serve(async (req) => {
     let subtotal = 0
     for (const [itemId, qty] of wanted) {
       const item = byId.get(itemId)
-      if (!item || !item.available) {
+      // online_available === false → the restaurant hid this dish from the
+      // online store (it may still be sold in-house)
+      if (!item || !item.available || item.online_available === false) {
         return jsonResponse(req, { error: 'One or more items are no longer available. Please refresh the menu.' }, 409)
       }
       subtotal += round2(Number(item.price) * qty)

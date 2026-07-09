@@ -7,6 +7,7 @@ import { CartProvider } from './contexts/CartContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import SuperAdminRoute from './components/SuperAdminRoute'
 import StaffRoute from './components/StaffRoute'
+import DeliveryRoute from './components/DeliveryRoute'
 
 // Public pages — small, always needed
 import Home from './pages/Home'
@@ -15,8 +16,9 @@ import Privacy from './pages/Privacy'
 import NotFound from './pages/NotFound'
 
 // Station + staff — lazy: only needed on kiosk devices
-const StationLogin = lazy(() => import('./pages/StationLogin'))
-const StaffPanel   = lazy(() => import('./pages/staff/StaffPanel'))
+const StationLogin  = lazy(() => import('./pages/StationLogin'))
+const StaffPanel    = lazy(() => import('./pages/staff/StaffPanel'))
+const DeliveryPanel = lazy(() => import('./pages/staff/DeliveryPanel'))
 
 // Customer pages — lazy: only needed when scanning a QR code
 const Menu         = lazy(() => import('./pages/customer/Menu'))
@@ -114,6 +116,10 @@ export default function App() {
 
             <Route path="/staff" element={<StaffRoute />}>
               <Route index element={<StaffPanel />} />
+            </Route>
+
+            <Route path="/delivery" element={<DeliveryRoute />}>
+              <Route index element={<DeliveryPanel />} />
             </Route>
 
             <Route path="/superadmin/login" element={<SuperAdminLogin />} />

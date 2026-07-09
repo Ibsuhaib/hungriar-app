@@ -58,6 +58,9 @@ export default function Settings() {
   const [minOrderAmount, setMinOrderAmount]     = useState(restaurant?.min_order_amount ?? 0)
   const [deliveryFee, setDeliveryFee]           = useState(restaurant?.delivery_fee ?? 0)
   const [openingHours, setOpeningHours]         = useState(restaurant?.opening_hours || {})
+  const [latitude, setLatitude]                 = useState(restaurant?.latitude ?? '')
+  const [longitude, setLongitude]               = useState(restaurant?.longitude ?? '')
+  const [locating, setLocating]                 = useState(false)
   const [savingOnline, setSavingOnline]         = useState(false)
   const [uploadingCover, setUploadingCover]     = useState(false)
 
@@ -157,6 +160,26 @@ export default function Settings() {
     }
   }
 
+  // Capture the restaurant's coordinates from this device (use it at the
+  // restaurant!). Customers use them to find the nearest restaurants.
+  const handleCaptureLocation = () => {
+    if (!navigator.geolocation) { toast.error('Location is not supported on this device'); return }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLatitude(pos.coords.latitude.toFixed(6))
+        setLongitude(pos.coords.longitude.toFixed(6))
+        setLocating(false)
+        toast.success('Location captured — click "Save Online Settings" to apply.')
+      },
+      () => {
+        setLocating(false)
+        toast.error('Could not get location. Allow location access and try again.')
+      },
+      { enableHighAccuracy: true, timeout: 15000 },
+    )
+  }
+
   const handleOnlineSubmit = async (e) => {
     e.preventDefault()
     if (savingOnline) return
@@ -166,6 +189,11 @@ export default function Settings() {
     if (Number.isNaN(radius) || radius < 0) { toast.error('Delivery radius must be 0 or more'); return }
     if (Number.isNaN(minOrder) || minOrder < 0) { toast.error('Minimum order amount must be 0 or more'); return }
     if (Number.isNaN(fee) || fee < 0) { toast.error('Delivery fee must be 0 or more'); return }
+    const lat = latitude === '' ? null : Number(latitude)
+    const lng = longitude === '' ? null : Number(longitude)
+    if ((lat === null) !== (lng === null)) { toast.error('Set both latitude and longitude, or leave both empty'); return }
+    if (lat !== null && (Number.isNaN(lat) || lat < -90 || lat > 90)) { toast.error('Latitude must be between -90 and 90'); return }
+    if (lng !== null && (Number.isNaN(lng) || lng < -180 || lng > 180)) { toast.error('Longitude must be between -180 and 180'); return }
     const allowed = await checkAdminLimit(user?.id)
     if (!allowed) return
     setSavingOnline(true)
@@ -187,6 +215,8 @@ export default function Settings() {
         min_order_amount: minOrder,
         delivery_fee: fee,
         opening_hours: hours,
+        latitude: lat,
+        longitude: lng,
       }).eq('id', restaurant.id)
       if (error) throw error
       await refreshProfile()
@@ -228,7 +258,7 @@ export default function Settings() {
         label: newLabel.trim(),
         pin: newPin,
       })
-      toast.success(`${role === 'chef' ? 'Chef' : 'Staff'} station created!`)
+      toast.success(`${role === 'chef' ? 'Chef' : role === 'delivery' ? 'Delivery' : 'Staff'} station created!`)
       setNewLabel('')
       setNewPin('')
       setStations((prev) => [...prev, { id: stationId, role, label, created_at: new Date().toISOString() }])
@@ -552,6 +582,41 @@ export default function Settings() {
                 </div>
               </div>
 
+              {/* Restaurant location — powers "nearest restaurants" on the storefront */}
+              <div>
+                <label className="label">Restaurant Location</label>
+                <p className="label-hint mb-2">
+                  Customers see the nearest restaurants first, and your delivery radius is measured
+                  from this point. Tap the button while you're at the restaurant.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCaptureLocation}
+                    disabled={locating}
+                    className="btn-outline text-sm gap-2"
+                  >
+                    {locating ? (
+                      <><span className="w-3.5 h-3.5 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin" /> Locating…</>
+                    ) : (
+                      <>📍 {latitude ? 'Update Location' : 'Capture Current Location'}</>
+                    )}
+                  </button>
+                  {latitude && longitude ? (
+                    <a
+                      href={`https://maps.google.com/?q=${latitude},${longitude}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-primary-600 underline underline-offset-2"
+                    >
+                      {Number(latitude).toFixed(4)}, {Number(longitude).toFixed(4)} — view on map
+                    </a>
+                  ) : (
+                    <span className="text-xs text-amber-600">Not set — your restaurant won't appear in "nearest" sorting</span>
+                  )}
+                </div>
+              </div>
+
               {/* Opening hours */}
               <div>
                 <label className="label">Opening Hours</label>
@@ -729,6 +794,7 @@ export default function Settings() {
                     <select className="input" value={newRole} onChange={(e) => setNewRole(e.target.value)}>
                       <option value="chef">Chef</option>
                       <option value="staff">Staff (waiter)</option>
+                      <option value="delivery">Delivery Boy</option>
                     </select>
                   </div>
                   <div>
@@ -772,12 +838,12 @@ export default function Settings() {
                   {stations.map((s) => (
                     <div key={s.id} className="border border-gray-100 rounded-2xl overflow-hidden">
                       <div className="flex items-center gap-3 px-4 py-3">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold ${s.role === 'chef' ? 'bg-orange-400' : 'bg-primary-500'}`}>
-                          {s.role === 'chef' ? '👨‍🍳' : '🧑‍💼'}
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold ${s.role === 'chef' ? 'bg-orange-400' : s.role === 'delivery' ? 'bg-purple-500' : 'bg-primary-500'}`}>
+                          {s.role === 'chef' ? '👨‍🍳' : s.role === 'delivery' ? '🛵' : '🧑‍💼'}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-800 leading-none">
-                            {s.label || (s.role === 'chef' ? 'Chef Station' : 'Staff Station')}
+                            {s.label || (s.role === 'chef' ? 'Chef Station' : s.role === 'delivery' ? 'Delivery Station' : 'Staff Station')}
                           </p>
                           <p className="text-xs text-gray-400 mt-0.5 capitalize">{s.role}</p>
                         </div>

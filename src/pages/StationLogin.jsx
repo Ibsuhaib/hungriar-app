@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChefHat, Users, Loader2 } from 'lucide-react'
+import { ChefHat, Users, Bike, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -9,8 +9,9 @@ import { useAuth } from '../contexts/AuthContext'
 const MAX_ATTEMPTS   = 5
 const LOCKOUT_MS     = 5 * 60 * 1000
 const ROLE_META = {
-  chef:  { icon: ChefHat, label: 'Chef Station', color: 'from-orange-400 to-orange-600' },
-  staff: { icon: Users,   label: 'Staff Station', color: 'from-primary-400 to-primary-600' },
+  chef:     { icon: ChefHat, label: 'Chef Station', color: 'from-orange-400 to-orange-600' },
+  staff:    { icon: Users,   label: 'Staff Station', color: 'from-primary-400 to-primary-600' },
+  delivery: { icon: Bike,    label: 'Delivery Station', color: 'from-purple-400 to-purple-600' },
 }
 
 export default function StationLogin() {
@@ -29,9 +30,10 @@ export default function StationLogin() {
   // Redirect already-authenticated station users to the right panel
   useEffect(() => {
     if (!loading && user) {
-      if (role === 'chef')  navigate('/admin/chef', { replace: true })
-      if (role === 'staff') navigate('/staff',      { replace: true })
-      if (role === 'admin') navigate('/admin',      { replace: true })
+      if (role === 'chef')     navigate('/admin/chef', { replace: true })
+      if (role === 'staff')    navigate('/staff',      { replace: true })
+      if (role === 'delivery') navigate('/delivery',   { replace: true })
+      if (role === 'admin')    navigate('/admin',      { replace: true })
     }
   }, [loading, user, role, navigate])
 

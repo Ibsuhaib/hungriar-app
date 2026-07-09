@@ -26,8 +26,8 @@ Deno.serve(async (req) => {
   if (!restaurantId || !role || !pin) {
     return jsonResponse(req, { error: 'restaurantId, role, and pin are required' }, 400)
   }
-  if (!['chef', 'staff'].includes(role)) {
-    return jsonResponse(req, { error: 'role must be chef or staff' }, 400)
+  if (!['chef', 'staff', 'delivery'].includes(role)) {
+    return jsonResponse(req, { error: 'role must be chef, staff or delivery' }, 400)
   }
   if (!/^\d{4,6}$/.test(pin)) {
     return jsonResponse(req, { error: 'PIN must be 4–6 digits' }, 400)

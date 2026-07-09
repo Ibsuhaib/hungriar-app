@@ -84,7 +84,7 @@ export function AuthProvider({ children }) {
           .maybeSingle()
         if (adminError) throw adminError
         admin = adminRow ?? null
-      } else if (userRole === 'chef' || userRole === 'staff') {
+      } else if (userRole === 'chef' || userRole === 'staff' || userRole === 'delivery') {
         // Station accounts: look up restaurant via restaurant_stations
         const { data: stationRow, error: stationError } = await supabase
           .from('restaurant_stations')
