@@ -8,6 +8,7 @@ import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase, invokeEdgeFunction } from '../../lib/supabase'
 import { uploadAsset, deleteAsset } from '../../lib/storage'
 import SubscriptionBanner from '../../components/SubscriptionBanner'
+import LocationPickerModal from '../../components/LocationPickerModal'
 import { formatDate } from '../../utils/formatters'
 import { savePinHash, clearPin } from '../../components/PinLockScreen'
 
@@ -61,6 +62,7 @@ export default function Settings() {
   const [latitude, setLatitude]                 = useState(restaurant?.latitude ?? '')
   const [longitude, setLongitude]               = useState(restaurant?.longitude ?? '')
   const [locating, setLocating]                 = useState(false)
+  const [mapPickerOpen, setMapPickerOpen]       = useState(false)
   const [savingOnline, setSavingOnline]         = useState(false)
   const [uploadingCover, setUploadingCover]     = useState(false)
 
@@ -367,6 +369,18 @@ export default function Settings() {
         ))}
       </div>
 
+      <LocationPickerModal
+        open={mapPickerOpen}
+        onClose={() => setMapPickerOpen(false)}
+        initialLat={latitude === '' ? null : Number(latitude)}
+        initialLng={longitude === '' ? null : Number(longitude)}
+        onSave={({ lat, lng }) => {
+          setLatitude(lat.toFixed(6))
+          setLongitude(lng.toFixed(6))
+          toast.success('Location set — click "Save Online Settings" to apply.')
+        }}
+      />
+
       <AnimatePresence mode="wait">
         {activeTab === 'profile' && (
           <motion.section
@@ -599,8 +613,15 @@ export default function Settings() {
                     {locating ? (
                       <><span className="w-3.5 h-3.5 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin" /> Locating…</>
                     ) : (
-                      <>📍 {latitude ? 'Update Location' : 'Capture Current Location'}</>
+                      <>📍 Use Current Location</>
                     )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMapPickerOpen(true)}
+                    className="btn-outline text-sm gap-2"
+                  >
+                    🗺️ Pick on Map
                   </button>
                   {latitude && longitude ? (
                     <a
