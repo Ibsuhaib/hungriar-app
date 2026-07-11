@@ -28,7 +28,11 @@ export default defineConfig({
         theme_color: '#0F172A',
         background_color: '#0F172A',
         display: 'standalone',
-        start_url: '/',
+        // Installed restaurant devices open straight into the admin area:
+        // ProtectedRoute shows a spinner while the session restores, then the
+        // dashboard (or role-based panel). The public "/" landing page is for
+        // the website only — the installed app never routes through it.
+        start_url: '/admin',
         scope: '/',
         orientation: 'portrait',
         icons: [

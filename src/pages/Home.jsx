@@ -6,7 +6,7 @@ import {
   Smartphone, ChefHat, QrCode, BarChart3,
   Box, Receipt, Bell, Zap, Star,
 } from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth, hasPersistedSession } from '../contexts/AuthContext'
 
 const ROLE_HOME = { admin: '/admin', chef: '/admin/chef', staff: '/staff' }
 
@@ -295,6 +295,21 @@ export default function Home() {
   // Already signed in (e.g. reopening the app after closing it) — go straight
   // to the right panel instead of showing the marketing landing page.
   if (!loading && user && ROLE_HOME[role]) return <Navigate to={ROLE_HOME[role]} replace />
+
+  // Session check still in flight AND a stored token says one should exist:
+  // show a splash instead of flashing the landing page for a second or two
+  // before the redirect above kicks in. Genuinely logged-out visitors have no
+  // stored token, skip this, and see the landing page immediately.
+  if (loading && hasPersistedSession()) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-navy-800">
+        <div className="flex flex-col items-center gap-4">
+          <img src="/logo.svg" alt="hungriAR" className="w-16 h-16 rounded-2xl animate-pulse" />
+          <p className="text-sm text-white/40">Opening your restaurant…</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-navy-800 text-white font-sans">

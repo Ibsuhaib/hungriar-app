@@ -14,7 +14,7 @@ const PROFILE_CACHE_KEY = 'hungriar_profile_cache'
 // worth retrying — never read as the session itself.
 const AUTH_STORAGE_KEY = 'hungriar-auth'
 
-function hasPersistedSession() {
+export function hasPersistedSession() {
   try {
     return !!localStorage.getItem(AUTH_STORAGE_KEY)
   } catch {
@@ -192,7 +192,11 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     try { localStorage.removeItem(PROFILE_CACHE_KEY) } catch { /* ignore */ }
-    await supabase.auth.signOut()
+    // scope: 'local' — only end THIS device's session. The default ('global')
+    // revokes every session on the account, so one restaurant device signing
+    // out (or a station's "Forgot PIN") would log out the owner's phone, the
+    // billing desktop, and every other device sharing the account.
+    await supabase.auth.signOut({ scope: 'local' })
     setSession(null)
     setUser(null)
     setRole(null)

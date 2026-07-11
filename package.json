@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@google/model-viewer": "^3.5.0",
-    "@supabase/supabase-js": "^2.39.0",
+    "@supabase/supabase-js": "^2.110.2",
     "crypto-js": "^4.2.0",
     "framer-motion": "^12.40.0",
     "leaflet": "^1.9.4",
