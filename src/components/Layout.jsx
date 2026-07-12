@@ -36,12 +36,15 @@ export default function Layout({ title, navItems, signOutPath = '/admin/login', 
         )}
       </AnimatePresence>
 
-      {/* Sidebar — always in DOM; CSS transform controls mobile visibility */}
+      {/* Sidebar — always in DOM; CSS transform controls mobile visibility.
+          On desktop it's sticky + full viewport height so it stays pinned
+          while only the main content scrolls, and its internal nav scrolls
+          on its own instead of stretching to the page height. */}
       <aside
         className={`
           fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-navy-800 border-r border-navy-700
           shadow-xl transition-transform duration-200 ease-in-out
-          lg:static lg:translate-x-0 lg:shadow-none
+          lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-none
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >

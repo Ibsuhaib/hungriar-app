@@ -29,8 +29,8 @@ Deno.serve(async (req) => {
   if (!['chef', 'staff', 'delivery'].includes(role)) {
     return jsonResponse(req, { error: 'role must be chef, staff or delivery' }, 400)
   }
-  if (!/^\d{4,6}$/.test(pin)) {
-    return jsonResponse(req, { error: 'PIN must be 4–6 digits' }, 400)
+  if (!/^\d{6}$/.test(pin)) {
+    return jsonResponse(req, { error: 'PIN must be 6 digits' }, 400)
   }
 
   // Verify the caller is an admin of this restaurant

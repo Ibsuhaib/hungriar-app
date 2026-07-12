@@ -1,3 +1,16 @@
+// Escape user-controlled text before it goes into the print HTML. Item names,
+// notes and customer names can come from customers (online orders), so an
+// unescaped value like `<img onerror=…>` would otherwise execute in this
+// same-origin print window.
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 /**
  * Prints a KOT (Kitchen Order Ticket) for a given order.
  * Opens a small popup, formats for 80mm thermal paper, triggers print.
@@ -6,8 +19,8 @@ export function printKOT(order, restaurantName = 'Restaurant') {
   const items   = (order.order_items || []).filter((i) => !i.cancelled)
   const isOnline = order.order_type === 'delivery' || order.order_type === 'takeaway'
   const tableBar = isOnline
-    ? `${order.order_type.toUpperCase()}${order.customer_name ? ` — ${order.customer_name}` : ''}`
-    : `TABLE ${order.tables?.table_number ?? '?'}`
+    ? `${escapeHtml(order.order_type.toUpperCase())}${order.customer_name ? ` — ${escapeHtml(order.customer_name)}` : ''}`
+    : `TABLE ${escapeHtml(order.tables?.table_number ?? '?')}`
   const kotId   = order.id.slice(-6).toUpperCase()
   const time    = new Date(order.order_time).toLocaleTimeString('en-IN', {
     hour: '2-digit', minute: '2-digit', hour12: true,
@@ -17,11 +30,11 @@ export function printKOT(order, restaurantName = 'Restaurant') {
   })
 
   const itemRows = items.map((item) => {
-    const note = item.notes ? `<div class="note">&gt; ${item.notes}</div>` : ''
+    const note = item.notes ? `<div class="note">&gt; ${escapeHtml(item.notes)}</div>` : ''
     return `
       <tr>
-        <td class="qty">${item.quantity}</td>
-        <td class="item">${item.item_name}${note}</td>
+        <td class="qty">${escapeHtml(item.quantity)}</td>
+        <td class="item">${escapeHtml(item.item_name)}${note}</td>
       </tr>`
   }).join('')
 
@@ -69,7 +82,7 @@ export function printKOT(order, restaurantName = 'Restaurant') {
 </head>
 <body>
   <p class="header">KOT</p>
-  <p class="sub">${restaurantName}</p>
+  <p class="sub">${escapeHtml(restaurantName)}</p>
   <div class="solid"></div>
 
   <div class="table-bar">${tableBar}</div>

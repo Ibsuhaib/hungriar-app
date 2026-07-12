@@ -26,6 +26,17 @@ async function purgeOldRecords(restaurantId) {
     .lt('bill_date', cutoff.toISOString())
 }
 
+// Escape user-controlled text (item names, customer names, restaurant name)
+// before it enters the print HTML — these can originate from customers.
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 function printDailyReport(records, restaurant) {
   const todayStr = new Date().toDateString()
   const todayRecords = records.filter((r) => new Date(r.bill_date).toDateString() === todayStr)
@@ -35,14 +46,14 @@ function printDailyReport(records, restaurant) {
 
   const rows = todayRecords.map((r) => {
     const items = (r.orders_json || []).flatMap((o) => o.items || [])
-    const itemSummary = items.map((it) => `${it.quantity}× ${it.item_name}`).join(', ')
+    const itemSummary = items.map((it) => `${it.quantity}× ${escapeHtml(it.item_name)}`).join(', ')
     const time = new Date(r.bill_date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
     const orderCount = Array.isArray(r.orders_json) ? r.orders_json.length : 0
     const pmLabel = PAYMENT_BADGE[r.payment_method]?.label || r.payment_method || '—'
     return `
       <tr>
         <td>${time}</td>
-        <td><strong>${r.order_type === 'delivery' ? `Delivery${r.customer_name ? ` — ${r.customer_name}` : ''}` : r.order_type === 'takeaway' ? `Takeaway${r.customer_name ? ` — ${r.customer_name}` : ''}` : `Table ${r.tables?.table_number ?? '-'}`}</strong>${itemSummary ? `<div class="items">${itemSummary}</div>` : ''}</td>
+        <td><strong>${r.order_type === 'delivery' ? `Delivery${r.customer_name ? ` — ${escapeHtml(r.customer_name)}` : ''}` : r.order_type === 'takeaway' ? `Takeaway${r.customer_name ? ` — ${escapeHtml(r.customer_name)}` : ''}` : `Table ${escapeHtml(r.tables?.table_number ?? '-')}`}</strong>${itemSummary ? `<div class="items">${itemSummary}</div>` : ''}</td>
         <td class="center">${orderCount}</td>
         <td class="center">${pmLabel}</td>
         <td class="right">${formatCurrency(r.total_amount, currency)}</td>
@@ -53,7 +64,7 @@ function printDailyReport(records, restaurant) {
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>${restaurant?.name ?? 'Restaurant'} — Daily Report ${dateLabel}</title>
+  <title>${escapeHtml(restaurant?.name ?? 'Restaurant')} — Daily Report ${dateLabel}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; color: #111; padding: 32px 40px; }
@@ -72,7 +83,7 @@ function printDailyReport(records, restaurant) {
   </style>
 </head>
 <body>
-  <h1>${restaurant?.name ?? 'Restaurant'} — Daily Report</h1>
+  <h1>${escapeHtml(restaurant?.name ?? 'Restaurant')} — Daily Report</h1>
   <p class="meta">${dateLabel} &nbsp;·&nbsp; ${todayRecords.length} settled bill${todayRecords.length !== 1 ? 's' : ''}</p>
   ${todayRecords.length === 0
     ? '<p class="empty">No settled bills today.</p>'

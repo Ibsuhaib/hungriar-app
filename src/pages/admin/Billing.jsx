@@ -108,7 +108,7 @@ export function printReceipt({ tableOrders, table, total, taxPercentage, payment
     const oTime = new Date(order.order_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
     const itemRows = activeItems.map((item) => `
       <tr>
-        <td>${item.quantity}&times; ${item.item_name}</td>
+        <td>${item.quantity}&times; ${escapeHtml(item.item_name)}</td>
         <td class="r">${fmt(item.quantity * item.unit_price)}</td>
       </tr>`).join('')
     return `

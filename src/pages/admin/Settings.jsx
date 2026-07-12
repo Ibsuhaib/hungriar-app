@@ -251,7 +251,7 @@ export default function Settings() {
   const handleCreateStation = async (e) => {
     e.preventDefault()
     if (creating) return
-    if (!/^\d{4,6}$/.test(newPin)) { toast.error('PIN must be 4–6 digits'); return }
+    if (!/^\d{6}$/.test(newPin)) { toast.error('PIN must be 6 digits'); return }
     setCreating(true)
     try {
       const { stationId, role, label } = await invokeEdgeFunction('create-station', {
@@ -289,7 +289,7 @@ export default function Settings() {
   const handleResetPin = async (e) => {
     e.preventDefault()
     if (resettingPin || !resetPinId) return
-    if (!/^\d{4,6}$/.test(resetPinValue)) { toast.error('PIN must be 4–6 digits'); return }
+    if (!/^\d{6}$/.test(resetPinValue)) { toast.error('PIN must be 6 digits'); return }
     setResettingPin(true)
     try {
       await invokeEdgeFunction('reset-station-pin', { stationId: resetPinId, pin: resetPinValue })
@@ -825,7 +825,7 @@ export default function Settings() {
                   </div>
                 </div>
                 <div>
-                  <label className="label">PIN (4–6 digits)</label>
+                  <label className="label">PIN (6 digits)</label>
                   <input
                     type="password"
                     inputMode="numeric"
@@ -922,7 +922,7 @@ export default function Settings() {
                               <input
                                 type="password"
                                 inputMode="numeric"
-                                placeholder="New 4–6 digit PIN"
+                                placeholder="New 6-digit PIN"
                                 value={resetPinValue}
                                 maxLength={6}
                                 onChange={(e) => setResetPinValue(e.target.value.replace(/\D/g, '').slice(0, 6))}

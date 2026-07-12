@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
 
   const { stationId, pin } = body
   if (!stationId || !pin) return jsonResponse(req, { error: 'stationId and pin are required' }, 400)
-  if (!/^\d{4,6}$/.test(pin)) return jsonResponse(req, { error: 'PIN must be 4–6 digits' }, 400)
+  if (!/^\d{6}$/.test(pin)) return jsonResponse(req, { error: 'PIN must be 6 digits' }, 400)
 
   const { data: stationRow } = await adminClient
     .from('restaurant_stations')

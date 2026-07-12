@@ -35,6 +35,17 @@ function fmtTime(iso) {
 
 // ─── Print ────────────────────────────────────────────────────────────────────
 
+// Escape any free-text (restaurant name, expense descriptions) before it
+// enters the print HTML.
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 function printReport({
   restaurantName, closedAt, collections, expenses, ownerCollections, netMap,
   totalCollected, totalExpenses, totalCollectedByOwner, carryoverFromPrevDays, currency,
@@ -58,13 +69,13 @@ tr{border-bottom:1px dashed #e5e7eb}
 .note{font-size:10px;color:#888;padding:3px 0}
 .foot{margin-top:12px;text-align:center;font-size:10px;color:#888}</style>
 </head><body>
-<h1>${restaurantName}</h1>
+<h1>${escapeHtml(restaurantName)}</h1>
 <p class="sub">Day End Report &mdash; ${fmtTime(closedAt)}</p>
 <p class="sec">Collections</p>
 <table>${collections.map(c=>row(`${getMeta(c.payment_method).label} (${c.count} bills)`,fmt(c.total))).join('')}${row('Total Collected',fmt(totalCollected),true)}</table>
 <p class="sec">Business Expenses</p>
-${expenses.length===0?'<p style="color:#888;font-size:11px;padding:4px 0">No expenses recorded.</p>':`<table>${expenses.map(e=>row(`${e.description} (${getMeta(e.payment_method).label})`,`- ${fmt(e.amount)}`)).join('')}${row('Total Expenses',`- ${fmt(totalExpenses)}`,true)}</table>`}
-${ownerCollections.length>0?`<p class="sec">Collected by Owner</p><table>${ownerCollections.map(e=>row(`${e.description} (${getMeta(e.payment_method).label})`,`- ${fmt(e.amount)}`)).join('')}${row('Total Collected by Owner',`- ${fmt(totalCollectedByOwner)}`,true)}</table>`:''}
+${expenses.length===0?'<p style="color:#888;font-size:11px;padding:4px 0">No expenses recorded.</p>':`<table>${expenses.map(e=>row(`${escapeHtml(e.description)} (${getMeta(e.payment_method).label})`,`- ${fmt(e.amount)}`)).join('')}${row('Total Expenses',`- ${fmt(totalExpenses)}`,true)}</table>`}
+${ownerCollections.length>0?`<p class="sec">Collected by Owner</p><table>${ownerCollections.map(e=>row(`${escapeHtml(e.description)} (${getMeta(e.payment_method).label})`,`- ${fmt(e.amount)}`)).join('')}${row('Total Collected by Owner',`- ${fmt(totalCollectedByOwner)}`,true)}</table>`:''}
 <p class="sec">In the Drawer (Cash)</p>
 <table>${cashEntries.length===0?'<tr><td class="note">No cash on hand.</td></tr>':cashEntries.map(([m,v])=>row(getMeta(m).label,fmt(v),true)).join('')}</table>
 <p class="sec">In the Bank (UPI / Card)</p>
