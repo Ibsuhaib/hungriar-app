@@ -5,6 +5,7 @@ import { useSubscriptionStatus } from '../hooks/useSubscriptionStatus'
 import Layout from './Layout'
 import { AGREEMENT_VERSION } from './AgreementModal'
 import PinLockScreen from './PinLockScreen'
+import OnlineOrderAlert from './OnlineOrderAlert'
 
 const NAV_ITEMS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -133,6 +134,11 @@ export default function ProtectedRoute() {
       <Layout title={title} navItems={NAV_ITEMS} signOutPath="/admin/login">
         <Outlet />
       </Layout>
+      {/* Incoming delivery/takeaway orders — unread-message popup, follows every admin page */}
+      <OnlineOrderAlert
+        restaurantId={restaurantAdmin.restaurant_id}
+        currency={restaurant?.currency || '₹'}
+      />
     </PinLockScreen>
   )
 }

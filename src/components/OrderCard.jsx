@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Clock, ChefHat, Utensils, CheckCircle2, CheckCheck, XCircle, X, Printer, Plus, Minus, Trash2, Bike, ShoppingBag, Phone, MapPin } from 'lucide-react'
+import { Clock, ChefHat, Utensils, CheckCircle2, CheckCheck, XCircle, X, Printer, Plus, Minus, Trash2, Bike, ShoppingBag, Phone, MapPin, Loader2 } from 'lucide-react'
 import {
   ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
@@ -88,16 +88,17 @@ export default function OrderCard({ order, onStatusChange, onQuantityChange, onC
           </p>
           <p className="text-xs text-white/70 mt-0.5">{formatTime(order.order_time)}</p>
         </div>
-        <span className={`badge ${ORDER_STATUS_COLORS[order.status] || 'bg-white/20 text-white'} text-[10px]`}>
+        <span className={`badge ${ORDER_STATUS_COLORS[order.status] || 'bg-white/20 text-white'} text-xs`}>
           {ORDER_STATUS_LABELS[order.status] || order.status}
         </span>
         <button
           type="button"
           onClick={() => printKOT(order, restaurantName)}
-          title="Print KOT"
-          className="w-7 h-7 rounded-lg bg-white/20 hover:bg-white/35 flex items-center justify-center flex-shrink-0 transition-colors"
+          data-tip="Print KOT"
+          aria-label="Print KOT"
+          className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/35 flex items-center justify-center flex-shrink-0 transition-colors"
         >
-          <Printer className="w-3.5 h-3.5 text-white" />
+          <Printer className="w-5 h-5 text-white" />
         </button>
       </div>
 
@@ -138,18 +139,26 @@ export default function OrderCard({ order, onStatusChange, onQuantityChange, onC
                               ? onCancelItem?.(order.id, item.id, item.item_name)
                               : onQuantityChange(order, item, item.quantity - 1)}
                             disabled={busyItemId === item.id}
-                            className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                            data-tip={item.quantity === 1 ? 'Remove item' : 'Reduce quantity'}
+                            aria-label={item.quantity === 1 ? `Remove ${item.item_name}` : `Reduce ${item.item_name} quantity`}
+                            className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 transition-colors"
                           >
-                            {item.quantity === 1 ? <Trash2 className="w-3 h-3 text-red-400" /> : <Minus className="w-3 h-3" />}
+                            {item.quantity === 1 ? <Trash2 className="w-4 h-4 text-red-500" /> : <Minus className="w-4 h-4" />}
                           </button>
-                          <span className="w-5 text-center font-bold text-gray-800 text-xs">{item.quantity}</span>
+                          <span className="w-6 text-center font-bold text-gray-800 text-sm">
+                            {busyItemId === item.id
+                              ? <Loader2 className="w-4 h-4 mx-auto animate-spin text-primary-500" />
+                              : item.quantity}
+                          </span>
                           <button
                             type="button"
                             onClick={() => onQuantityChange(order, item, item.quantity + 1)}
                             disabled={busyItemId === item.id}
-                            className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                            data-tip="Add one more"
+                            aria-label={`Increase ${item.item_name} quantity`}
+                            className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 transition-colors"
                           >
-                            <Plus className="w-3 h-3" />
+                            <Plus className="w-4 h-4" />
                           </button>
                         </div>
                       ) : (
@@ -157,14 +166,15 @@ export default function OrderCard({ order, onStatusChange, onQuantityChange, onC
                           <button
                             type="button"
                             onClick={() => onCancelItem(order.id, item.id, item.item_name)}
-                            className="text-gray-300 hover:text-red-400 transition-colors p-0.5 rounded"
+                            data-tip="Remove item"
+                            className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                             aria-label={`Cancel ${item.item_name}`}
                           >
-                            <X className="w-3.5 h-3.5" />
+                            <X className="w-4 h-4" />
                           </button>
                         )
                       )}
-                      <span className="font-semibold text-gray-900 text-xs">
+                      <span className="font-semibold text-gray-900 text-sm">
                         {formatCurrency(item.quantity * item.unit_price, currency)}
                       </span>
                     </div>
@@ -178,7 +188,7 @@ export default function OrderCard({ order, onStatusChange, onQuantityChange, onC
               ))}
               {/* Small note if any items were cancelled from this order */}
               {items.some((i) => i.cancelled) && (
-                <li className="text-[11px] text-red-400 pt-1 border-t border-dashed border-gray-100">
+                <li className="text-xs text-red-500 pt-1 border-t border-dashed border-gray-100">
                   {items.filter((i) => i.cancelled).map((i) => i.item_name).join(', ')} — removed
                 </li>
               )}
@@ -261,8 +271,9 @@ export default function OrderCard({ order, onStatusChange, onQuantityChange, onC
                 <button
                   type="button"
                   onClick={() => onCancelOrder(order.id)}
-                  className="mt-2 w-full text-xs text-red-400 hover:text-red-600 py-1.5 text-center transition-colors"
+                  className="mt-2 w-full min-h-[40px] flex items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50/60 text-xs font-semibold text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors"
                 >
+                  <XCircle className="w-3.5 h-3.5" />
                   Cancel entire order
                 </button>
               )}

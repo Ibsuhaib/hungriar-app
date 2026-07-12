@@ -898,21 +898,23 @@ export default function Billing() {
                                       : handleItemQtyChange(order, item, item.quantity - 1)}
                                     disabled={busyItemId === item.id}
                                     aria-label={item.quantity === 1 ? `Remove ${item.item_name}` : `Decrease ${item.item_name} quantity`}
-                                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 text-gray-500 active:bg-gray-100 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                                    data-tip={item.quantity === 1 ? 'Remove item' : 'Reduce quantity'}
+                                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 text-gray-500 active:bg-gray-100 hover:bg-gray-50 disabled:opacity-40 transition-colors"
                                   >
                                     {item.quantity === 1
-                                      ? <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                                      : <Minus className="w-3.5 h-3.5" />}
+                                      ? <Trash2 className="w-4 h-4 text-red-500" />
+                                      : <Minus className="w-4 h-4" />}
                                   </button>
-                                  <span className="w-5 text-center text-sm font-bold text-gray-700">{item.quantity}</span>
+                                  <span className="w-6 text-center text-sm font-bold text-gray-700">{item.quantity}</span>
                                   <button
                                     type="button"
                                     onClick={() => handleItemQtyChange(order, item, item.quantity + 1)}
                                     disabled={busyItemId === item.id}
                                     aria-label={`Increase ${item.item_name} quantity`}
-                                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 text-gray-500 active:bg-gray-100 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                                    data-tip="Add one more"
+                                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 text-gray-500 active:bg-gray-100 hover:bg-gray-50 disabled:opacity-40 transition-colors"
                                   >
-                                    <Plus className="w-3.5 h-3.5" />
+                                    <Plus className="w-4 h-4" />
                                   </button>
                                 </div>
                               )}

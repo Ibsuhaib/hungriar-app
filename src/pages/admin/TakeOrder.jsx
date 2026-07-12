@@ -59,14 +59,14 @@ function ItemCard({ item, qty, onAdd, onRemove, currency }) {
           </button>
         ) : (
           <div className="flex items-center justify-between bg-primary-600 rounded-xl px-1 py-0.5">
-            <button type="button" onClick={() => onRemove(item.id)}
-              className="w-7 h-7 flex items-center justify-center text-white hover:bg-white/20 rounded-lg transition-colors">
-              <Minus className="w-3.5 h-3.5" />
+            <button type="button" onClick={() => onRemove(item.id)} aria-label={`Remove one ${item.name}`}
+              className="w-9 h-9 flex items-center justify-center text-white hover:bg-white/20 rounded-lg transition-colors">
+              <Minus className="w-4 h-4" />
             </button>
             <span className="text-white text-sm font-bold tabular-nums">{qty}</span>
-            <button type="button" onClick={() => onAdd(item)}
-              className="w-7 h-7 flex items-center justify-center text-white hover:bg-white/20 rounded-lg transition-colors">
-              <Plus className="w-3.5 h-3.5" />
+            <button type="button" onClick={() => onAdd(item)} aria-label={`Add one ${item.name}`}
+              className="w-9 h-9 flex items-center justify-center text-white hover:bg-white/20 rounded-lg transition-colors">
+              <Plus className="w-4 h-4" />
             </button>
           </div>
         )}
@@ -303,8 +303,8 @@ function CartSheet({ entries, subtotal, taxPercentage, currency, onRemove, onAdd
               {selectedTable}
             </span>
           )}
-          <button type="button" onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100">
-            <X className="w-4 h-4 text-gray-500" />
+          <button type="button" onClick={onClose} aria-label="Close order summary" className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100">
+            <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
@@ -318,14 +318,14 @@ function CartSheet({ entries, subtotal, taxPercentage, currency, onRemove, onAdd
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <div className="flex items-center gap-1 bg-gray-100 rounded-xl px-1 py-0.5">
-                    <button type="button" onClick={() => onRemove(item.id)}
-                      className="w-6 h-6 flex items-center justify-center text-gray-600 hover:text-red-500 rounded-lg">
-                      <Minus className="w-3 h-3" />
+                    <button type="button" onClick={() => onRemove(item.id)} aria-label={`Remove one ${item.name}`}
+                      className="w-9 h-9 flex items-center justify-center text-gray-600 hover:text-red-500 rounded-lg">
+                      <Minus className="w-4 h-4" />
                     </button>
                     <span className="text-sm font-bold text-gray-900 w-5 text-center tabular-nums">{quantity}</span>
-                    <button type="button" onClick={() => onAdd(item)}
-                      className="w-6 h-6 flex items-center justify-center text-gray-600 hover:text-primary-600 rounded-lg">
-                      <Plus className="w-3 h-3" />
+                    <button type="button" onClick={() => onAdd(item)} aria-label={`Add one ${item.name}`}
+                      className="w-9 h-9 flex items-center justify-center text-gray-600 hover:text-primary-600 rounded-lg">
+                      <Plus className="w-4 h-4" />
                     </button>
                   </div>
                   <span className="text-sm font-bold text-gray-900 w-16 text-right">

@@ -59,11 +59,11 @@ export default function Layout({ title, navItems, signOutPath = '/admin/login', 
                 </div>
                 <button
                   type="button"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-white/30 hover:bg-white/10 hover:text-white/70 transition-colors lg:hidden"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl text-white/40 hover:bg-white/10 hover:text-white/80 transition-colors lg:hidden"
                   onClick={() => setSidebarOpen(false)}
                   aria-label="Close menu"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
@@ -78,17 +78,17 @@ export default function Layout({ title, navItems, signOutPath = '/admin/login', 
                       end={item.end}
                       onClick={() => setSidebarOpen(false)}
                       className={({ isActive }) =>
-                        `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
+                        `group flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
                           isActive
                             ? 'bg-primary-500/15 text-primary-400 border border-primary-500/20'
-                            : 'text-white/50 hover:bg-white/5 hover:text-white/80 border border-transparent'
+                            : 'text-white/70 hover:bg-white/5 hover:text-white/90 border border-transparent'
                         }`
                       }
                     >
                       {({ isActive }) => (
                         <>
                           {Icon && (
-                            <span className={`flex-shrink-0 transition-colors ${isActive ? 'text-primary-400' : 'text-white/30 group-hover:text-white/60'}`}>
+                            <span className={`flex-shrink-0 transition-colors ${isActive ? 'text-primary-400' : 'text-white/50 group-hover:text-white/80'}`}>
                               <Icon className="w-4 h-4" />
                             </span>
                           )}
@@ -107,9 +107,9 @@ export default function Layout({ title, navItems, signOutPath = '/admin/login', 
                     target="_blank"
                     rel="noreferrer"
                     onClick={() => setSidebarOpen(false)}
-                    className="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/50 hover:bg-white/5 hover:text-white/80 border border-transparent transition-all duration-150"
+                    className="group flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white/90 border border-transparent transition-all duration-150"
                   >
-                    <span className="flex-shrink-0 text-white/30 group-hover:text-white/60 transition-colors">
+                    <span className="flex-shrink-0 text-white/50 group-hover:text-white/80 transition-colors">
                       <ExternalLink className="w-4 h-4" />
                     </span>
                     <span className="flex-1 leading-none">Online Store</span>
@@ -123,14 +123,14 @@ export default function Layout({ title, navItems, signOutPath = '/admin/login', 
                   <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary-500/20 border border-primary-500/30 flex items-center justify-center">
                     <span className="text-primary-400 text-[10px] font-bold">{initials}</span>
                   </div>
-                  <p className="text-xs text-white/30 truncate flex-1 min-w-0" title={user?.email}>
+                  <p className="text-xs text-white/60 truncate flex-1 min-w-0" title={user?.email}>
                     {user?.email}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-white/30 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                  className="flex w-full min-h-[44px] items-center gap-2.5 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20 hover:text-red-200 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                   Sign Out
@@ -146,9 +146,9 @@ export default function Layout({ title, navItems, signOutPath = '/admin/login', 
             type="button"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open menu"
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 transition-colors"
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-600 hover:bg-gray-100 transition-colors"
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="w-6 h-6" />
           </button>
           <div className="flex items-center gap-2">
             <img src="/logo.svg" alt="hungriAR" className="w-6 h-6 rounded-lg" />

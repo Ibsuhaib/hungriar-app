@@ -118,19 +118,19 @@ export default function CartDrawer({ isOpen, onClose }) {
                             <button
                               type="button"
                               onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                              className="flex h-6 w-6 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-50 transition-colors"
+                              className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-50 transition-colors"
                               aria-label={`Decrease ${item.name} quantity`}
                             >
-                              {item.quantity === 1 ? <Trash2 className="w-3 h-3 text-red-400" /> : <Minus className="w-3 h-3" />}
+                              {item.quantity === 1 ? <Trash2 className="w-4 h-4 text-red-500" /> : <Minus className="w-4 h-4" />}
                             </button>
                             <span className="w-5 text-center text-sm font-bold text-gray-900">{item.quantity}</span>
                             <button
                               type="button"
                               onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                              className="flex h-6 w-6 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-50 transition-colors"
+                              className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-50 transition-colors"
                               aria-label={`Increase ${item.name} quantity`}
                             >
-                              <Plus className="w-3 h-3" />
+                              <Plus className="w-4 h-4" />
                             </button>
                           </div>
                         </div>

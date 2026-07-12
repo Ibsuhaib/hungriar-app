@@ -22,10 +22,9 @@ body {
   will-change: auto;
 }
 
-/* Instant button active feedback */
-button:active, [role="button"]:active {
-  transform: scale(0.97);
-}
+/* Instant active feedback — only on real action buttons (.btn), not every
+   clickable element. A global button:active scale made nav links, icon
+   buttons and steppers all shrink on tap, which felt mushy. */
 
 ::-webkit-scrollbar {
   width: 5px;
@@ -50,10 +49,90 @@ button:active, [role="button"]:active {
   @apply outline-none ring-2 ring-primary-400 ring-offset-2;
 }
 
+/* On dark surfaces (navy sidebar) the default white ring-offset makes the
+   focus ring invisible — offset against the navy instead. */
+aside :focus-visible,
+.bg-navy-800 :focus-visible,
+.bg-navy-900 :focus-visible {
+  @apply ring-offset-navy-800;
+}
+
+/* ── Themed tooltip ─────────────────────────────────────────────────────
+   Usage: <button data-tip="Print KOT">…</button>
+   Pure CSS, hover-capable devices only (touch taps won't leave a stuck
+   tooltip behind). Navy bubble + gold border to match the brand. */
+@media (hover: hover) {
+  [data-tip] {
+    position: relative;
+  }
+  [data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(2px);
+    background: #0f172a; /* navy-800 */
+    color: #fff;
+    border: 1px solid rgba(212, 163, 115, 0.45); /* primary-500 */
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    padding: 6px 8px;
+    border-radius: 8px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease-out, transform 0.12s ease-out;
+    z-index: 60;
+  }
+  [data-tip]::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 3px);
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 8px;
+    height: 8px;
+    background: #0f172a;
+    border-right: 1px solid rgba(212, 163, 115, 0.45);
+    border-bottom: 1px solid rgba(212, 163, 115, 0.45);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease-out;
+    z-index: 60;
+  }
+  [data-tip]:hover::after,
+  [data-tip]:focus-visible::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  [data-tip]:hover::before,
+  [data-tip]:focus-visible::before {
+    opacity: 1;
+  }
+  /* Tooltips that would clip off the top of the screen can flip down */
+  [data-tip][data-tip-pos='bottom']::after {
+    bottom: auto;
+    top: calc(100% + 8px);
+    transform: translateX(-50%) translateY(-2px);
+  }
+  [data-tip][data-tip-pos='bottom']::before {
+    bottom: auto;
+    top: calc(100% + 3px);
+    transform: translateX(-50%) rotate(225deg);
+  }
+  [data-tip][data-tip-pos='bottom']:hover::after,
+  [data-tip][data-tip-pos='bottom']:focus-visible::after {
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 @layer components {
-  /* Buttons */
+  /* Buttons — min-h keeps every action button a comfortable touch target
+     (≈44px, Apple/Google guidance) no matter what padding a page overrides. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
            transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed
            focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
            active:scale-[0.97];
@@ -83,7 +162,7 @@ button:active, [role="button"]:active {
            focus-visible:ring-red-400;
   }
   .btn-sm {
-    @apply px-3 py-1.5 text-xs rounded-lg;
+    @apply min-h-[36px] px-3 py-1.5 text-xs rounded-lg;
   }
 
   /* Inputs */

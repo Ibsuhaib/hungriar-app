@@ -550,8 +550,9 @@ export default function DayEnd() {
                       − {formatCurrency(ex.amount, currency)}
                     </p>
                     <button type="button" onClick={() => handleDelete(ex.id)}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">
-                      <Trash2 className="w-3.5 h-3.5" />
+                      data-tip="Delete entry" aria-label={`Delete ${ex.description}`}
+                      className="w-10 h-10 flex items-center justify-center rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </motion.div>
                 )

@@ -309,8 +309,8 @@ function CartSheet({ entries, subtotal, currency, onAdd, onRemove, onClose, onPl
       >
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-gray-900">Order for Table {tableNumber}</h3>
-          <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100">
-            <X className="w-4 h-4 text-gray-400" />
+          <button type="button" onClick={onClose} aria-label="Close" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100">
+            <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
@@ -371,8 +371,8 @@ function OrderSummaryPanel({
       >
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-gray-900">Table {table?.table_number}</h3>
-          <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100">
-            <X className="w-4 h-4 text-gray-400" />
+          <button type="button" onClick={onClose} aria-label="Close" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100">
+            <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
@@ -598,8 +598,8 @@ function BillPanel({
         <div className="p-5 pb-8">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-gray-900">Bill — Table {table?.table_number}</h3>
-            <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100">
-              <X className="w-4 h-4 text-gray-400" />
+            <button type="button" onClick={onClose} aria-label="Close bill" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100">
+              <X className="w-5 h-5 text-gray-500" />
             </button>
           </div>
 
@@ -616,18 +616,22 @@ function BillPanel({
                           ? handleDeleteItem(order, it)
                           : handleItemQtyChange(order, it, it.quantity - 1)}
                         disabled={busyItemId === it.id}
-                        className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+                        data-tip={it.quantity === 1 ? 'Remove item' : 'Reduce quantity'}
+                        aria-label={it.quantity === 1 ? `Remove ${it.item_name}` : `Decrease ${it.item_name} quantity`}
+                        className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40"
                       >
-                        {it.quantity === 1 ? <Trash2 className="w-3 h-3 text-red-400" /> : <Minus className="w-3 h-3" />}
+                        {it.quantity === 1 ? <Trash2 className="w-4 h-4 text-red-500" /> : <Minus className="w-4 h-4" />}
                       </button>
-                      <span className="w-5 text-center font-bold text-gray-800 text-xs">{it.quantity}</span>
+                      <span className="w-6 text-center font-bold text-gray-800 text-sm">{it.quantity}</span>
                       <button
                         type="button"
                         onClick={() => handleItemQtyChange(order, it, it.quantity + 1)}
                         disabled={busyItemId === it.id}
-                        className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+                        data-tip="Add one more"
+                        aria-label={`Increase ${it.item_name} quantity`}
+                        className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40"
                       >
-                        <Plus className="w-3 h-3" />
+                        <Plus className="w-4 h-4" />
                       </button>
                     </div>
                   ) : (

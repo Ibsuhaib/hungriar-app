@@ -185,9 +185,9 @@ export default function Cart() {
                             onClick={() => updateQuantity(item.id, item.quantity - 1)}
                             whileTap={{ scale: 0.82 }}
                             aria-label={`Decrease ${item.name} quantity`}
-                            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-600 hover:bg-white transition-colors"
+                            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-white transition-colors"
                           >
-                            <Minus className="w-3 h-3" />
+                            <Minus className="w-4 h-4" />
                           </motion.button>
                           <span className="w-5 text-center text-sm font-bold text-gray-900">
                             {item.quantity}
@@ -197,9 +197,9 @@ export default function Cart() {
                             onClick={() => updateQuantity(item.id, item.quantity + 1)}
                             whileTap={{ scale: 0.82 }}
                             aria-label={`Increase ${item.name} quantity`}
-                            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-600 hover:bg-white transition-colors"
+                            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-white transition-colors"
                           >
-                            <Plus className="w-3 h-3" />
+                            <Plus className="w-4 h-4" />
                           </motion.button>
                         </div>
 

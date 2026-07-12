@@ -21,7 +21,7 @@ function AmbientBg() {
       <div style={{
         position: 'absolute', top: '-15%', left: '50%', transform: 'translateX(-50%)',
         width: '600px', height: '600px', borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(211,85,47,0.15) 0%, transparent 60%)',
+        background: 'radial-gradient(circle, rgba(212,163,115,0.15) 0%, transparent 60%)',
       }} />
       <div style={{
         position: 'absolute', top: '55%', right: '-18%',
@@ -31,7 +31,7 @@ function AmbientBg() {
       <div style={{
         position: 'absolute', bottom: '10%', left: '-10%',
         width: '320px', height: '320px', borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(211,85,47,0.08) 0%, transparent 60%)',
+        background: 'radial-gradient(circle, rgba(212,163,115,0.08) 0%, transparent 60%)',
       }} />
     </div>
   )
@@ -44,7 +44,7 @@ function MenuSkeleton() {
       <div style={{ height: '60px', background: 'rgba(7,7,15,0.9)', borderBottom: '1px solid rgba(255,255,255,0.07)' }} />
       <div style={{
         height: '220px',
-        background: 'linear-gradient(180deg, rgba(211,85,47,0.1) 0%, rgba(7,7,15,0) 100%)',
+        background: 'linear-gradient(180deg, rgba(212,163,115,0.1) 0%, rgba(7,7,15,0) 100%)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px',
       }}>
         <div className="animate-pulse" style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(255,255,255,0.07)' }} />
@@ -80,17 +80,17 @@ function CategoryPill({ label, active, onClick }) {
         gap: '6px',
         padding: '7px 18px',
         borderRadius: 100,
-        border: active ? '1px solid rgba(211,85,47,0.5)' : '1px solid rgba(255,255,255,0.09)',
+        border: active ? '1px solid rgba(212,163,115,0.5)' : '1px solid rgba(255,255,255,0.09)',
         background: active
-          ? 'linear-gradient(135deg, rgba(211,85,47,0.22), rgba(211,85,47,0.12))'
+          ? 'linear-gradient(135deg, rgba(212,163,115,0.22), rgba(212,163,115,0.12))'
           : 'rgba(255,255,255,0.04)',
-        color: active ? '#ff8060' : 'rgba(255,255,255,0.45)',
+        color: active ? '#e9cda3' : 'rgba(255,255,255,0.45)',
         fontSize: '0.8rem',
         fontWeight: 700,
         cursor: 'pointer',
         whiteSpace: 'nowrap',
         letterSpacing: '0.2px',
-        boxShadow: active ? '0 0 18px rgba(211,85,47,0.12)' : 'none',
+        boxShadow: active ? '0 0 18px rgba(212,163,115,0.12)' : 'none',
         transition: 'box-shadow 0.2s',
       }}
     >
@@ -126,7 +126,7 @@ function HeroBanner({ restaurant, table }) {
       {/* Radial accent glow */}
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
-        background: 'radial-gradient(ellipse 80% 55% at 50% -5%, rgba(211,85,47,0.22) 0%, transparent 70%)',
+        background: 'radial-gradient(ellipse 80% 55% at 50% -5%, rgba(212,163,115,0.22) 0%, transparent 70%)',
       }} />
       {/* Bottom fade */}
       <div style={{
@@ -150,17 +150,17 @@ function HeroBanner({ restaurant, table }) {
               style={{
                 width: 76, height: 76, borderRadius: '50%',
                 objectFit: 'cover', margin: '0 auto',
-                boxShadow: '0 0 0 2px rgba(211,85,47,0.45), 0 0 0 6px rgba(211,85,47,0.1), 0 12px 40px rgba(211,85,47,0.3)',
+                boxShadow: '0 0 0 2px rgba(212,163,115,0.45), 0 0 0 6px rgba(212,163,115,0.1), 0 12px 40px rgba(212,163,115,0.3)',
               }}
             />
           ) : (
             <div style={{
               width: 76, height: 76, borderRadius: '50%',
-              background: 'linear-gradient(135deg, #d3552f 0%, #ff7a4d 100%)',
+              background: 'linear-gradient(135deg, #d4a373 0%, #e6c69a 100%)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               margin: '0 auto',
               fontSize: '28px', fontWeight: 900, color: 'white',
-              boxShadow: '0 0 0 2px rgba(211,85,47,0.45), 0 0 0 6px rgba(211,85,47,0.1), 0 12px 40px rgba(211,85,47,0.35)',
+              boxShadow: '0 0 0 2px rgba(212,163,115,0.45), 0 0 0 6px rgba(212,163,115,0.1), 0 12px 40px rgba(212,163,115,0.35)',
             }}>
               {restaurant?.name?.charAt(0)?.toUpperCase() ?? '🍽'}
             </div>
@@ -217,7 +217,7 @@ function HeroBanner({ restaurant, table }) {
               color: 'rgba(255,255,255,0.55)',
               letterSpacing: '0.5px',
             }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ff8060', display: 'inline-block' }} />
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#e9cda3', display: 'inline-block' }} />
               Table {table.number}
             </span>
           </motion.div>
@@ -235,8 +235,8 @@ function FeaturedStrip({ items, currency, onNavigate }) {
   return (
     <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '4px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '18px 16px 10px' }}>
-        <div style={{ width: 16, height: 2, borderRadius: 1, background: '#d3552f' }} />
-        <p style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '2.5px', color: '#d3552f' }}>
+        <div style={{ width: 16, height: 2, borderRadius: 1, background: '#d4a373' }} />
+        <p style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '2.5px', color: '#d4a373' }}>
           Featured
         </p>
       </div>
@@ -268,7 +268,7 @@ function FeaturedStrip({ items, currency, onNavigate }) {
                 <span style={{
                   position: 'absolute', top: 6, right: 6,
                   fontSize: '7px', fontWeight: 900, letterSpacing: '0.5px',
-                  background: 'rgba(211,85,47,0.9)', color: 'white',
+                  background: 'rgba(212,163,115,0.9)', color: 'white',
                   padding: '2px 7px', borderRadius: 100,
                 }}>AR</span>
               )}
@@ -284,7 +284,7 @@ function FeaturedStrip({ items, currency, onNavigate }) {
               </p>
               <p style={{
                 fontSize: '0.7rem', fontWeight: 800,
-                background: 'linear-gradient(135deg, #ff8060, #d3552f)',
+                background: 'linear-gradient(135deg, #e9cda3, #d4a373)',
                 WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
               }}>
@@ -315,8 +315,8 @@ function MenuItemCard({ item, currency, onAdd, onNavigate, onAR }) {
         borderRadius: '20px',
         overflow: 'hidden',
         background: hovered ? 'rgba(255,255,255,0.055)' : 'rgba(255,255,255,0.038)',
-        border: hovered ? '1px solid rgba(211,85,47,0.28)' : '1px solid rgba(255,255,255,0.07)',
-        boxShadow: hovered ? '0 8px 40px rgba(211,85,47,0.1)' : '0 2px 12px rgba(0,0,0,0.25)',
+        border: hovered ? '1px solid rgba(212,163,115,0.28)' : '1px solid rgba(255,255,255,0.07)',
+        boxShadow: hovered ? '0 8px 40px rgba(212,163,115,0.1)' : '0 2px 12px rgba(0,0,0,0.25)',
         transition: 'background 0.2s, border-color 0.2s, box-shadow 0.25s',
         position: 'relative',
       }}
@@ -324,7 +324,7 @@ function MenuItemCard({ item, currency, onAdd, onNavigate, onAR }) {
       {/* Top shimmer accent on hover */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, height: '1px',
-        background: 'linear-gradient(90deg, transparent 0%, rgba(211,85,47,0.7) 50%, transparent 100%)',
+        background: 'linear-gradient(90deg, transparent 0%, rgba(212,163,115,0.7) 50%, transparent 100%)',
         opacity: hovered ? 1 : 0, transition: 'opacity 0.25s',
         pointerEvents: 'none',
       }} />
@@ -360,9 +360,9 @@ function MenuItemCard({ item, currency, onAdd, onNavigate, onAR }) {
               <span style={{
                 position: 'absolute', bottom: -4, right: -4,
                 fontSize: '7px', fontWeight: 900, letterSpacing: '0.4px',
-                background: 'linear-gradient(135deg, #d3552f, #ff6b3d)',
+                background: 'linear-gradient(135deg, #d4a373, #e6c69a)',
                 color: 'white', padding: '2px 7px', borderRadius: 100,
-                boxShadow: '0 2px 10px rgba(211,85,47,0.5)',
+                boxShadow: '0 2px 10px rgba(212,163,115,0.5)',
               }}>AR</span>
             )}
           </div>
@@ -387,7 +387,7 @@ function MenuItemCard({ item, currency, onAdd, onNavigate, onAR }) {
             )}
             <p style={{
               fontSize: '0.95rem', fontWeight: 900,
-              background: 'linear-gradient(135deg, #ff8060 0%, #d3552f 100%)',
+              background: 'linear-gradient(135deg, #e9cda3 0%, #d4a373 100%)',
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
             }}>
@@ -408,9 +408,9 @@ function MenuItemCard({ item, currency, onAdd, onNavigate, onAR }) {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               padding: '6px 13px', borderRadius: 100,
-              border: '1px solid rgba(211,85,47,0.3)',
-              background: 'rgba(211,85,47,0.08)',
-              color: '#ff8060', fontSize: '0.72rem', fontWeight: 700,
+              border: '1px solid rgba(212,163,115,0.3)',
+              background: 'rgba(212,163,115,0.08)',
+              color: '#e9cda3', fontSize: '0.72rem', fontWeight: 700,
               cursor: 'pointer', letterSpacing: '0.2px',
             }}
           >
@@ -420,15 +420,15 @@ function MenuItemCard({ item, currency, onAdd, onNavigate, onAR }) {
         <motion.button
           type="button"
           onClick={(e) => { e.stopPropagation(); onAdd() }}
-          whileHover={{ scale: 1.07, boxShadow: '0 6px 24px rgba(211,85,47,0.45)' }}
+          whileHover={{ scale: 1.07, boxShadow: '0 6px 24px rgba(212,163,115,0.45)' }}
           whileTap={{ scale: 0.91 }}
           style={{
             padding: '7px 22px', borderRadius: 100,
-            background: 'linear-gradient(135deg, #d3552f 0%, #ff6b3d 100%)',
+            background: 'linear-gradient(135deg, #d4a373 0%, #e6c69a 100%)',
             border: 'none', color: 'white',
             fontSize: '0.8rem', fontWeight: 800,
             cursor: 'pointer',
-            boxShadow: '0 3px 14px rgba(211,85,47,0.38)',
+            boxShadow: '0 3px 14px rgba(212,163,115,0.38)',
             letterSpacing: '0.3px',
           }}
         >
@@ -495,7 +495,7 @@ export default function Menu() {
       }}>
         <div style={{
           position: 'absolute', inset: 0, pointerEvents: 'none',
-          background: 'radial-gradient(ellipse 65% 45% at 50% 0%, rgba(211,85,47,0.12), transparent)',
+          background: 'radial-gradient(ellipse 65% 45% at 50% 0%, rgba(212,163,115,0.12), transparent)',
         }} />
         <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} style={{ position: 'relative', zIndex: 1 }}>
           <div style={{
@@ -632,8 +632,8 @@ export default function Menu() {
                 aria-label="Track order"
                 style={{
                   width: 36, height: 36, borderRadius: '50%',
-                  background: 'rgba(211,85,47,0.1)', border: '1px solid rgba(211,85,47,0.25)',
-                  color: '#ff8060', cursor: 'pointer',
+                  background: 'rgba(212,163,115,0.1)', border: '1px solid rgba(212,163,115,0.25)',
+                  color: '#e9cda3', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >
@@ -649,12 +649,12 @@ export default function Menu() {
               aria-label="Open cart"
               style={{
                 width: 36, height: 36, borderRadius: '50%',
-                background: itemCount > 0 ? 'linear-gradient(135deg, #d3552f, #ff6b3d)' : 'rgba(211,85,47,0.1)',
-                border: '1px solid rgba(211,85,47,0.28)',
-                color: itemCount > 0 ? 'white' : '#ff8060',
+                background: itemCount > 0 ? 'linear-gradient(135deg, #d4a373, #e6c69a)' : 'rgba(212,163,115,0.1)',
+                border: '1px solid rgba(212,163,115,0.28)',
+                color: itemCount > 0 ? 'white' : '#e9cda3',
                 cursor: 'pointer', position: 'relative',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: itemCount > 0 ? '0 4px 18px rgba(211,85,47,0.4)' : 'none',
+                boxShadow: itemCount > 0 ? '0 4px 18px rgba(212,163,115,0.4)' : 'none',
                 transition: 'background 0.2s, box-shadow 0.2s',
               }}
             >
@@ -670,7 +670,7 @@ export default function Menu() {
                     style={{
                       position: 'absolute', top: -4, right: -4,
                       width: 16, height: 16, borderRadius: '50%',
-                      background: '#ffffff', color: '#d3552f',
+                      background: '#ffffff', color: '#d4a373',
                       fontSize: '9px', fontWeight: 900,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
@@ -731,8 +731,8 @@ export default function Menu() {
         <div style={{ padding: '20px 16px 8px' }}>
           {/* Section label */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-            <div style={{ width: 16, height: 2, borderRadius: 1, background: 'linear-gradient(90deg, #d3552f, transparent)' }} />
-            <p style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '2.5px', color: 'rgba(211,85,47,0.85)' }}>
+            <div style={{ width: 16, height: 2, borderRadius: 1, background: 'linear-gradient(90deg, #d4a373, transparent)' }} />
+            <p style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '2.5px', color: 'rgba(212,163,115,0.85)' }}>
               {searchQuery ? `Results for "${searchQuery}"` : sectionLabel}
             </p>
           </div>
@@ -826,15 +826,15 @@ export default function Menu() {
               <motion.button
                 type="button"
                 onClick={() => setCartOpen(true)}
-                whileHover={{ scale: 1.015, boxShadow: '0 16px 48px rgba(211,85,47,0.5)' }}
+                whileHover={{ scale: 1.015, boxShadow: '0 16px 48px rgba(212,163,115,0.5)' }}
                 whileTap={{ scale: 0.98 }}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  background: 'linear-gradient(135deg, #c04020 0%, #d3552f 50%, #e8673f 100%)',
+                  background: 'linear-gradient(135deg, #b8865a 0%, #d4a373 50%, #ddb586 100%)',
                   borderRadius: '18px',
                   padding: '14px 20px',
                   color: 'white', cursor: 'pointer', border: 'none',
-                  boxShadow: '0 8px 36px rgba(211,85,47,0.5)',
+                  boxShadow: '0 8px 36px rgba(212,163,115,0.5)',
                 }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
