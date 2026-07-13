@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Building2, CreditCard, Lock, Camera, Eye, EyeOff, Users, Plus, Trash2, RotateCcw, QrCode, Copy, ChevronDown, ChevronUp, Shield, Globe, ExternalLink } from 'lucide-react'
+import { Building2, CreditCard, Lock, Camera, Eye, EyeOff, Users, Plus, Trash2, RotateCcw, QrCode, Copy, ChevronDown, ChevronUp, Shield, Globe, ExternalLink, FileText, Download } from 'lucide-react'
 import QRCodeStyling from 'qr-code-styling'
 import { useAuth, MAX_PASSWORD_LENGTH } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
@@ -11,6 +11,7 @@ import SubscriptionBanner from '../../components/SubscriptionBanner'
 import LocationPickerModal from '../../components/LocationPickerModal'
 import { formatDate } from '../../utils/formatters'
 import { savePinHash, clearPin } from '../../components/PinLockScreen'
+import { openAgreementPdf } from '../../legal/agreementPdf'
 
 const TABS = [
   { id: 'profile',      label: 'Profile',      icon: Building2 },
@@ -88,6 +89,20 @@ export default function Settings() {
   const [lockPin,        setLockPin]        = useState('')
   const [savingLockPin,  setSavingLockPin]  = useState(false)
   const lockPinSet = user?.id ? !!localStorage.getItem(`hungriar_pin_${user.id}`) : false
+
+  // ── Signed agreement (latest record for this restaurant) ────────────────
+  const [signedAgreement, setSignedAgreement] = useState(null)
+  useEffect(() => {
+    if (!restaurant?.id) return
+    supabase
+      .from('signed_agreements')
+      .select('*')
+      .eq('restaurant_id', restaurant.id)
+      .order('signed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setSignedAgreement(data ?? null))
+  }, [restaurant?.id])
 
   const handleLogoChange = async (e) => {
     const file = e.target.files?.[0]
@@ -700,6 +715,42 @@ export default function Settings() {
               <a href="mailto:hungriar.app@gmail.com" className="text-primary-600 underline underline-offset-2">hungriar.app@gmail.com</a>{' '}
               to renew or change your plan.
             </p>
+
+            {/* Signed agreement */}
+            <div className="pt-4 border-t border-gray-100 space-y-3">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-gray-400" />
+                <h3 className="text-sm font-semibold text-gray-800">Your Agreement</h3>
+              </div>
+              {signedAgreement ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-gray-50 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">
+                      Signed by {signedAgreement.signer_name}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Version {signedAgreement.agreement_version} · {formatDate(signedAgreement.signed_at)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const ok = openAgreementPdf({ record: signedAgreement, restaurantName: restaurant?.name || 'Restaurant' })
+                      if (!ok) toast.error('Allow pop-ups to download your agreement')
+                    }}
+                    className="btn-outline flex items-center gap-2 text-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download PDF
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  No signed agreement on record yet. You'll be asked to sign the current agreement
+                  the next time it's updated.
+                </p>
+              )}
+            </div>
           </motion.section>
         )}
 

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, X, ChevronDown, ChevronUp, KeyRound, Trash2, Edit2, Store, Phone, CheckCircle, AlertCircle, Copy, Link, Crown, Globe } from 'lucide-react'
+import { Plus, X, ChevronDown, ChevronUp, KeyRound, Trash2, Edit2, Store, Phone, CheckCircle, AlertCircle, Copy, Link, Crown, Globe, FileText, Download } from 'lucide-react'
 import { useAuth, MAX_PASSWORD_LENGTH } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase, invokeEdgeFunction } from '../../lib/supabase'
 import { formatDate, SUBSCRIPTION_STATUS_LABELS, SUBSCRIPTION_STATUS_COLORS } from '../../utils/formatters'
+import { openAgreementPdf } from '../../legal/agreementPdf'
 
 const EMPTY_ADD_FORM = {
   name: '', slug: '', contactEmail: '', currency: '₹', taxPercentage: '5',
@@ -88,6 +89,7 @@ export default function Restaurants() {
 
   const [restaurants, setRestaurants] = useState([])
   const [admins, setAdmins] = useState({})
+  const [agreements, setAgreements] = useState({}) // restaurant_id → latest signed agreement
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [addForm, setAddForm] = useState({ ...EMPTY_ADD_FORM })
@@ -107,9 +109,10 @@ export default function Restaurants() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [restaurantsRes, adminsRes] = await Promise.all([
+    const [restaurantsRes, adminsRes, agreementsRes] = await Promise.all([
       supabase.from('restaurants').select('*').order('created_at', { ascending: false }),
       invokeEdgeFunction('admin-management', { action: 'list_admins' }).catch(() => ({ admins: [] })),
+      supabase.from('signed_agreements').select('*').order('signed_at', { ascending: false }),
     ])
     if (!restaurantsRes.error) setRestaurants(restaurantsRes.data || [])
     const adminMap = {}
@@ -117,6 +120,12 @@ export default function Restaurants() {
       if (!adminMap[a.restaurantId]) adminMap[a.restaurantId] = a
     }
     setAdmins(adminMap)
+    // Latest signed agreement per restaurant (rows are ordered newest-first)
+    const agreementMap = {}
+    for (const rec of agreementsRes?.data || []) {
+      if (!agreementMap[rec.restaurant_id]) agreementMap[rec.restaurant_id] = rec
+    }
+    setAgreements(agreementMap)
     setLoading(false)
   }, [])
 
@@ -516,6 +525,42 @@ export default function Restaurants() {
                                 <dd className="text-gray-700">{formatDate(restaurant.paid_until_at)}</dd>
                               </div>
                             </dl>
+
+                            {/* Signed agreement status */}
+                            {(() => {
+                              const agr = agreements[restaurant.id]
+                              return (
+                                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gray-50 px-4 py-3">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                    {agr ? (
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-medium text-gray-800 truncate">
+                                          Agreement v{agr.agreement_version} — signed by {agr.signer_name}
+                                        </p>
+                                        <p className="text-xs text-gray-400">{formatDate(agr.signed_at)}</p>
+                                      </div>
+                                    ) : (
+                                      <span className="flex items-center gap-1.5 text-sm text-amber-600 font-medium">
+                                        <AlertCircle className="w-3.5 h-3.5" /> No signed agreement yet
+                                      </span>
+                                    )}
+                                  </div>
+                                  {agr && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const ok = openAgreementPdf({ record: agr, restaurantName: restaurant.name })
+                                        if (!ok) toast.error('Allow pop-ups to open the agreement')
+                                      }}
+                                      className="btn btn-ghost btn-sm gap-1 text-xs text-primary-600 flex-shrink-0"
+                                    >
+                                      <Download className="w-3 h-3" /> PDF
+                                    </button>
+                                  )}
+                                </div>
+                              )
+                            })()}
 
                             {/* Admin Account section */}
                             <div className="rounded-xl bg-gray-50 px-4 py-3 space-y-3">
