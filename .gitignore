@@ -43,3 +43,6 @@ supabase/.env
 # misc
 *.local
 coverage/
+
+.vercel
+.env*
