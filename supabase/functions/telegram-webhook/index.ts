@@ -70,6 +70,24 @@ Deno.serve(async (req) => {
     return new Response('OK', { status: 200 })
   }
 
+  // Refuse to silently rebind a number that is already linked to a different
+  // chat. The upsert alone let anyone who knew a registered restaurant's phone
+  // number redirect that restaurant's login OTPs and daily sales reports to
+  // their own Telegram, and lock the real owner out of receiving them.
+  const { data: existing } = await supabase
+    .from('telegram_accounts')
+    .select('chat_id')
+    .eq('phone_number', phoneNumber)
+    .maybeSingle()
+
+  if (existing && existing.chat_id !== chatId) {
+    await sendMessage(
+      chatId,
+      '❌ This phone number is already linked to a different Telegram account.\n\nIf this is your number, contact HungriAR support to unlink it first.',
+    )
+    return new Response('OK', { status: 200 })
+  }
+
   const { error } = await supabase
     .from('telegram_accounts')
     .upsert(
