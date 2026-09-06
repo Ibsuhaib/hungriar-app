@@ -91,15 +91,25 @@ Deno.serve(async (req) => {
 
       const telegramLinkedSet = new Set((telegramRows ?? []).map((t) => t.phone_number))
 
+      // One paged listUsers() instead of a getUserById() per row. The previous
+      // loop made a sequential Auth API round-trip per admin, so listing 100
+      // restaurants meant 100 serial calls and would approach the function
+      // timeout well before that.
+      const usersById = new Map<string, { email: string; lastSignInAt: string | null }>()
+      for (let page = 1; page <= 20; page++) {
+        const { data: userPage } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 })
+        const users = userPage?.users ?? []
+        for (const u of users) {
+          usersById.set(u.id, { email: u.email ?? 'unknown', lastSignInAt: u.last_sign_in_at ?? null })
+        }
+        if (users.length < 1000) break
+      }
+
       const result = []
       for (const row of restaurantAdmins ?? []) {
-        let email = 'unknown'
-        let lastSignInAt: string | null = null
-        const { data: userResult } = await supabaseAdmin.auth.admin.getUserById(row.user_id)
-        if (userResult?.user) {
-          email = userResult.user.email ?? 'unknown'
-          lastSignInAt = userResult.user.last_sign_in_at ?? null
-        }
+        const cached = usersById.get(row.user_id)
+        const email = cached?.email ?? 'unknown'
+        const lastSignInAt = cached?.lastSignInAt ?? null
 
         const restaurant = Array.isArray(row.restaurants) ? row.restaurants[0] : row.restaurants
         const phoneNumber = phoneMap[row.restaurant_id] ?? null

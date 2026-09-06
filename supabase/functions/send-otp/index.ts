@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse, getClientIp, checkRateLimit } from '../_shared/utils.ts'
 import { sendWhatsAppText } from '../_shared/whatsapp.ts'
+import { hashOtp } from '../_shared/otpHash.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -72,7 +73,13 @@ Deno.serve(async (req) => {
   const code = generateOTP()
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
 
-  await supabase.from('otp_codes').insert({ phone_number, code, expires_at: expiresAt })
+  // Only the digest is persisted — the cleartext code exists just long enough
+  // to be sent, and never reaches the database or a backup.
+  await supabase.from('otp_codes').insert({
+    phone_number,
+    code_hash: await hashOtp(phone_number, code),
+    expires_at: expiresAt,
+  })
 
   const result = await sendWhatsAppText(
     phone_number,

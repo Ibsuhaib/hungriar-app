@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse, getClientIp, checkRateLimit } from '../_shared/utils.ts'
+import { hashOtp } from '../_shared/otpHash.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -51,7 +52,7 @@ Deno.serve(async (req) => {
     .from('otp_codes')
     .update({ used: true })
     .eq('phone_number', phone_number)
-    .eq('code', code)
+    .eq('code_hash', await hashOtp(phone_number, code))
     .eq('used', false)
     .gt('expires_at', new Date().toISOString())
     .select('id')
