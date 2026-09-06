@@ -79,7 +79,7 @@ export function openAgreementPdf({ record, restaurantName }) {
   <div class="sign-block">
     <div class="sign-col">
       <p class="label">Signed for the Restaurant</p>
-      ${sig ? `<img class="sig-img" src="${sig}" alt="Signature" />` : '<p style="height:70px"></p>'}
+      ${sig ? `<img class="sig-img" src="${escapeHtml(sig)}" alt="Signature" />` : '<p style="height:70px"></p>'}
       <div class="sig-line">
         <strong>${escapeHtml(record.signer_name)}</strong><br />
         ${escapeHtml(restaurantName)}<br />

@@ -192,6 +192,15 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     try { localStorage.removeItem(PROFILE_CACHE_KEY) } catch { /* ignore */ }
+    // The service worker caches order responses, which for online orders carry
+    // customer name, phone and address. On a shared restaurant device those
+    // would otherwise stay readable to whoever signs in next.
+    try {
+      const names = await caches.keys()
+      await Promise.all(
+        names.filter((n) => n.startsWith('supabase-')).map((n) => caches.delete(n)),
+      )
+    } catch { /* Cache API unavailable — nothing to purge */ }
     // scope: 'local' — only end THIS device's session. The default ('global')
     // revokes every session on the account, so one restaurant device signing
     // out (or a station's "Forgot PIN") would log out the owner's phone, the
