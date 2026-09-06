@@ -1,8 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse } from '../_shared/utils.ts'
+import { sendWhatsAppText } from '../_shared/whatsapp.ts'
 
-const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
@@ -83,17 +83,6 @@ Deno.serve(async (req) => {
 
   if (!phoneRow?.phone_number) {
     return jsonResponse(req, { skipped: true, reason: 'No owner phone linked to this restaurant' })
-  }
-
-  // Find Telegram chat_id for this phone
-  const { data: tgRow } = await adminClient
-    .from('telegram_accounts')
-    .select('chat_id')
-    .eq('phone_number', phoneRow.phone_number)
-    .maybeSingle()
-
-  if (!tgRow?.chat_id) {
-    return jsonResponse(req, { skipped: true, reason: 'Owner has not linked Telegram' })
   }
 
   // Build report message
@@ -192,16 +181,10 @@ Deno.serve(async (req) => {
 
   const text = lines.join('\n')
 
-  const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: tgRow.chat_id, text, parse_mode: 'Markdown' }),
-  })
-
-  if (!tgRes.ok) {
-    const err = await tgRes.text()
-    console.error('Telegram sendMessage failed', err)
-    return jsonResponse(req, { error: 'Failed to send Telegram report' }, 500)
+  const result = await sendWhatsAppText(phoneRow.phone_number, text)
+  if (!result.ok) {
+    console.error('WhatsApp send failed', result.error)
+    return jsonResponse(req, { error: 'Failed to send WhatsApp report' }, 500)
   }
 
   return jsonResponse(req, { success: true })

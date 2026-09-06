@@ -1,15 +1,24 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse, getClientIp, checkRateLimit } from '../_shared/utils.ts'
+import { sendWhatsAppText } from '../_shared/whatsapp.ts'
 
-const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
+// Math.random() is a predictable PRNG — its internal state is recoverable from
+// observed outputs, which would let an attacker derive OTPs issued to others.
+// Rejection sampling keeps the 6-digit range uniform (no modulo bias).
 function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString()
+  const buf = new Uint32Array(1)
+  let n: number
+  do {
+    crypto.getRandomValues(buf)
+    n = buf[0]
+  } while (n >= 4_294_000_000)
+  return (100000 + (n % 900000)).toString()
 }
 
 Deno.serve(async (req) => {
@@ -48,17 +57,6 @@ Deno.serve(async (req) => {
     return jsonResponse(req, { error: 'Phone number not registered. Contact support.' }, 404)
   }
 
-  // Check Telegram is linked
-  const { data: telegramRow } = await supabase
-    .from('telegram_accounts')
-    .select('chat_id')
-    .eq('phone_number', phone_number)
-    .maybeSingle()
-
-  if (!telegramRow) {
-    return jsonResponse(req, { error: 'telegram_not_linked' }, 403)
-  }
-
   // Rate limit: max 3 OTPs per phone per 10 minutes
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
   const { count } = await supabase
@@ -76,20 +74,14 @@ Deno.serve(async (req) => {
 
   await supabase.from('otp_codes').insert({ phone_number, code, expires_at: expiresAt })
 
-  const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: telegramRow.chat_id,
-      text: `🔐 Your HungriAR login code:\n\n*${code}*\n\nValid for 5 minutes. Do not share this code.`,
-      parse_mode: 'Markdown',
-    }),
-  })
+  const result = await sendWhatsAppText(
+    phone_number,
+    `🔐 Your HungriAR login code:\n\n*${code}*\n\nValid for 5 minutes. Do not share this code.`,
+  )
 
-  if (!tgRes.ok) {
-    const err = await tgRes.text()
-    console.error('Telegram sendMessage failed', err)
-    return jsonResponse(req, { error: 'Failed to send OTP via Telegram.' }, 500)
+  if (!result.ok) {
+    console.error('WhatsApp send failed', result.error)
+    return jsonResponse(req, { error: 'Failed to send OTP via WhatsApp.' }, 500)
   }
 
   return jsonResponse(req, { success: true })

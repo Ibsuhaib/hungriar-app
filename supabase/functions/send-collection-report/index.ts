@@ -1,8 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 import { getCorsHeaders } from '../_shared/cors.ts'
 import { jsonResponse } from '../_shared/utils.ts'
+import { sendWhatsAppText } from '../_shared/whatsapp.ts'
 
-const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
@@ -75,16 +75,11 @@ Deno.serve(async (req) => {
   // Optional: how much is left in the register for this method after the collection.
   const remaining      = body.remaining != null && Number.isFinite(Number(body.remaining)) ? Number(body.remaining) : null
 
-  // Find the owner's linked Telegram chat for this restaurant.
+  // Find the owner's phone number for this restaurant.
   const { data: phoneRow } = await adminClient
     .from('phone_restaurant_links').select('phone_number')
     .eq('restaurant_id', restaurantId).maybeSingle()
   if (!phoneRow?.phone_number) return jsonResponse(req, { skipped: true, reason: 'No owner phone linked' })
-
-  const { data: tgRow } = await adminClient
-    .from('telegram_accounts').select('chat_id')
-    .eq('phone_number', phoneRow.phone_number).maybeSingle()
-  if (!tgRow?.chat_id) return jsonResponse(req, { skipped: true, reason: 'Owner has not linked Telegram' })
 
   const lines: string[] = []
   lines.push('💰 *Money Collected*')
@@ -97,15 +92,10 @@ Deno.serve(async (req) => {
   lines.push('')
   lines.push('_Sent by HungriAR_')
 
-  const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: tgRow.chat_id, text: lines.join('\n'), parse_mode: 'Markdown' }),
-  })
-
-  if (!tgRes.ok) {
-    console.error('Telegram sendMessage failed', await tgRes.text())
-    return jsonResponse(req, { error: 'Failed to send Telegram message' }, 500)
+  const result = await sendWhatsAppText(phoneRow.phone_number, lines.join('\n'))
+  if (!result.ok) {
+    console.error('WhatsApp send failed', result.error)
+    return jsonResponse(req, { error: 'Failed to send WhatsApp message' }, 500)
   }
 
   return jsonResponse(req, { success: true })
