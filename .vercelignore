@@ -1,0 +1,7 @@
+# Vercel builds the Vite frontend; none of this is needed for that build and
+# it only makes the upload bigger (which matters on a flaky connection).
+supabase/
+scripts/
+*.md
+!README.md
+.claude/
