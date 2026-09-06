@@ -90,7 +90,7 @@ export function openAgreementPdf({ record, restaurantName }) {
       <p class="label">Accepted by</p>
       <p style="height:70px; display:flex; align-items:flex-end; font-weight:bold;">HungriAR</p>
       <div class="sig-line">
-        Mangalore, Karnataka, India<br />
+        Mapusa, Goa, India<br />
         hungriar.app@gmail.com
       </div>
     </div>

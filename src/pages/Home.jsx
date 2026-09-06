@@ -733,13 +733,25 @@ export default function Home() {
               <p className="text-xs font-bold text-white/50 uppercase tracking-widest mb-4">Contact</p>
               <ul className="space-y-2.5">
                 <li><a href={`mailto:${SUPPORT_EMAIL}`} className="text-xs text-white/30 hover:text-primary-400 transition-colors break-all">{SUPPORT_EMAIL}</a></li>
+                <li><a href="tel:+918197002978" className="text-xs text-white/30 hover:text-primary-400 transition-colors">+91 81970 02978</a></li>
                 <li><Link to="/admin/login" className="text-xs text-white/30 hover:text-white/70 transition-colors">Restaurant Login</Link></li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-white/5 pt-6 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <p className="text-xs text-white/20">&copy; {new Date().getFullYear()} hungriAR. All rights reserved.</p>
-            <p className="text-xs text-white/15">Built with React · Supabase · Cloudflare R2</p>
+          {/* Registered business identity — kept in sync with the Udyam
+              certificate. Meta and other platforms cross-check these against
+              what we submit during business verification. */}
+          <div className="border-t border-white/5 pt-6">
+            <p className="text-xs text-white/25 leading-relaxed">
+              <span className="text-white/40 font-semibold">HungriAR</span>
+              {' · '}Udyam Registration No. UDYAM-GA-01-0063058
+              <br />
+              0023, Kerker Complex, VK Road, Canca Bandh, Mapusa, North Goa, Goa 403507, India
+            </p>
+            <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+              <p className="text-xs text-white/20">&copy; {new Date().getFullYear()} hungriAR. All rights reserved.</p>
+              <p className="text-xs text-white/15">Built with React · Supabase · Cloudflare R2</p>
+            </div>
           </div>
         </div>
       </footer>
