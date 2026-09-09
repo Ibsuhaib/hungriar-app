@@ -2,10 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* min-height, not height. With height:100% these three were pinned to the
+   viewport (812px on a phone) while the landing page is ~8600px tall, so the
+   whole page overflowed its own containers — the body's background painted
+   over the content on scroll and sticky positioning had no proper scroll
+   ancestor. min-height keeps "fill the screen when content is short" without
+   capping tall pages. */
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
