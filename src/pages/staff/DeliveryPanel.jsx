@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bike, LogOut, Phone, MapPin, StickyNote, CheckCircle2, Clock, ChefHat, Package, Banknote } from 'lucide-react'
+import { Bike, LogOut, Phone, MapPin, StickyNote, CheckCircle2, Clock, ChefHat, Package, Banknote, Printer } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency, formatTime } from '../../utils/formatters'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
+import { printReceipt } from '../admin/Billing'
 
 const PM_LABELS = { cash: 'CASH — collect on delivery', upi: 'UPI', card: 'Card', other: 'Other' }
 
@@ -15,7 +16,7 @@ function addressText(addr) {
   return [addr.line1, addr.line2, addr.landmark, addr.city, addr.pincode].filter(Boolean).join(', ')
 }
 
-function OrderCard({ order, currency, onAdvance, busy }) {
+function OrderCard({ order, currency, onAdvance, onPrint, busy }) {
   const addr = order.delivery_address
   const addrStr = addressText(addr)
   const items = (order.order_items || []).filter((i) => !i.cancelled)
@@ -98,13 +99,26 @@ function OrderCard({ order, currency, onAdvance, busy }) {
 
       {/* Action */}
       {(isReady || isOut) && (
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-4 flex items-center gap-2">
+          {/* The bill only reaches the Billing screen once the order is
+              'delivered', by which point the rider is already back. Printing
+              here lets them carry the customer's copy out with the food.
+              Printing does not settle anything — that still happens in Billing
+              after delivery. */}
+          <button
+            type="button"
+            onClick={() => onPrint(order)}
+            title="Print the customer's bill to send with the delivery"
+            className="flex items-center justify-center gap-1.5 py-3 px-4 rounded-2xl text-sm font-bold text-gray-700 bg-gray-100 active:bg-gray-200 transition-colors"
+          >
+            <Printer className="w-4 h-4" /> Bill
+          </button>
           <motion.button
             type="button"
             whileTap={{ scale: 0.97 }}
             disabled={busy}
             onClick={() => onAdvance(order)}
-            className={`w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold text-white shadow-lg transition-opacity disabled:opacity-50 bg-gradient-to-r ${
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold text-white shadow-lg transition-opacity disabled:opacity-50 bg-gradient-to-r ${
               isReady ? 'from-purple-500 to-purple-600' : 'from-green-500 to-green-600'
             }`}
           >
@@ -155,6 +169,22 @@ export default function DeliveryPanel() {
     refetch({ silent: true })
   }
 
+  // Prints the customer's copy only — settlement still happens in Billing once
+  // the order is marked delivered, so nothing is recorded as paid here.
+  const handlePrint = (order) => {
+    printReceipt({
+      tableOrders: [order],
+      table: { table_number: order.customer_name || 'Delivery', isOnlineBill: true },
+      total: Number(order.total_amount) || 0,
+      taxPercentage: Number(restaurant?.tax_percentage) || 0,
+      paymentMethod: order.payment_method,
+      restaurant,
+      deliveryFeeAmt: Number(order.delivery_fee) || 0,
+      finalTotal: Number(order.total_amount) || 0,
+      billNumber: null,
+    })
+  }
+
   const handleSignOut = async () => {
     await signOut()
     navigate('/admin/login')
@@ -203,7 +233,7 @@ export default function DeliveryPanel() {
                 <AnimatePresence>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {ready.map((o) => (
-                      <OrderCard key={o.id} order={o} currency={currency} onAdvance={handleAdvance} busy={busyId === o.id} />
+                      <OrderCard key={o.id} order={o} currency={currency} onAdvance={handleAdvance} onPrint={handlePrint} busy={busyId === o.id} />
                     ))}
                   </div>
                 </AnimatePresence>
@@ -218,7 +248,7 @@ export default function DeliveryPanel() {
                 <AnimatePresence>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {onTheWay.map((o) => (
-                      <OrderCard key={o.id} order={o} currency={currency} onAdvance={handleAdvance} busy={busyId === o.id} />
+                      <OrderCard key={o.id} order={o} currency={currency} onAdvance={handleAdvance} onPrint={handlePrint} busy={busyId === o.id} />
                     ))}
                   </div>
                 </AnimatePresence>
@@ -232,7 +262,7 @@ export default function DeliveryPanel() {
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2 opacity-70">
                   {preparing.map((o) => (
-                    <OrderCard key={o.id} order={o} currency={currency} onAdvance={handleAdvance} busy={busyId === o.id} />
+                    <OrderCard key={o.id} order={o} currency={currency} onAdvance={handleAdvance} onPrint={handlePrint} busy={busyId === o.id} />
                   ))}
                 </div>
               </section>
