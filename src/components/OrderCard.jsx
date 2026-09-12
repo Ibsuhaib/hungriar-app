@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Clock, ChefHat, Utensils, CheckCircle2, CheckCheck, XCircle, X, Printer, Plus, Minus, Trash2, Bike, ShoppingBag, Phone, MapPin, Loader2 } from 'lucide-react'
+import { Clock, ChefHat, Utensils, CheckCircle2, CheckCheck, XCircle, X, Printer, ReceiptText, Plus, Minus, Trash2, Bike, ShoppingBag, Phone, MapPin, Loader2 } from 'lucide-react'
 import {
   ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
@@ -50,7 +50,7 @@ function nextOnlineAction(order) {
   }
 }
 
-export default function OrderCard({ order, onStatusChange, onQuantityChange, onCancelItem, onCancelOrder, busyItemId, currency = '₹', restaurantName = '' }) {
+export default function OrderCard({ order, onStatusChange, onQuantityChange, onCancelItem, onCancelOrder, onPrintBill, busyItemId, currency = '₹', restaurantName = '' }) {
   const items = order.order_items || []
   const StatusIcon = STATUS_ICONS[order.status] || Clock
   const gradient = STATUS_BG[order.status] || 'from-gray-300 to-gray-400'
@@ -100,6 +100,22 @@ export default function OrderCard({ order, onStatusChange, onQuantityChange, onC
         >
           <Printer className="w-5 h-5 text-white" />
         </button>
+        {/* Online orders leave with the rider, so the customer's copy has to be
+            printed here — on the restaurant's printer — before the food goes
+            out. Settling still happens when delivery is confirmed.
+            Only rendered where a handler is supplied, which keeps this off the
+            customer-facing order status page. */}
+        {isOnline && onPrintBill && (
+          <button
+            type="button"
+            onClick={() => onPrintBill(order)}
+            data-tip="Print customer bill"
+            aria-label="Print customer bill"
+            className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/35 flex items-center justify-center flex-shrink-0 transition-colors"
+          >
+            <ReceiptText className="w-5 h-5 text-white" />
+          </button>
+        )}
       </div>
 
       {/* Items list */}

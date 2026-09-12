@@ -8,7 +8,7 @@ import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
 import OrderCard from '../../components/OrderCard'
 import { usePushNotifications } from '../../hooks/usePushNotifications'
-import { computeOrderTotal } from './Billing'
+import { computeOrderTotal, printReceipt } from './Billing'
 
 // Persistent AudioContext — must be created/resumed during a user gesture
 // because browsers block audio that starts without interaction.
@@ -214,6 +214,23 @@ export default function Orders() {
     }
   }
 
+  // The customer's copy for an online order, printed on the restaurant's
+  // printer so it can go out with the rider. Nothing is settled here — the
+  // bill closes when delivery is confirmed.
+  const handlePrintBill = (order) => {
+    printReceipt({
+      tableOrders: [order],
+      table: { table_number: order.customer_name || (order.order_type === 'delivery' ? 'Delivery' : 'Takeaway'), isOnlineBill: true },
+      total: Number(order.total_amount) || 0,
+      taxPercentage: Number(restaurant?.tax_percentage) || 0,
+      paymentMethod: order.payment_method,
+      restaurant,
+      deliveryFeeAmt: Number(order.delivery_fee) || 0,
+      finalTotal: Number(order.total_amount) || 0,
+      billNumber: null,
+    })
+  }
+
   const handleCancelOrder = async (orderId) => {
     if (!window.confirm('Cancel this entire order? This cannot be undone.')) return
     const allowed = await checkAdminLimit(user?.id)
@@ -319,6 +336,7 @@ export default function Orders() {
                 onQuantityChange={handleQuantityChange}
                 onCancelItem={handleCancelItem}
                 onCancelOrder={handleCancelOrder}
+                onPrintBill={handlePrintBill}
                 busyItemId={busyItemId}
                 currency={restaurant?.currency}
                 restaurantName={restaurant?.name}
