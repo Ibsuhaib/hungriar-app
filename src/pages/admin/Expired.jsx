@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useSubscriptionStatus } from '../../hooks/useSubscriptionStatus'
 
 const SUPPORT_EMAIL = 'hungriar.app@gmail.com'
-const SUPPORT_PHONE = '+91-81970-02978'
+const SUPPORT_PHONE = '+91-92252-49945'
 
 export default function Expired() {
   const { restaurant, signOut } = useAuth()

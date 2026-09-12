@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 const SUPPORT_EMAIL = 'hungriar.app@gmail.com'
-const SUPPORT_PHONE = '+91-81970-02978'
+const SUPPORT_PHONE = '+91-92252-49945'
 const REGISTERED_ADDRESS =
   '0023, Kerker Complex, VK Road, Canca Bandh, Mapusa, North Goa, Goa 403507, India'
 const UDYAM_NUMBER = 'UDYAM-GA-01-0063058'

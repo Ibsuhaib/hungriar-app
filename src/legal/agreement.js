@@ -10,7 +10,7 @@
 export const AGREEMENT_VERSION = '2.1'
 
 export const SUPPORT_EMAIL = 'hungriar.app@gmail.com'
-export const SUPPORT_PHONE = '+91-81970-02978'
+export const SUPPORT_PHONE = '+91-92252-49945'
 export const REGISTERED_ADDRESS =
   '0023, Kerker Complex, VK Road, Canca Bandh, Mapusa, North Goa, Goa 403507, India'
 export const UDYAM_NUMBER = 'UDYAM-GA-01-0063058'

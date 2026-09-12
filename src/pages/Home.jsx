@@ -739,7 +739,7 @@ export default function Home() {
               <p className="text-xs font-bold text-white/50 uppercase tracking-widest mb-4">Contact</p>
               <ul className="space-y-2.5">
                 <li><a href={`mailto:${SUPPORT_EMAIL}`} className="text-xs text-white/30 hover:text-primary-400 transition-colors break-all">{SUPPORT_EMAIL}</a></li>
-                <li><a href="tel:+918197002978" className="text-xs text-white/30 hover:text-primary-400 transition-colors">+91 81970 02978</a></li>
+                <li><a href="tel:+919225249945" className="text-xs text-white/30 hover:text-primary-400 transition-colors">+91 92252 49945</a></li>
                 <li><Link to="/admin/login" className="text-xs text-white/30 hover:text-white/70 transition-colors">Restaurant Login</Link></li>
               </ul>
             </div>

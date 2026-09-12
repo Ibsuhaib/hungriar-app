@@ -14,11 +14,14 @@ const PAYMENT_BADGE = {
 }
 
 const PAGE_SIZE = 50
-const PURGE_AFTER_DAYS = 7
 
-async function purgeOldRecords(restaurantId) {
+// null / undefined retention means "keep forever" — chosen in Settings.
+async function purgeOldRecords(restaurantId, retentionDays) {
+  if (retentionDays == null) return
+  const days = Number(retentionDays)
+  if (!Number.isFinite(days) || days < 1) return
   const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - PURGE_AFTER_DAYS)
+  cutoff.setDate(cutoff.getDate() - days)
   await supabase
     .from('billing_history')
     .delete()
@@ -123,7 +126,7 @@ export default function History() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    await purgeOldRecords(restaurant.id)
+    await purgeOldRecords(restaurant.id, restaurant.history_retention_days)
     const { data, error } = await supabase
       .from('billing_history')
       .select('*, tables(table_number)')
@@ -132,7 +135,7 @@ export default function History() {
       .limit(PAGE_SIZE)
     if (!error) setRecords(data || [])
     setLoading(false)
-  }, [restaurant.id])
+  }, [restaurant.id, restaurant.history_retention_days])
 
   useEffect(() => { load() }, [load])
 
@@ -167,7 +170,9 @@ export default function History() {
       {/* Header row */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="text-sm text-gray-500 max-w-sm">
-          Settled bills. Records older than 7 days are cleared automatically each time you open this page.
+          {restaurant.history_retention_days == null
+            ? 'Settled bills. Records are kept permanently — change this in Settings → Billing History.'
+            : `Settled bills. Records older than ${restaurant.history_retention_days} day${restaurant.history_retention_days === 1 ? '' : 's'} are cleared automatically each time you open this page. Change this in Settings → Billing History.`}
         </p>
         <div className="flex gap-2">
           <button
