@@ -5,6 +5,9 @@ import { Users, Check, X, Clock, BellRing } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatCurrency, formatTime } from '../utils/formatters'
 
+// Must match the interval in expire_stale_approvals() (migration 40).
+const APPROVAL_WINDOW_MIN = 15
+
 function chime() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
@@ -34,11 +37,16 @@ function useAwaitingApprovals(restaurantId) {
 
   const fetchAwaiting = useCallback(async () => {
     if (!restaurantId) return
+    // Cancel anything nobody answered in time first, so a forgotten request
+    // from hours ago (or yesterday) never pops up.
+    await supabase.rpc('expire_stale_approvals', { p_restaurant_id: restaurantId })
+    const cutoff = new Date(Date.now() - APPROVAL_WINDOW_MIN * 60_000).toISOString()
     const { data, error } = await supabase
       .from('orders')
       .select('*, order_items(*), tables(table_number)')
       .eq('restaurant_id', restaurantId)
       .eq('status', 'awaiting_approval')
+      .gte('order_time', cutoff)
       .order('order_time', { ascending: true })
     if (!error) setAwaiting(data || [])
   }, [restaurantId])

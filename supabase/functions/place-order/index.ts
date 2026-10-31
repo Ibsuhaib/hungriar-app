@@ -12,6 +12,10 @@ const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')
 const MAX_ITEMS = 50
 const MAX_QUANTITY = 50
 const MAX_NOTES_LENGTH = 200
+// The replacement QR is signed by this server right after the database stamps
+// the reset time; a few seconds of slack stops a small clock difference
+// between the two from rejecting the brand-new code.
+const QR_RESET_SLACK_MS = 5000
 
 interface RequestedItem {
   menuItemId: string
@@ -79,6 +83,10 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { error: 'This restaurant is currently unavailable.' }, 403)
     }
 
+    // Unanswered approval requests expire, so a table left waiting does not
+    // block or confuse the next group.
+    await supabaseAdmin.rpc('expire_stale_approvals', { p_restaurant_id: restaurantId })
+
     const { data: table, error: tableError } = await supabaseAdmin
       .from('tables')
       .select('id, table_number, session_id, opened_at, qr_valid_after')
@@ -92,7 +100,7 @@ Deno.serve(async (req) => {
 
     // A QR code issued before the owner's last "Reset QR" for this table is
     // dead — that is how a photographed code gets revoked.
-    if (table.qr_valid_after && tokenResult.issuedAt! * 1000 < Date.parse(table.qr_valid_after)) {
+    if (table.qr_valid_after && tokenResult.issuedAt! * 1000 < Date.parse(table.qr_valid_after) - QR_RESET_SLACK_MS) {
       return jsonResponse(req, { error: 'This QR code is no longer valid. Please ask staff for help.' }, 401)
     }
 

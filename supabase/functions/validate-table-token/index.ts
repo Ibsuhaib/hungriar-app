@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
 
     // Rejected here as well as in place-order, so a revoked code fails the
     // moment it is scanned instead of after the customer fills a cart.
-    if (table.qr_valid_after && result.issuedAt! * 1000 < Date.parse(table.qr_valid_after)) {
+    if (table.qr_valid_after && result.issuedAt! * 1000 < Date.parse(table.qr_valid_after) - 5000) {
       return jsonResponse(req, { valid: false, error: 'This QR code is no longer valid. Please ask staff for help.' })
     }
 

@@ -17,6 +17,7 @@ const TRACKER_STEPS = [
 ]
 
 const STATUS_MESSAGES = {
+  cancelled: 'This order was cancelled by the restaurant. Please ask a member of staff if you were expecting it.',
   awaiting_approval: 'Order sent! A staff member will confirm your table in a moment, then it goes straight to the kitchen.',
   pending: "Your order has been received and is being prepared. We'll let you know when it's ready!",
   preparing: 'The kitchen is working on your order. Almost there!',
@@ -25,6 +26,7 @@ const STATUS_MESSAGES = {
 }
 
 const STATUS_GRADIENT = {
+  cancelled: 'from-gray-400 to-gray-500',
   awaiting_approval: 'from-orange-400 to-orange-500',
   pending: 'from-amber-400 to-amber-500',
   preparing: 'from-primary-400 to-primary-600',
@@ -158,9 +160,11 @@ export default function OrderStatus() {
   }
 
   // 0 = placed (pending), 1 = ready (anything else)
-  const trackerIndex = NOT_YET_COOKING.includes(order.status) ? 0 : 1
+  // A rejected or expired order is not "ready" — no tracker step is lit.
+  const isCancelled = order.status === 'cancelled'
+  const trackerIndex = isCancelled ? -1 : NOT_YET_COOKING.includes(order.status) ? 0 : 1
   const gradient = STATUS_GRADIENT[order.status] || 'from-primary-400 to-primary-600'
-  const isReady = !NOT_YET_COOKING.includes(order.status)
+  const isReady = !isCancelled && !NOT_YET_COOKING.includes(order.status)
 
   return (
     <div className="min-h-screen bg-sand-100 pb-10">

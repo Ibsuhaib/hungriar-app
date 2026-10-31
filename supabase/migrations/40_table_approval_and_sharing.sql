@@ -22,6 +22,7 @@
 -- 4. "Reset QR" invalidates every previously printed or photographed code for
 --    one table (tables.qr_valid_after); the edge functions reject any token
 --    issued before it.
+-- 5. Approval requests nobody answers within 15 minutes expire (cancelled).
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -264,6 +265,39 @@ end;
 $$;
 
 grant execute on function public.reject_table_orders(uuid) to authenticated;
+
+-- Requests nobody answers within 15 minutes are cancelled, so a forgotten one
+-- never pops up hours later and the customer is told it was not accepted.
+-- Called by the approval popup on every refresh and by place-order. Keep the
+-- interval in step with APPROVAL_WINDOW_MIN in TableApprovalPopup.jsx.
+create or replace function public.expire_stale_approvals(p_restaurant_id uuid)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count int;
+begin
+  if not (auth.role() = 'service_role'
+          or public.is_restaurant_admin(p_restaurant_id)
+          or public.is_restaurant_station(p_restaurant_id)
+          or public.is_super_admin()) then
+    raise exception 'not authorized';
+  end if;
+
+  update public.orders
+  set    status = 'cancelled'
+  where  restaurant_id = p_restaurant_id
+    and  status = 'awaiting_approval'
+    and  order_time < now() - interval '15 minutes';
+  get diagnostics v_count = row_count;
+
+  return v_count;
+end;
+$$;
+
+grant execute on function public.expire_stale_approvals(uuid) to authenticated, service_role;
 
 -- Invalidates every QR code previously issued for this table. Owner only,
 -- because it also ends the current table session. Truncated to the second so
