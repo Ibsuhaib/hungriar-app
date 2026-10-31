@@ -290,7 +290,7 @@ function CartSheet({ entries, subtotal, taxPercentage, currency, onRemove, onAdd
       <motion.div
         initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col"
+        className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col pb-safe"
       >
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
           <div className="w-10 h-1 bg-gray-200 rounded-full" />
@@ -801,7 +801,7 @@ export default function TakeOrder() {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
             transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-            className="fixed bottom-4 left-4 right-4 z-30 max-w-3xl mx-auto"
+            className="fixed bottom-safe-4 left-4 right-4 z-30 max-w-3xl mx-auto"
           >
             <button
               type="button"

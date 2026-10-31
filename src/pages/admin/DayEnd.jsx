@@ -105,7 +105,7 @@ function ConfirmModal({ activeOrderCount, totalCollected, totalExpenses, netTota
       <motion.div
         initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl"
+        className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl pb-safe"
       >
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 bg-gray-200 rounded-full" />
@@ -664,7 +664,7 @@ export default function DayEnd() {
       )}
 
       {/* Sticky End Day bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 p-4 bg-white/80 backdrop-blur-md border-t border-gray-100">
+      <div className="fixed bottom-0 left-0 right-0 z-30 px-4 pt-4 pb-safe-4 bg-white/80 backdrop-blur-md border-t border-gray-100">
         <div className="max-w-2xl mx-auto">
           <button
             type="button"

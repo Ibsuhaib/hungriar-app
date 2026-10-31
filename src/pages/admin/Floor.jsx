@@ -279,7 +279,7 @@ function MenuOverlay({
 
       {/* Floating cart button */}
       {totalQty > 0 && (
-        <div className="fixed bottom-6 inset-x-0 flex justify-center z-30 pointer-events-none">
+        <div className="fixed bottom-safe-6 inset-x-0 flex justify-center z-30 pointer-events-none">
           <button
             type="button" onClick={onOpenCart}
             className="pointer-events-auto flex items-center gap-2 bg-primary-600 text-white font-bold px-6 py-3.5 rounded-2xl shadow-xl hover:bg-primary-700 active:scale-95 transition-all"
@@ -305,7 +305,7 @@ function CartSheet({ entries, subtotal, currency, onAdd, onRemove, onClose, onPl
       <motion.div
         initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="fixed bottom-0 inset-x-0 z-[60] bg-white rounded-t-3xl shadow-2xl p-5 max-h-[80vh] overflow-y-auto"
+        className="fixed bottom-0 inset-x-0 z-[60] bg-white rounded-t-3xl shadow-2xl px-5 pt-5 pb-safe-5 max-h-[80vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-gray-900">Order for Table {tableNumber}</h3>
@@ -367,7 +367,7 @@ function OrderSummaryPanel({
       <motion.div
         initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="fixed bottom-0 inset-x-0 z-[60] bg-white rounded-t-3xl shadow-2xl p-5 max-h-[85vh] overflow-y-auto"
+        className="fixed bottom-0 inset-x-0 z-[60] bg-white rounded-t-3xl shadow-2xl px-5 pt-5 pb-safe-5 max-h-[85vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-gray-900">Table {table?.table_number}</h3>
