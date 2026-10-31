@@ -55,6 +55,11 @@ Deno.serve(async (req) => {
     }
 
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId : null
+    // Anonymous per-phone tag so each phone at the table can tell which of the
+    // table's orders it placed. Not an identity — just a random string.
+    const deviceTag = typeof body.deviceTag === 'string' && /^[A-Za-z0-9]{1,32}$/.test(body.deviceTag)
+      ? body.deviceTag
+      : null
 
     const tokenResult = await verifyTableToken(body.token, TABLE_TOKEN_SECRET)
     if (!tokenResult.valid) {
@@ -76,7 +81,7 @@ Deno.serve(async (req) => {
 
     const { data: table, error: tableError } = await supabaseAdmin
       .from('tables')
-      .select('id, table_number, session_id')
+      .select('id, table_number, session_id, opened_at, qr_valid_after')
       .eq('id', tableId)
       .eq('restaurant_id', restaurantId)
       .maybeSingle()
@@ -85,8 +90,16 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { error: 'Table not found.' }, 404)
     }
 
-    // Reject stale sessions — bill was settled and session rotated
-    if (sessionId && table.session_id !== sessionId) {
+    // A QR code issued before the owner's last "Reset QR" for this table is
+    // dead — that is how a photographed code gets revoked.
+    if (table.qr_valid_after && tokenResult.issuedAt! * 1000 < Date.parse(table.qr_valid_after)) {
+      return jsonResponse(req, { error: 'This QR code is no longer valid. Please ask staff for help.' }, 401)
+    }
+
+    // The session is required, not optional: a client that simply left it out
+    // used to skip this check entirely. It rotates when the bill is settled,
+    // so a group that has paid can no longer order onto the next group's table.
+    if (!sessionId || table.session_id !== sessionId) {
       return jsonResponse(req, { error: 'session_ended', message: 'This table\'s bill has been settled. Please rescan the QR code to start a new order.' }, 401)
     }
 
@@ -102,6 +115,13 @@ Deno.serve(async (req) => {
         : ''
       const existing = requested.get(item.menuItemId)
       requested.set(item.menuItemId, { quantity: (existing?.quantity ?? 0) + quantity, notes })
+    }
+
+    // Caps how fast any one table can send orders, which limits the damage a
+    // shared QR photo can do while a table is open.
+    const tableLimit = await checkRateLimit(supabaseAdmin, `table-orders:${tableId}`, 'customer', 6)
+    if (!tableLimit.allowed) {
+      return jsonResponse(req, { error: 'Too many orders from this table. Please wait a moment.' }, 429, { 'Retry-After': String(tableLimit.retryAfter) })
     }
 
     if (requested.size === 0) {
@@ -152,8 +172,13 @@ Deno.serve(async (req) => {
       .insert({
         restaurant_id: restaurantId,
         table_id: tableId,
-        status: 'pending',
+        // First order on a table nobody has opened waits for a waiter or the
+        // owner to confirm guests are really seated; after that the table is
+        // open and orders go straight to the kitchen.
+        status: table.opened_at ? 'pending' : 'awaiting_approval',
         total_amount: total,
+        session_id: table.session_id,
+        device_tag: deviceTag,
       })
       .select('id, status, total_amount, order_time')
       .single()
@@ -174,7 +199,7 @@ Deno.serve(async (req) => {
 
     // Send push notifications (fire-and-forget — never blocks the response)
     if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-      sendPushNotifications(supabaseAdmin, restaurantId, table.table_number, orderItemsPayload.length).catch(
+      sendPushNotifications(supabaseAdmin, restaurantId, table.table_number, orderItemsPayload.length, order.status === 'awaiting_approval').catch(
         (err) => console.error('push notification error', err),
       )
     }
@@ -200,6 +225,7 @@ async function sendPushNotifications(
   restaurantId: string,
   tableNumber: number | null,
   itemCount: number,
+  needsApproval: boolean,
 ) {
   const { data: subscriptions } = await supabaseAdmin
     .from('push_subscriptions')
@@ -216,8 +242,12 @@ async function sendPushNotifications(
   )
 
   const payload = JSON.stringify({
-    title: `New Order — Table ${tableNumber ?? '?'}`,
-    body: `${itemCount} item${itemCount !== 1 ? 's' : ''} ordered`,
+    title: needsApproval
+      ? `Table ${tableNumber ?? '?'} — approve new guests?`
+      : `New Order — Table ${tableNumber ?? '?'}`,
+    body: needsApproval
+      ? 'Check someone is seated before the order goes to the kitchen.'
+      : `${itemCount} item${itemCount !== 1 ? 's' : ''} ordered`,
     url: '/admin/orders',
   })
 

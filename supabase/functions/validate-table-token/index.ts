@@ -52,13 +52,19 @@ Deno.serve(async (req) => {
 
     const { data: table, error: tableError } = await supabaseAdmin
       .from('tables')
-      .select('id, table_number, session_id')
+      .select('id, table_number, session_id, qr_valid_after')
       .eq('id', result.tableId)
       .eq('restaurant_id', result.restaurantId)
       .maybeSingle()
 
     if (tableError || !table) {
       return jsonResponse(req, { valid: false, error: 'Table not found.' })
+    }
+
+    // Rejected here as well as in place-order, so a revoked code fails the
+    // moment it is scanned instead of after the customer fills a cart.
+    if (table.qr_valid_after && result.issuedAt! * 1000 < Date.parse(table.qr_valid_after)) {
+      return jsonResponse(req, { valid: false, error: 'This QR code is no longer valid. Please ask staff for help.' })
     }
 
     return jsonResponse(req, {

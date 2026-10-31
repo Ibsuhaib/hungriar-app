@@ -2,14 +2,36 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { pageCache } from '../utils/pageCache'
 
-export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterval = 5000 } = {}) {
+const AWAITING = 'awaiting_approval'
+
+/**
+ * Live orders for a restaurant (or one order by id).
+ *
+ * QR orders on a table nobody has opened arrive as 'awaiting_approval'. Those
+ * are kept OUT of `orders` — so no kitchen list, table map, or bill ever shows
+ * them — and returned separately as `awaiting` for the approval popup.
+ * onInsert (sound, toast, auto-KOT) fires when an order actually reaches the
+ * kitchen: on insert for normal orders, and at the moment of approval for
+ * waiting ones. onAwaiting fires when a new order starts waiting.
+ *
+ * includeAwaiting keeps waiting orders in `orders`; the customer's own order
+ * page needs that so it can show "waiting for staff to confirm".
+ */
+export function useRealtimeOrders({ restaurantId, orderId, onInsert, onAwaiting, includeAwaiting = false, pollInterval = 5000 } = {}) {
   const cacheKey = `orders-${restaurantId || orderId}`
   const cached   = pageCache.get(cacheKey)
 
   const [orders, setOrders] = useState(() => cached || [])
+  const [awaiting, setAwaiting] = useState([])
   const [loading, setLoading] = useState(!cached)
   const onInsertRef = useRef(onInsert)
   onInsertRef.current = onInsert
+  const onAwaitingRef = useRef(onAwaiting)
+  onAwaitingRef.current = onAwaiting
+  // Full rows of orders currently waiting, so approval can hand the kitchen
+  // the complete order (items, table number) rather than the bare row a
+  // realtime UPDATE carries.
+  const awaitingByIdRef = useRef(new Map())
 
   // Track optimistic patches so polls don't overwrite them before DB confirms
   const pendingPatchesRef = useRef({})
@@ -40,11 +62,15 @@ export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterva
         if (p) delete pendingPatchesRef.current[o.id]
         return o
       })
-      pageCache.set(cacheKey, merged)
-      setOrders(merged)
+      const waiting = merged.filter((o) => o.status === AWAITING)
+      awaitingByIdRef.current = new Map(waiting.map((o) => [o.id, o]))
+      const visible = includeAwaiting ? merged : merged.filter((o) => o.status !== AWAITING)
+      pageCache.set(cacheKey, visible)
+      setOrders(visible)
+      setAwaiting(waiting)
     }
     setLoading(false)
-  }, [restaurantId, orderId, cacheKey])
+  }, [restaurantId, orderId, cacheKey, includeAwaiting])
 
   // Optimistic patch — instant UI feedback before DB confirms.
   // Also writes to pageCache so other pages (e.g. Billing) see the update immediately on mount.
@@ -74,11 +100,22 @@ export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterva
       .channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter }, (payload) => {
         if (payload.eventType === 'INSERT') {
-          onInsertRef.current?.(payload.new)
+          if (payload.new.status === AWAITING) onAwaitingRef.current?.(payload.new)
+          else onInsertRef.current?.(payload.new)
           fetchOrders({ silent: true })
           // Delayed refetch ensures order_items are committed before we reload
           setTimeout(() => fetchOrders({ silent: true }), 400)
         } else if (payload.eventType === 'UPDATE') {
+          const wasWaiting = awaitingByIdRef.current.get(payload.new.id)
+          if (wasWaiting && payload.new.status !== AWAITING) {
+            // Approved (or rejected) — possibly from another device. Only an
+            // approval reaches the kitchen, and that is the moment to ring the
+            // bell and auto-print the KOT, not when the order first arrived.
+            awaitingByIdRef.current.delete(payload.new.id)
+            if (payload.new.status !== 'cancelled') onInsertRef.current?.({ ...wasWaiting, ...payload.new })
+            fetchOrders({ silent: true })
+            return
+          }
           // DB confirmed — clear our optimistic patch so future polls use DB data
           delete pendingPatchesRef.current[payload.new.id]
           patchOrder(payload.new.id, payload.new)
@@ -116,5 +153,5 @@ export function useRealtimeOrders({ restaurantId, orderId, onInsert, pollInterva
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [fetchOrders])
 
-  return { orders, loading, refetch: fetchOrders, patchOrder }
+  return { orders, awaiting, loading, refetch: fetchOrders, patchOrder }
 }

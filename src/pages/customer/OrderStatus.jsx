@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Clock, CheckCircle2, ShoppingBag } from 'lucide-react'
+import { ArrowLeft, Clock, CheckCircle2, ShoppingBag, Users } from 'lucide-react'
 import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { useRestaurant } from '../../contexts/RestaurantContext'
 import { supabase } from '../../lib/supabase'
 import OrderCard from '../../components/OrderCard'
-import { ORDER_STATUS_COLORS, ORDER_STATUS_LABELS, formatTime } from '../../utils/formatters'
+import { ORDER_STATUS_COLORS, ORDER_STATUS_LABELS, formatTime, formatCurrency } from '../../utils/formatters'
+import { useTableOrders } from '../../hooks/useTableOrders'
+import { getDeviceTag } from '../../utils/deviceTag'
 
 // Two-step tracker: order placed → ready for customer
 const TRACKER_STEPS = [
@@ -15,6 +17,7 @@ const TRACKER_STEPS = [
 ]
 
 const STATUS_MESSAGES = {
+  awaiting_approval: 'Order sent! A staff member will confirm your table in a moment, then it goes straight to the kitchen.',
   pending: "Your order has been received and is being prepared. We'll let you know when it's ready!",
   preparing: 'The kitchen is working on your order. Almost there!',
   served: 'Your order is on the way to your table. Enjoy!',
@@ -22,6 +25,7 @@ const STATUS_MESSAGES = {
 }
 
 const STATUS_GRADIENT = {
+  awaiting_approval: 'from-orange-400 to-orange-500',
   pending: 'from-amber-400 to-amber-500',
   preparing: 'from-primary-400 to-primary-600',
   served: 'from-secondary-400 to-secondary-600',
@@ -30,11 +34,64 @@ const STATUS_GRADIENT = {
 
 const ORDERS_STORAGE_PREFIX = 'hungriar_orders_'
 
+const NOT_YET_COOKING = ['awaiting_approval', 'pending']
+
+/**
+ * Everything ordered at this table during this visit, from every phone and
+ * from the waiter, with the running bill. Each phone keeps its own cart; this
+ * is what lets a family see one shared picture of the table.
+ */
+function TableOrdersPanel({ orders, total, tableNumber, currentOrderId, currency }) {
+  const myTag = getDeviceTag()
+  if (orders.length === 0) return null
+  return (
+    <div className="bg-white rounded-2xl shadow-card overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-sand-200">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-primary-500" />
+          <h2 className="text-sm font-bold text-gray-900">Table {tableNumber} · everyone&apos;s orders</h2>
+        </div>
+        <span className="text-xs text-gray-400">{orders.length} order{orders.length === 1 ? '' : 's'}</span>
+      </div>
+      <ul className="divide-y divide-sand-100">
+        {orders.map((o) => {
+          const mine = myTag && o.device_tag === myTag
+          return (
+            <li key={o.id} className={`px-4 py-3 ${o.id === currentOrderId ? 'bg-primary-50/50' : ''}`}>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${mine ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-600'}`}>
+                    {mine ? 'You' : o.device_tag ? 'Someone at your table' : 'Waiter'}
+                  </span>
+                  <span className="text-xs text-gray-400">{formatTime(o.order_time)}</span>
+                </div>
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${ORDER_STATUS_COLORS[o.status] || 'bg-gray-100 text-gray-600'}`}>
+                  {ORDER_STATUS_LABELS[o.status] || o.status}
+                </span>
+              </div>
+              <p className="text-sm text-gray-700 leading-relaxed">
+                {(o.items || []).map((i) => `${i.quantity}× ${i.item_name}`).join(', ')}
+              </p>
+            </li>
+          )
+        })}
+      </ul>
+      <div className="flex justify-between items-center px-4 py-3 bg-sand-50 border-t border-sand-200">
+        <span className="text-sm font-semibold text-gray-700">Table bill so far</span>
+        <span className="text-base font-bold text-primary-600">{formatCurrency(total, currency)}</span>
+      </div>
+    </div>
+  )
+}
+
 export default function OrderStatus() {
   const { restaurantSlug, orderId } = useParams()
   const navigate = useNavigate()
-  const { restaurant } = useRestaurant()
-  const { orders, loading } = useRealtimeOrders({ orderId, pollInterval: 2000 })
+  const { restaurant, session } = useRestaurant()
+  // includeAwaiting: this page must show the customer's own order while it
+  // waits for staff to confirm the table.
+  const { orders, loading } = useRealtimeOrders({ orderId, pollInterval: 2000, includeAwaiting: true })
+  const tableView = useTableOrders(session)
   const [pastOrders, setPastOrders] = useState([])
   const [pastLoading, setPastLoading] = useState(true)
 
@@ -101,9 +158,9 @@ export default function OrderStatus() {
   }
 
   // 0 = placed (pending), 1 = ready (anything else)
-  const trackerIndex = order.status === 'pending' ? 0 : 1
+  const trackerIndex = NOT_YET_COOKING.includes(order.status) ? 0 : 1
   const gradient = STATUS_GRADIENT[order.status] || 'from-primary-400 to-primary-600'
-  const isReady = order.status !== 'pending'
+  const isReady = !NOT_YET_COOKING.includes(order.status)
 
   return (
     <div className="min-h-screen bg-sand-100 pb-10">
@@ -223,8 +280,20 @@ export default function OrderStatus() {
           Order More Items
         </button>
 
+        {/* Whole table's orders — shown when this phone holds the table's
+            current session; otherwise fall back to this phone's own history */}
+        {tableView.orders.length > 0 && (
+          <TableOrdersPanel
+            orders={tableView.orders}
+            total={tableView.total}
+            tableNumber={session?.tableNumber ?? order.tables?.table_number ?? '-'}
+            currentOrderId={orderId}
+            currency={currency}
+          />
+        )}
+
         {/* Earlier orders */}
-        {!pastLoading && pastOrders.length > 0 && (
+        {tableView.orders.length === 0 && !pastLoading && pastOrders.length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-3 px-1">
               <ShoppingBag className="w-3.5 h-3.5 text-gray-400" />

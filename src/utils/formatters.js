@@ -31,6 +31,7 @@ export function formatTime(value) {
 }
 
 export const ORDER_STATUS_LABELS = {
+  awaiting_approval: 'Waiting for staff',
   pending: 'Pending',
   preparing: 'Preparing',
   served: 'Served',
@@ -44,6 +45,7 @@ export const ORDER_STATUS_LABELS = {
 }
 
 export const ORDER_STATUS_COLORS = {
+  awaiting_approval: 'bg-orange-100 text-orange-800',
   pending: 'bg-amber-100 text-amber-800',
   preparing: 'bg-blue-100 text-blue-800',
   served: 'bg-secondary-100 text-secondary-800',

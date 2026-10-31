@@ -13,6 +13,7 @@ import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { printKOT } from '../../utils/kotPrint'
 import { enqueueOrder, getQueuedOrders, removeQueuedOrder, isNetworkError } from '../../utils/offlineQueue'
 import { pageCache } from '../../utils/pageCache'
+import TableApprovalPopup from '../../components/TableApprovalPopup'
 
 // ─── Cart hook (same shape as TakeOrder) ──────────────────────────────────────
 function useCart() {
@@ -631,6 +632,9 @@ export default function StaffPanel() {
           </button>
         </div>
       )}
+
+      {/* Same popup the owner sees — whichever of them decides first wins */}
+      <TableApprovalPopup restaurantId={restaurant?.id} currency={restaurant?.currency || '₹'} />
     </div>
   )
 }
