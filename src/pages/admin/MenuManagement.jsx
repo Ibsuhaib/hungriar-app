@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Edit2, Trash2, X, Upload, Box, ImageIcon, ToggleLeft, ToggleRight, Search } from 'lucide-react'
+import { Plus, Edit2, Trash2, X, Upload, Box, ImageIcon, ToggleLeft, ToggleRight, Search, CheckSquare, Square, Check } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { supabase } from '../../lib/supabase'
@@ -48,7 +48,7 @@ function UploadZone({ label, hint, value, loading, accept, onChange, icon: Icon 
   )
 }
 
-function ItemCard({ item, onEdit, onDelete, onToggle, onToggleOnline, currency }) {
+function ItemCard({ item, onEdit, onDelete, onToggle, onToggleOnline, currency, selectMode = false, selected = false, onSelect }) {
   return (
     <motion.div
       layout
@@ -56,8 +56,22 @@ function ItemCard({ item, onEdit, onDelete, onToggle, onToggleOnline, currency }
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.18 }}
-      className={`card flex gap-3 transition-opacity ${item.available ? '' : 'opacity-60'}`}
+      // In select mode the whole card is the tap target, and the status badges
+      // become read-only so a tap selects rather than flipping one dish.
+      onClick={selectMode ? () => onSelect(item.id) : undefined}
+      role={selectMode ? 'checkbox' : undefined}
+      aria-checked={selectMode ? selected : undefined}
+      className={`card flex gap-3 transition-all ${item.available ? '' : 'opacity-60'} ${
+        selectMode ? 'cursor-pointer select-none' : ''
+      } ${selected ? 'ring-2 ring-primary-500 !opacity-100 bg-primary-50/40' : ''}`}
     >
+      {selectMode && (
+        <div className="flex items-center flex-shrink-0">
+          {selected
+            ? <CheckSquare className="w-6 h-6 text-primary-600" />
+            : <Square className="w-6 h-6 text-gray-300" />}
+        </div>
+      )}
       {item.image_url ? (
         <img src={item.image_url} alt={item.name} className="h-16 w-16 flex-shrink-0 rounded-xl object-cover" />
       ) : (
@@ -82,7 +96,8 @@ function ItemCard({ item, onEdit, onDelete, onToggle, onToggleOnline, currency }
           )}
           <button
             type="button"
-            onClick={() => onToggle(item)}
+            onClick={selectMode ? undefined : () => onToggle(item)}
+            tabIndex={selectMode ? -1 : undefined}
             className={`badge badge-sm gap-1 cursor-pointer transition-colors ${
               item.available ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             }`}
@@ -92,7 +107,8 @@ function ItemCard({ item, onEdit, onDelete, onToggle, onToggleOnline, currency }
           </button>
           <button
             type="button"
-            onClick={() => onToggleOnline(item)}
+            onClick={selectMode ? undefined : () => onToggleOnline(item)}
+            tabIndex={selectMode ? -1 : undefined}
             title={item.online_available !== false ? 'Shown on your online store — click to hide' : 'Hidden from your online store — click to show'}
             className={`badge badge-sm gap-1 cursor-pointer transition-colors ${
               item.online_available !== false ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
@@ -102,7 +118,7 @@ function ItemCard({ item, onEdit, onDelete, onToggle, onToggleOnline, currency }
             {item.online_available !== false ? 'Online' : 'Not Online'}
           </button>
         </div>
-        <div className="mt-2 flex gap-1.5">
+        <div className={`mt-2 flex gap-1.5 ${selectMode ? 'hidden' : ''}`}>
           <button type="button" onClick={() => onEdit(item)} className="btn btn-outline btn-sm gap-1 px-2.5 py-1">
             <Edit2 className="w-3 h-3" /> Edit
           </button>
@@ -127,6 +143,11 @@ export default function MenuManagement() {
   const [uploadingImage, setUploadingImage] = useState(false)
   const [uploadingModel, setUploadingModel] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  // Bulk editing: tick many dishes, then change availability / online
+  // visibility for all of them in one update instead of one tap per dish.
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(null)
   const [showImport, setShowImport] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -280,11 +301,82 @@ export default function MenuManagement() {
     { cat: null, items: filteredItems.filter((i) => !i.category_id) },
   ].filter((g) => g.items.length > 0)
 
+  // A search hides dishes; drop them from the selection so a bulk action never
+  // changes something the owner can no longer see.
+  useEffect(() => {
+    const visible = new Set(filteredItems.map((i) => i.id))
+    setSelected((prev) => {
+      const next = new Set([...prev].filter((id) => visible.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [filteredItems])
+
+  const toggleSelect = (id) => setSelected((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+
+  const setManySelected = (ids, on) => setSelected((prev) => {
+    const next = new Set(prev)
+    ids.forEach((id) => (on ? next.add(id) : next.delete(id)))
+    return next
+  })
+
+  const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()) }
+
+  const BULK_ACTIONS = {
+    available:   { patch: { available: true },         done: 'now available' },
+    unavailable: { patch: { available: false },        done: 'marked unavailable' },
+    online:      { patch: { online_available: true },  done: 'now shown on your online store' },
+    offline:     { patch: { online_available: false }, done: 'hidden from your online store' },
+  }
+
+  const bulkUpdate = async (kind) => {
+    const ids = [...selected]
+    if (ids.length === 0 || bulkBusy) return
+    const allowed = await checkAdminLimit(user?.id)
+    if (!allowed) return
+    const { patch, done } = BULK_ACTIONS[kind]
+    setBulkBusy(kind)
+    const before = items
+    // Show the change immediately; roll back if the save fails so the screen
+    // never claims a state the database does not have.
+    setItems((prev) => prev.map((i) => (selected.has(i.id) ? { ...i, ...patch } : i)))
+    const { data, error } = await supabase
+      .from('menu_items')
+      .update(patch)
+      .in('id', ids)
+      .eq('restaurant_id', restaurant.id)
+      .select('id')
+    setBulkBusy(null)
+    if (error || !data || data.length !== ids.length) {
+      setItems(before)
+      toast.error('Could not update those dishes. Check your connection and try again.')
+      await fetchData()
+      return
+    }
+    toast.success(`${ids.length} dish${ids.length === 1 ? '' : 'es'} ${done}`)
+    await fetchData()
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
+      {/* Wraps on narrow phones — with Select added the three buttons no
+          longer fit beside the count on a 375px screen. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500 flex-shrink-0">{items.length} item{items.length !== 1 ? 's' : ''} on your menu</p>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
+          {items.length > 0 && (
+            <button
+              type="button"
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+              className={selectMode ? 'btn-primary gap-2 text-sm' : 'btn-outline gap-2 text-sm'}
+            >
+              {selectMode ? <><Check className="w-4 h-4" /> Done</> : <><CheckSquare className="w-4 h-4" /> Select</>}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowImport(true)}
@@ -308,6 +400,26 @@ export default function MenuManagement() {
             placeholder="Search menu items…"
             className="input pl-9 w-full"
           />
+        </div>
+      )}
+
+      {selectMode && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-primary-50 border border-primary-100 px-4 py-2.5 text-sm">
+          <span className="font-semibold text-primary-800">
+            Tap dishes to select them{selected.size > 0 ? ` · ${selected.size} selected` : ''}
+          </span>
+          <div className="ml-auto flex gap-3">
+            <button type="button" onClick={() => setManySelected(filteredItems.map((i) => i.id), true)}
+              className="text-xs font-bold text-primary-700 hover:underline">
+              Select all{searchQuery.trim() ? ' shown' : ''} ({filteredItems.length})
+            </button>
+            {selected.size > 0 && (
+              <button type="button" onClick={() => setSelected(new Set())}
+                className="text-xs font-bold text-gray-500 hover:underline">
+                Clear
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -473,7 +585,19 @@ export default function MenuManagement() {
         <div className="space-y-6">
           {groups.map((group) => (
             <div key={group.cat?.id || 'uncategorised'}>
-              <h2 className="section-title mb-3">{group.cat?.name || 'Uncategorised'}</h2>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h2 className="section-title">{group.cat?.name || 'Uncategorised'}</h2>
+                {selectMode && (() => {
+                  const ids = group.items.map((i) => i.id)
+                  const allOn = ids.every((id) => selected.has(id))
+                  return (
+                    <button type="button" onClick={() => setManySelected(ids, !allOn)}
+                      className="text-xs font-bold text-primary-700 hover:underline flex-shrink-0">
+                      {allOn ? 'Unselect category' : `Select category (${ids.length})`}
+                    </button>
+                  )
+                })()}
+              </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <AnimatePresence>
                   {group.items.map((item) => (
@@ -485,12 +609,38 @@ export default function MenuManagement() {
                       onToggle={toggleAvailable}
                       onToggleOnline={toggleOnline}
                       currency={restaurant?.currency}
+                      selectMode={selectMode}
+                      selected={selected.has(item.id)}
+                      onSelect={toggleSelect}
                     />
                   ))}
                 </AnimatePresence>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {selectMode && selected.size > 0 && (
+        <div className="sticky bottom-0 z-30 pb-safe-4">
+          <div className="rounded-2xl bg-white border border-gray-200 shadow-2xl p-3">
+            <p className="text-xs font-semibold text-gray-500 mb-2 px-1">
+              Change {selected.size} selected dish{selected.size === 1 ? '' : 'es'}:
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { kind: 'available',   label: 'Available',   cls: 'bg-green-600 text-white' },
+                { kind: 'unavailable', label: 'Unavailable', cls: 'bg-gray-100 text-gray-700 border border-gray-200' },
+                { kind: 'online',      label: 'Show online', cls: 'bg-purple-600 text-white' },
+                { kind: 'offline',     label: 'Hide online', cls: 'bg-gray-100 text-gray-700 border border-gray-200' },
+              ].map((a) => (
+                <button key={a.kind} type="button" disabled={!!bulkBusy} onClick={() => bulkUpdate(a.kind)}
+                  className={`py-2.5 rounded-xl text-sm font-bold transition-opacity disabled:opacity-50 ${a.cls}`}>
+                  {bulkBusy === a.kind ? 'Saving…' : a.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
