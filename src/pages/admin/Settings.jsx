@@ -43,6 +43,10 @@ export default function Settings() {
   const [contactEmail, setContactEmail] = useState(restaurant?.contact_email || '')
   const [currency, setCurrency] = useState(restaurant?.currency || '₹')
   const [taxPercentage, setTaxPercentage] = useState(restaurant?.tax_percentage ?? 5)
+  // 'never' maps to NULL in the database, meaning history is kept permanently.
+  const [retention, setRetention] = useState(
+    restaurant?.history_retention_days == null ? 'never' : String(restaurant.history_retention_days),
+  )
   const [logoUrl, setLogoUrl] = useState(restaurant?.logo_url || '')
   const [address, setAddress] = useState(restaurant?.address || '')
   const [phone, setPhone] = useState(restaurant?.phone || '')
@@ -141,6 +145,7 @@ export default function Settings() {
         contact_email: contactEmail.trim() || null,
         currency: currency.trim() || '₹',
         tax_percentage: tax,
+        history_retention_days: retention === 'never' ? null : Number(retention),
         logo_url: logoUrl || null,
         address: address.trim() || null,
         phone: phone.trim() || null,
@@ -456,6 +461,27 @@ export default function Settings() {
                   <input id="tax" type="number" min="0" max="50" step="0.01" className="input"
                     value={taxPercentage} onChange={(e) => setTaxPercentage(e.target.value)} required />
                 </div>
+              </div>
+
+              <div className="pt-2 border-t border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-800 mb-3">Billing History</h3>
+                <p className="text-xs text-gray-400 -mt-2 mb-3 leading-relaxed">
+                  How long settled bills are kept before being deleted automatically.
+                  Deleted bills cannot be recovered.
+                </p>
+                <label className="label" htmlFor="retention">Keep records for</label>
+                <select
+                  id="retention"
+                  className="input"
+                  value={retention}
+                  onChange={(e) => setRetention(e.target.value)}
+                >
+                  <option value="7">7 days</option>
+                  <option value="30">30 days</option>
+                  <option value="90">90 days (3 months)</option>
+                  <option value="365">1 year</option>
+                  <option value="never">Never delete — keep everything</option>
+                </select>
               </div>
 
               <div className="pt-2 border-t border-gray-100">

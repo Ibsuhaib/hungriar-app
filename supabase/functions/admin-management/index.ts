@@ -5,7 +5,10 @@ import { jsonResponse, checkRateLimit } from '../_shared/utils.ts'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-const MIN_PASSWORD_LENGTH = 8
+// Passwords carry more weight here than the length alone suggests: the
+// hungriOrder admin app accepts the same credentials with no second factor,
+// so this is the only thing standing in front of a restaurant's data.
+const MIN_PASSWORD_LENGTH = 12
 const MAX_PASSWORD_LENGTH = 128
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -88,15 +91,25 @@ Deno.serve(async (req) => {
 
       const telegramLinkedSet = new Set((telegramRows ?? []).map((t) => t.phone_number))
 
+      // One paged listUsers() instead of a getUserById() per row. The previous
+      // loop made a sequential Auth API round-trip per admin, so listing 100
+      // restaurants meant 100 serial calls and would approach the function
+      // timeout well before that.
+      const usersById = new Map<string, { email: string; lastSignInAt: string | null }>()
+      for (let page = 1; page <= 20; page++) {
+        const { data: userPage } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 })
+        const users = userPage?.users ?? []
+        for (const u of users) {
+          usersById.set(u.id, { email: u.email ?? 'unknown', lastSignInAt: u.last_sign_in_at ?? null })
+        }
+        if (users.length < 1000) break
+      }
+
       const result = []
       for (const row of restaurantAdmins ?? []) {
-        let email = 'unknown'
-        let lastSignInAt: string | null = null
-        const { data: userResult } = await supabaseAdmin.auth.admin.getUserById(row.user_id)
-        if (userResult?.user) {
-          email = userResult.user.email ?? 'unknown'
-          lastSignInAt = userResult.user.last_sign_in_at ?? null
-        }
+        const cached = usersById.get(row.user_id)
+        const email = cached?.email ?? 'unknown'
+        const lastSignInAt = cached?.lastSignInAt ?? null
 
         const restaurant = Array.isArray(row.restaurants) ? row.restaurants[0] : row.restaurants
         const phoneNumber = phoneMap[row.restaurant_id] ?? null
@@ -122,8 +135,8 @@ Deno.serve(async (req) => {
 
     // ── reset_password ───────────────────────────────────────────────────────
     if (body.action === 'reset_password') {
-      if (typeof body.userId !== 'string' || typeof body.newPassword !== 'string') {
-        return jsonResponse(req, { error: 'userId and newPassword are required' }, 400)
+      if (!isValidUUID(body.userId) || typeof body.newPassword !== 'string') {
+        return jsonResponse(req, { error: 'A valid userId (UUID) and newPassword are required' }, 400)
       }
       if (body.newPassword.length < MIN_PASSWORD_LENGTH || body.newPassword.length > MAX_PASSWORD_LENGTH) {
         return jsonResponse(req, { error: `Password must be ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters` }, 400)

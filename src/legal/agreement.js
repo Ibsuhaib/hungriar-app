@@ -7,16 +7,19 @@
 // When you materially change this text, bump AGREEMENT_VERSION — every
 // restaurant admin will be asked to re-sign on their next sign-in.
 
-export const AGREEMENT_VERSION = '2.0'
+export const AGREEMENT_VERSION = '2.1'
 
 export const SUPPORT_EMAIL = 'hungriar.app@gmail.com'
-export const SUPPORT_PHONE = '+91-81970-02978'
+export const SUPPORT_PHONE = '+91-92252-49945'
+export const REGISTERED_ADDRESS =
+  '0023, Kerker Complex, VK Road, Canca Bandh, Mapusa, North Goa, Goa 403507, India'
+export const UDYAM_NUMBER = 'UDYAM-GA-01-0063058'
 
 export const AGREEMENT_SECTIONS = [
   {
     title: '1. This Agreement',
     body: [
-      'This agreement is between HungriAR ("we", "us"), operated from Mangalore, Karnataka, India, and the restaurant identified at signature ("you", "the Restaurant"). It covers your use of the HungriAR platform: the restaurant management panel, QR menu and dine-in ordering, kitchen and billing tools, and — where enabled — the hungriOrder online-ordering storefront (together, "the Platform").',
+      'This agreement is between HungriAR ("we", "us"), a Micro enterprise registered in India under Udyam Registration No. UDYAM-GA-01-0063058, having its registered office at 0023, Kerker Complex, VK Road, Canca Bandh, Mapusa, North Goa, Goa 403507, India, and the restaurant identified at signature ("you", "the Restaurant"). It covers your use of the HungriAR platform: the restaurant management panel, QR menu and dine-in ordering, kitchen and billing tools, and — where enabled — the hungriOrder online-ordering storefront (together, "the Platform").',
       'By signing electronically below, you accept this agreement on behalf of the Restaurant and confirm you are authorised to do so. Your electronic signature, together with the recorded date, time, and account identity, forms a valid and binding acceptance under the Information Technology Act, 2000.',
     ],
   },
@@ -110,7 +113,7 @@ export const AGREEMENT_SECTIONS = [
   {
     title: '15. Governing Law and Disputes',
     body: [
-      'This agreement is governed by the laws of India. Both parties will first try to resolve any dispute in good faith. Failing that, the courts at Mangalore, Karnataka shall have exclusive jurisdiction.',
+      'This agreement is governed by the laws of India. Both parties will first try to resolve any dispute in good faith. Failing that, the courts at Mapusa, Goa shall have exclusive jurisdiction.',
     ],
   },
   {

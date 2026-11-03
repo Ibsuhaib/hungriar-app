@@ -148,7 +148,7 @@ export default function FoodDetail() {
         initial={{ y: 40, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.2, duration: 0.28 }}
-        className="fixed bottom-0 left-0 right-0 bg-white border-t border-sand-200 shadow-xl p-4"
+        className="fixed bottom-0 left-0 right-0 bg-white border-t border-sand-200 shadow-xl px-4 pt-4 pb-safe-4"
       >
         <div className="mx-auto flex max-w-2xl items-center gap-3">
           {/* Quantity selector */}

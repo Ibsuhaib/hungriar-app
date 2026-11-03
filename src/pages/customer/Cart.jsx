@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Trash2, Minus, Plus, ShoppingBag } from 'lucide-react'
 import { useCart } from '../../contexts/CartContext'
 import { useRestaurant } from '../../contexts/RestaurantContext'
+import { useTableOrders } from '../../hooks/useTableOrders'
+import { getDeviceTag } from '../../utils/deviceTag'
 import { useRateLimit } from '../../hooks/useRateLimit'
 import { invokeEdgeFunction } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/formatters'
@@ -47,6 +49,9 @@ export default function Cart() {
   const { restaurant, session, table, loading } = useRestaurant()
   const { checkCustomerLimit } = useRateLimit()
   const [placing, setPlacing] = useState(false)
+  // Orders already placed by anyone at this table — used to warn about
+  // ordering the same dish twice from two phones.
+  const { orders: tableOrders } = useTableOrders(session)
 
   if (loading) {
     return (
@@ -64,6 +69,17 @@ export default function Cart() {
   const total = subtotal + tax
   const totalQty = items.reduce((a, i) => a + i.quantity, 0)
 
+  // Dishes in this cart that someone at the table has already ordered.
+  const orderedQty = new Map()
+  for (const o of tableOrders) {
+    for (const i of o.items || []) {
+      if (i.menu_item_id) orderedQty.set(i.menu_item_id, (orderedQty.get(i.menu_item_id) || 0) + i.quantity)
+    }
+  }
+  const alreadyOrdered = items
+    .filter((i) => orderedQty.has(i.id))
+    .map((i) => ({ name: i.name, qty: orderedQty.get(i.id) }))
+
   const handlePlaceOrder = async () => {
     if (items.length === 0 || placing) return
 
@@ -80,12 +96,17 @@ export default function Cart() {
       const result = await invokeEdgeFunction('place-order', {
         token: session.token,
         sessionId: session.sessionId,
+        deviceTag: getDeviceTag(),
         items: items.map((item) => ({ menuItemId: item.id, quantity: item.quantity, notes: item.notes || '' })),
       })
 
       rememberOrder(restaurantSlug, result.orderId)
       clearCart()
-      toast.success('Order placed! The kitchen has been notified.')
+      if (result.status === 'awaiting_approval') {
+        toast.success('Order sent! A staff member will confirm your table in a moment.', { duration: 5000 })
+      } else {
+        toast.success('Order placed! The kitchen has been notified.')
+      }
       navigate(`/r/${restaurantSlug}/order/${result.orderId}`, { replace: true })
     } catch (err) {
       const msg = err.message || ''
@@ -251,8 +272,14 @@ export default function Cart() {
 
       {/* Place order fixed bar */}
       {items.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-sand-200 p-4 shadow-xl">
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-sand-200 px-4 pt-4 pb-safe-4 shadow-xl">
           <div className="mx-auto max-w-2xl">
+            {alreadyOrdered.length > 0 && (
+              <p className="mb-3 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-800 leading-relaxed">
+                <span className="font-semibold">Already ordered for your table:</span>{' '}
+                {alreadyOrdered.map((a) => `${a.name} ×${a.qty}`).join(', ')}. Still want more? Go ahead.
+              </p>
+            )}
             <motion.button
               type="button"
               onClick={handlePlaceOrder}

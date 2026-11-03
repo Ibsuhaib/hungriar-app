@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 import { getCorsHeaders } from '../_shared/cors.ts'
-import { jsonResponse } from '../_shared/utils.ts'
+import { jsonResponse, checkRateLimit } from '../_shared/utils.ts'
 
 const SUPABASE_URL     = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -16,6 +16,11 @@ Deno.serve(async (req) => {
 
   const { data: userData, error: userError } = await adminClient.auth.getUser(jwt)
   if (userError || !userData?.user) return jsonResponse(req, { error: 'Invalid session' }, 401)
+
+  const rateLimit = await checkRateLimit(adminClient, userData.user.id, 'admin', 120)
+  if (!rateLimit.allowed) {
+    return jsonResponse(req, { error: 'Too many requests' }, 429, { 'Retry-After': String(rateLimit.retryAfter) })
+  }
 
   let body: { stationId?: string; pin?: string }
   try { body = await req.json() }

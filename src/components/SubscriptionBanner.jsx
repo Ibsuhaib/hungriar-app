@@ -2,7 +2,7 @@ import { AlertTriangle, CheckCircle2, Clock, XCircle } from 'lucide-react'
 import { useSubscriptionStatus } from '../hooks/useSubscriptionStatus'
 
 const SUPPORT_EMAIL = 'hungriar.app@gmail.com'
-const SUPPORT_PHONE = '+91-81970-02978'
+const SUPPORT_PHONE = '+91-92252-49945'
 
 const TONE_CONFIG = {
   active: {

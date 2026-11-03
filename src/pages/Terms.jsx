@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom'
 
 const SUPPORT_EMAIL = 'hungriar.app@gmail.com'
-const SUPPORT_PHONE = '+91-81970-02978'
+const REGISTERED_ADDRESS =
+  '0023, Kerker Complex, VK Road, Canca Bandh, Mapusa, North Goa, Goa 403507, India'
+const UDYAM_NUMBER = 'UDYAM-GA-01-0063058'
+const SUPPORT_PHONE = '+91-92252-49945'
 
 export default function Terms() {
   return (
@@ -18,7 +21,7 @@ export default function Terms() {
           <section>
             <h2 className="text-base font-semibold text-gray-900">1. The Service</h2>
             <p className="mt-1">
-              HungriAR ("the Platform"), operated from Mangalore, Karnataka, India, is restaurant
+              HungriAR ("the Platform"), a registered Micro enterprise operating from Mapusa, Goa, India, is restaurant
               management software: a digital menu and dine-in ordering system (including photos and
               AR/3D dish previews) that diners use by scanning a table QR code, restaurant tools for
               orders, kitchen tickets, billing, and analytics, and — where a restaurant enables it —
@@ -176,7 +179,7 @@ export default function Terms() {
             <h2 className="text-base font-semibold text-gray-900">11. Governing Law</h2>
             <p className="mt-1">
               These terms are governed by the laws of India. Both parties will first try to resolve
-              any dispute in good faith; failing that, the courts at Mangalore, Karnataka shall have
+              any dispute in good faith; failing that, the courts at Mapusa, Goa shall have
               exclusive jurisdiction.
             </p>
           </section>
@@ -197,8 +200,12 @@ export default function Terms() {
               <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium text-primary-600 underline">
                 {SUPPORT_EMAIL}
               </a>{' '}
-              or call {SUPPORT_PHONE} — we aim to acknowledge complaints within 48 hours. HungriAR ·
-              Mangalore, Karnataka, India.
+              or call {SUPPORT_PHONE} — we aim to acknowledge complaints within 48 hours.
+            </p>
+            <p className="mt-2 text-xs text-gray-500">
+              HungriAR · Udyam Registration No. {UDYAM_NUMBER}
+              <br />
+              {REGISTERED_ADDRESS}
             </p>
           </section>
         </div>

@@ -1,0 +1,12 @@
+project_id = "uqbkcirhsuupzxiwjbsz"
+
+# Telegram calls this endpoint directly and sends no Supabase JWT — only its
+# own X-Telegram-Bot-Api-Secret-Token header, which the function verifies
+# itself. With verify_jwt left at the default, the gateway rejects every
+# callback before the function runs, which is why owner Telegram linking has
+# been silently broken.
+#
+# Supabase only reads per-function config from this root file; the copy that
+# previously sat in functions/telegram-webhook/config.toml was ignored.
+[functions.telegram-webhook]
+verify_jwt = false

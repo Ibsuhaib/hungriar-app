@@ -13,6 +13,7 @@ import { useRealtimeOrders } from '../../hooks/useRealtimeOrders'
 import { printKOT } from '../../utils/kotPrint'
 import { enqueueOrder, getQueuedOrders, removeQueuedOrder, isNetworkError } from '../../utils/offlineQueue'
 import { pageCache } from '../../utils/pageCache'
+import TableApprovalPopup from '../../components/TableApprovalPopup'
 
 // ─── Cart hook (same shape as TakeOrder) ──────────────────────────────────────
 function useCart() {
@@ -573,7 +574,7 @@ export default function StaffPanel() {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 inset-x-0 z-50 bg-white rounded-t-3xl shadow-2xl p-5 max-h-[80vh] overflow-y-auto"
+              className="fixed bottom-0 inset-x-0 z-50 bg-white rounded-t-3xl shadow-2xl px-5 pt-5 pb-safe-5 max-h-[80vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-gray-900">Order for Table {selectedTable?.table_number}</h3>
@@ -620,7 +621,7 @@ export default function StaffPanel() {
 
       {/* Floating cart button (shown when on menu step with items) */}
       {tab === 'order' && selectedTableId && totalQty > 0 && !cartOpen && (
-        <div className="fixed bottom-6 inset-x-0 flex justify-center z-30 pointer-events-none">
+        <div className="fixed bottom-safe-6 inset-x-0 flex justify-center z-30 pointer-events-none">
           <button
             type="button"
             onClick={() => setCartOpen(true)}
@@ -631,6 +632,10 @@ export default function StaffPanel() {
           </button>
         </div>
       )}
+
+      {/* Same popup the owner sees — whichever of them decides first wins */}
+      {/* Header plus its New Order / Active Orders tabs is ~101px tall */}
+      <TableApprovalPopup restaurantId={restaurant?.id} currency={restaurant?.currency || '₹'} pillTop="7rem" />
     </div>
   )
 }

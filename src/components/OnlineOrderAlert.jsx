@@ -108,7 +108,7 @@ export default function OnlineOrderAlert({ restaurantId, currency = '₹' }) {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-[70] no-print">
+    <div className="fixed bottom-safe-4 right-4 z-[70] no-print">
       <AnimatePresence mode="wait">
         {collapsed ? (
           /* Collapsed: bell with unread badge — like a minimized chat */

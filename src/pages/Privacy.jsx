@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom'
 
 const SUPPORT_EMAIL = 'hungriar.app@gmail.com'
-const SUPPORT_PHONE = '+91-81970-02978'
+const SUPPORT_PHONE = '+91-92252-49945'
+const REGISTERED_ADDRESS =
+  '0023, Kerker Complex, VK Road, Canca Bandh, Mapusa, North Goa, Goa 403507, India'
+const UDYAM_NUMBER = 'UDYAM-GA-01-0063058'
 
 export default function Privacy() {
   return (
@@ -18,7 +21,7 @@ export default function Privacy() {
           <section>
             <h2 className="text-base font-semibold text-gray-900">1. Overview</h2>
             <p className="mt-1">
-              HungriAR, operated from Mangalore, Karnataka, India, provides restaurant management
+              HungriAR, a registered Micro enterprise operating from Mapusa, Goa, India, provides restaurant management
               software: the HungriAR restaurant panel with QR-code dine-in ordering, and the
               hungriOrder online-ordering storefront for delivery and takeaway (together, "the
               Platform"). This policy explains what information the Platform collects from diners,
@@ -189,7 +192,12 @@ export default function Privacy() {
               <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium text-primary-600 underline">
                 {SUPPORT_EMAIL}
               </a>{' '}
-              or call {SUPPORT_PHONE}. HungriAR · Mangalore, Karnataka, India.
+              or call {SUPPORT_PHONE}.
+            </p>
+            <p className="mt-2 text-xs text-gray-500">
+              HungriAR · Udyam Registration No. {UDYAM_NUMBER}
+              <br />
+              {REGISTERED_ADDRESS}
             </p>
           </section>
         </div>

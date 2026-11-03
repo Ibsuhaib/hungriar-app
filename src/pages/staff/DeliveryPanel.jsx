@@ -15,7 +15,13 @@ function addressText(addr) {
   return [addr.line1, addr.line2, addr.landmark, addr.city, addr.pincode].filter(Boolean).join(', ')
 }
 
-function OrderCard({ order, currency, onAdvance, busy }) {
+const PAY_CHOICES = [
+  { id: 'cash', label: 'Cash' },
+  { id: 'upi',  label: 'UPI' },
+  { id: 'card', label: 'Card' },
+]
+
+function OrderCard({ order, currency, onAdvance, onDeliver, confirming, onCancelConfirm, busy }) {
   const addr = order.delivery_address
   const addrStr = addressText(addr)
   const items = (order.order_items || []).filter((i) => !i.cancelled)
@@ -96,15 +102,51 @@ function OrderCard({ order, currency, onAdvance, busy }) {
         </ul>
       </div>
 
-      {/* Action */}
-      {(isReady || isOut) && (
+      {/* Confirming delivery — the rider picks what was actually paid, which
+          may differ from what the customer chose at checkout. */}
+      {confirming && (
         <div className="px-4 pb-4">
+          <p className="text-xs font-semibold text-gray-500 mb-2">How did the customer pay?</p>
+          <div className="flex gap-2">
+            {PAY_CHOICES.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                disabled={busy}
+                onClick={() => onDeliver(order, p.id)}
+                className={`flex-1 py-3 rounded-2xl text-sm font-bold transition-colors disabled:opacity-50 ${
+                  (order.payment_method || 'cash') === p.id
+                    ? 'bg-green-500 text-white shadow-lg'
+                    : 'bg-gray-100 text-gray-700 active:bg-gray-200'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={onCancelConfirm}
+            className="w-full mt-2 py-2 text-xs font-semibold text-gray-400"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Action */}
+      {(isReady || isOut) && !confirming && (
+        <div className="px-4 pb-4 flex items-center gap-2">
+          {/* No print button here on purpose: this panel runs on the rider's
+              phone, which has no printer. The customer's bill is printed from
+              the restaurant dashboard, where the thermal printer is, and goes
+              out with the food. */}
           <motion.button
             type="button"
             whileTap={{ scale: 0.97 }}
             disabled={busy}
             onClick={() => onAdvance(order)}
-            className={`w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold text-white shadow-lg transition-opacity disabled:opacity-50 bg-gradient-to-r ${
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold text-white shadow-lg transition-opacity disabled:opacity-50 bg-gradient-to-r ${
               isReady ? 'from-purple-500 to-purple-600' : 'from-green-500 to-green-600'
             }`}
           >
@@ -121,6 +163,7 @@ export default function DeliveryPanel() {
   const navigate = useNavigate()
   const currency = restaurant?.currency || '₹'
   const [busyId, setBusyId] = useState(null)
+  const [confirmingId, setConfirmingId] = useState(null)
 
   const { orders, patchOrder, refetch, loading } = useRealtimeOrders({
     restaurantId: restaurant?.id,
@@ -139,18 +182,56 @@ export default function DeliveryPanel() {
   const onTheWay = deliveryOrders.filter((o) => o.status === 'out_for_delivery')
 
   const handleAdvance = async (order) => {
-    const next = order.status === 'ready' ? 'out_for_delivery' : 'delivered'
-    if (next === 'delivered' && !window.confirm('Order delivered to the customer?')) return
+    // 'ready' → dispatch. Delivery is confirmed through handleDeliver instead,
+    // because that step also has to record how the customer actually paid.
+    if (order.status !== 'ready') return setConfirmingId(order.id)
     setBusyId(order.id)
-    const prev = order.status
-    patchOrder(order.id, { status: next })
-    const { error } = await supabase.from('orders').update({ status: next }).eq('id', order.id)
+    patchOrder(order.id, { status: 'out_for_delivery' })
+    const { error } = await supabase.from('orders').update({ status: 'out_for_delivery' }).eq('id', order.id)
     if (error) {
-      patchOrder(order.id, { status: prev })
+      patchOrder(order.id, { status: 'ready' })
       toast.error('Failed to update — try again')
-    } else if (next === 'delivered') {
-      toast.success('Delivered! 🎉')
     }
+    setBusyId(null)
+    refetch({ silent: true })
+  }
+
+  // Marking delivered closes the bill in the same step. Previously the order
+  // just moved to 'delivered' and waited for an admin to spot it in Billing —
+  // and until they did, the money was recorded nowhere.
+  const handleDeliver = async (order, paymentMethod) => {
+    setBusyId(order.id)
+    setConfirmingId(null)
+    const prev = order.status
+
+    const { error: statusError } = await supabase
+      .from('orders')
+      .update({ status: 'delivered' })
+      .eq('id', order.id)
+    if (statusError) {
+      toast.error('Failed to update — try again')
+      setBusyId(null)
+      return
+    }
+
+    const { error: settleError } = await supabase.rpc('settle_online_order', {
+      p_order_id:       order.id,
+      p_payment_method: paymentMethod,
+      p_discount:       0,
+      p_round_off:      0,
+      p_package_charge: 0,
+    })
+
+    if (settleError) {
+      // The order is delivered but unsettled — recoverable, since it now shows
+      // up in the admin Billing screen for manual settlement.
+      console.error('settle_online_order failed', settleError)
+      patchOrder(order.id, { status: 'delivered' })
+      toast.error('Delivered, but the bill could not be closed. Settle it from Billing.')
+    } else {
+      toast.success('Delivered and billed 🎉')
+    }
+
     setBusyId(null)
     refetch({ silent: true })
   }
@@ -203,7 +284,7 @@ export default function DeliveryPanel() {
                 <AnimatePresence>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {ready.map((o) => (
-                      <OrderCard key={o.id} order={o} currency={currency} onAdvance={handleAdvance} busy={busyId === o.id} />
+                      <OrderCard key={o.id} order={o} currency={currency} onAdvance={handleAdvance} onDeliver={handleDeliver} confirming={confirmingId === o.id} onCancelConfirm={() => setConfirmingId(null)} busy={busyId === o.id} />
                     ))}
                   </div>
                 </AnimatePresence>
@@ -218,7 +299,7 @@ export default function DeliveryPanel() {
                 <AnimatePresence>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {onTheWay.map((o) => (
-                      <OrderCard key={o.id} order={o} currency={currency} onAdvance={handleAdvance} busy={busyId === o.id} />
+                      <OrderCard key={o.id} order={o} currency={currency} onAdvance={handleAdvance} onDeliver={handleDeliver} confirming={confirmingId === o.id} onCancelConfirm={() => setConfirmingId(null)} busy={busyId === o.id} />
                     ))}
                   </div>
                 </AnimatePresence>
@@ -232,7 +313,7 @@ export default function DeliveryPanel() {
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2 opacity-70">
                   {preparing.map((o) => (
-                    <OrderCard key={o.id} order={o} currency={currency} onAdvance={handleAdvance} busy={busyId === o.id} />
+                    <OrderCard key={o.id} order={o} currency={currency} onAdvance={handleAdvance} onDeliver={handleDeliver} confirming={confirmingId === o.id} onCancelConfirm={() => setConfirmingId(null)} busy={busyId === o.id} />
                   ))}
                 </div>
               </section>

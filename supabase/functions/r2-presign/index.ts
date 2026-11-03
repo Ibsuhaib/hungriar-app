@@ -11,6 +11,8 @@ const R2_SECRET_ACCESS_KEY = Deno.env.get('R2_SECRET_ACCESS_KEY')
 const R2_BUCKET_NAME = Deno.env.get('R2_BUCKET_NAME')
 const R2_PUBLIC_URL = Deno.env.get('R2_PUBLIC_URL')
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 const ALLOWED_FOLDERS = new Set(['images', 'models', 'qr-codes'])
 const ALLOWED_TYPES = new Set([
   'image/png',
@@ -66,7 +68,10 @@ async function createPresignedPutUrl(
     'X-Amz-Credential': credential,
     'X-Amz-Date': timeStr,
     'X-Amz-Expires': String(expiresIn),
-    'X-Amz-SignedHeaders': 'host',
+    // content-type is signed so the ALLOWED_TYPES check below is actually
+    // binding — otherwise the caller could declare image/png to get the URL
+    // and then PUT anything at all.
+    'X-Amz-SignedHeaders': 'content-type;host',
   }
 
   const canonicalQuery = Object.keys(params)
@@ -78,8 +83,8 @@ async function createPresignedPutUrl(
     'PUT',
     canonicalUri,
     canonicalQuery,
-    `host:${host}\n`,
-    'host',
+    `content-type:${contentType}\nhost:${host}\n`,
+    'content-type;host',
     'UNSIGNED-PAYLOAD',
   ].join('\n')
 
@@ -150,6 +155,10 @@ Deno.serve(async (req) => {
 
     const { restaurantId, folder, fileName, fileType } = body
 
+    // Validated for every role, not just non-super-admins: restaurantId goes
+    // straight into the object key, and the super-admin branch below skips the
+    // restaurant_admins lookup that would otherwise reject a malformed value.
+    if (!UUID_RE.test(restaurantId)) return jsonResponse(req, { error: 'Invalid restaurantId' }, 400)
     if (!ALLOWED_FOLDERS.has(folder)) return jsonResponse(req, { error: 'Invalid folder' }, 400)
     if (!ALLOWED_TYPES.has(fileType)) return jsonResponse(req, { error: 'Unsupported file type' }, 400)
 

@@ -49,10 +49,15 @@ registerRoute(
   }),
 )
 
-// ─── CDN / R2 images — Cache First ───────────────────────────────────────────
-// Menu item photos and AR models from Cloudflare R2 — long-lived, never change
+// ─── Own + Supabase Storage images — Cache First ─────────────────────────────
+// Cross-origin photos (Cloudflare R2 dish photos) are deliberately NOT routed
+// here: when the worker re-fetched them they failed (broken food photos on the
+// QR menu and dashboard), so the browser loads those itself and its normal
+// HTTP cache keeps them.
 registerRoute(
-  ({ request }) => request.destination === 'image',
+  ({ request, url }) =>
+    request.destination === 'image' &&
+    (url.origin === self.location.origin || url.hostname.endsWith('.supabase.co')),
   new CacheFirst({
     cacheName: 'image-cache',
     plugins: [

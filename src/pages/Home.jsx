@@ -327,13 +327,19 @@ export default function Home() {
             <a href="#features" className="hover:text-white transition-colors">Features</a>
             <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
           </nav>
-          <div className="flex items-center gap-2">
-            <Link to="/admin/login" className="text-sm text-white/50 hover:text-white transition-colors hidden sm:block px-3 py-1.5">
+          <div className="flex items-center gap-1 sm:gap-2">
+            {/* Visible on every width. This was `hidden sm:block`, which left
+                phone users with no way into the app from the landing page —
+                the only other login entry point was buried in the footer. */}
+            <Link
+              to="/admin/login"
+              className="text-sm text-white/70 hover:text-white transition-colors px-3 py-2.5 rounded-lg"
+            >
               Login
             </Link>
             <a
               href={`mailto:${SUPPORT_EMAIL}?subject=hungriAR Enquiry`}
-              className="text-sm font-semibold bg-primary-500 hover:bg-primary-400 text-navy-900 px-4 py-2 rounded-xl transition-colors"
+              className="text-sm font-semibold bg-primary-500 hover:bg-primary-400 text-navy-900 px-3.5 sm:px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap"
             >
               Get Started
             </a>
@@ -382,7 +388,7 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.25, duration: 0.6 }}
-            className="text-5xl sm:text-6xl font-bold leading-tight font-display"
+            className="text-[2.5rem] leading-[1.1] sm:text-6xl sm:leading-tight font-bold font-display"
           >
             Restaurant Management<br />
             <span className="bg-clip-text text-transparent"
@@ -733,13 +739,25 @@ export default function Home() {
               <p className="text-xs font-bold text-white/50 uppercase tracking-widest mb-4">Contact</p>
               <ul className="space-y-2.5">
                 <li><a href={`mailto:${SUPPORT_EMAIL}`} className="text-xs text-white/30 hover:text-primary-400 transition-colors break-all">{SUPPORT_EMAIL}</a></li>
+                <li><a href="tel:+919225249945" className="text-xs text-white/30 hover:text-primary-400 transition-colors">+91 92252 49945</a></li>
                 <li><Link to="/admin/login" className="text-xs text-white/30 hover:text-white/70 transition-colors">Restaurant Login</Link></li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-white/5 pt-6 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <p className="text-xs text-white/20">&copy; {new Date().getFullYear()} hungriAR. All rights reserved.</p>
-            <p className="text-xs text-white/15">Built with React · Supabase · Cloudflare R2</p>
+          {/* Registered business identity — kept in sync with the Udyam
+              certificate. Meta and other platforms cross-check these against
+              what we submit during business verification. */}
+          <div className="border-t border-white/5 pt-6">
+            <p className="text-xs text-white/25 leading-relaxed">
+              <span className="text-white/40 font-semibold">HungriAR</span>
+              {' · '}Udyam Registration No. UDYAM-GA-01-0063058
+              <br />
+              0023, Kerker Complex, VK Road, Canca Bandh, Mapusa, North Goa, Goa 403507, India
+            </p>
+            <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+              <p className="text-xs text-white/20">&copy; {new Date().getFullYear()} hungriAR. All rights reserved.</p>
+              <p className="text-xs text-white/15">Built with React · Supabase · Cloudflare R2</p>
+            </div>
           </div>
         </div>
       </footer>
