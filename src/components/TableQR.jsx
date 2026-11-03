@@ -179,8 +179,9 @@ export default function TableQR({ table, restaurantId }) {
       {confirmReset ? (
         <div className="w-full rounded-xl bg-red-50 border border-red-100 p-3 text-left">
           <p className="text-xs text-red-800 leading-relaxed">
-            Every old copy and photo of this table&apos;s QR will stop working. You&apos;ll need to
-            print and stick up the new one, and anyone seated here now will have to scan it again.
+            Every old copy and photo of this table&apos;s QR will stop working, and so will its
+            NFC tag (it holds the same link). Print and stick up the new QR, write the new link
+            to the NFC tag, and anyone seated here now will have to scan or tap again.
           </p>
           <div className="flex gap-2 mt-2.5">
             <button type="button" onClick={() => setConfirmReset(false)} disabled={resetting}

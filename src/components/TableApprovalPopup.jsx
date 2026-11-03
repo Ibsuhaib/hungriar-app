@@ -23,7 +23,9 @@ function chime() {
       osc.start(t)
       osc.stop(t + 0.35)
     })
-    navigator.vibrate?.([200, 100, 200])
+    // Browsers refuse (and log an error) until the user has tapped the page
+    // at least once, so only buzz once that has happened.
+    if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.([200, 100, 200])
   } catch { /* audio unavailable — the popup itself is still shown */ }
 }
 
@@ -92,7 +94,9 @@ function useAwaitingApprovals(restaurantId) {
  * people tap at the same instant, the second gets "already handled" rather
  * than an error.
  */
-export default function TableApprovalPopup({ restaurantId, currency = '₹' }) {
+// pillTop: distance from the top of the screen to just below the page's own
+// header, so the minimised reminder never covers header buttons or tabs.
+export default function TableApprovalPopup({ restaurantId, currency = '₹', pillTop = '4.25rem' }) {
   const { awaiting, refresh } = useAwaitingApprovals(restaurantId)
   const [minimized, setMinimized] = useState(false)
   const [busy, setBusy] = useState(null) // 'approve' | 'reject'
@@ -163,10 +167,14 @@ export default function TableApprovalPopup({ restaurantId, currency = '₹' }) {
       <button
         type="button"
         onClick={() => setMinimized(false)}
-        className="fixed bottom-safe-4 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-2 whitespace-nowrap rounded-full bg-amber-500 px-5 py-3 text-sm font-bold text-white shadow-2xl animate-pulse"
+        // Top centre, just below the page header: the bottom edge is already
+        // taken by the menu bulk-edit bar, the waiter's cart bar and the
+        // online-order bell, and this pill sat on top of their buttons.
+        style={{ top: `calc(${pillTop} + env(safe-area-inset-top))` }}
+        className="fixed left-1/2 -translate-x-1/2 z-[80] flex items-center gap-2 whitespace-nowrap rounded-full bg-amber-500 px-4 py-2.5 text-sm font-bold text-white shadow-2xl animate-pulse"
       >
         <BellRing className="w-4 h-4" />
-        {tables.length} table{tables.length > 1 ? 's' : ''} waiting for approval
+        {tables.length === 1 ? '1 table needs approval' : `${tables.length} tables need approval`}
       </button>
     )
   }

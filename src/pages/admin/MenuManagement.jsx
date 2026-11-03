@@ -622,7 +622,9 @@ export default function MenuManagement() {
       )}
 
       {selectMode && selected.size > 0 && (
-        <div className="sticky bottom-0 z-30 pb-safe-4">
+        <div className="sticky bottom-0 z-30 pb-safe-4 pr-[4.5rem]">
+          {/* Right padding keeps the bar clear of the online-order bell, which
+              is fixed in the bottom-right corner on every admin page. */}
           <div className="rounded-2xl bg-white border border-gray-200 shadow-2xl p-3">
             <p className="text-xs font-semibold text-gray-500 mb-2 px-1">
               Change {selected.size} selected dish{selected.size === 1 ? '' : 'es'}:

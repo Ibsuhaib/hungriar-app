@@ -634,7 +634,8 @@ export default function StaffPanel() {
       )}
 
       {/* Same popup the owner sees — whichever of them decides first wins */}
-      <TableApprovalPopup restaurantId={restaurant?.id} currency={restaurant?.currency || '₹'} />
+      {/* Header plus its New Order / Active Orders tabs is ~101px tall */}
+      <TableApprovalPopup restaurantId={restaurant?.id} currency={restaurant?.currency || '₹'} pillTop="7rem" />
     </div>
   )
 }
